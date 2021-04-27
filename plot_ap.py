@@ -24,9 +24,6 @@ for prediction_file in sorted([f for f in os.listdir(prediction_dir) if f.lower(
     with open(os.path.join(prediction_dir, prediction_file), 'rb') as pf:
         predictions.append(pickle.load(pf))
 
-# for i in range(len(predictions))
-#     predictions[i] = predictions[i].astype('int32')
-
 threshold = np.linspace(0, 1, 101)
 ap_per_im, _, _, _ = average_precision(labels, predictions, threshold=threshold)
 overall_ap = ap_per_im.mean(axis=0)

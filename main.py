@@ -51,7 +51,8 @@ train_dl = DataLoader(train_dataset, batch_size=1, shuffle=True)  # num_workers=
 #                                      do_3D=False, d_transform=data_transform, l_transform=label_transform)
 val_dataloader = DataLoader(train_dataset, batch_size=1, shuffle=True)  # num_workers=num_workers
 
-model = UpdatedCellpose(channels=1).to(device)
+model = UpdatedCellpose(channels=1, flow_crit=nn.MSELoss(reduction='mean'),
+                        class_crit=nn.BCEWithLogitsLoss(reduction='mean')).to(device)
 optimizer = SGD(model.parameters(), lr=learning_rate, momentum=momentum)
 # model = nn.DataParallel(model)
 

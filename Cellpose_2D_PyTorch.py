@@ -80,10 +80,10 @@ class UpBlock(nn.Module):
 
 
 class UpdatedCellpose(nn.Module):
-    def __init__(self, channels):
+    def __init__(self, channels, flow_crit, class_crit):
         super().__init__()
-        self.flow_criterion = nn.MSELoss(reduction='mean')
-        self.class_criterion = nn.BCEWithLogitsLoss(reduction='mean')
+        self.flow_criterion = flow_crit
+        self.class_criterion = class_crit
         self.d_block1 = DownBlock(channels, 32, pool=False)
         self.d_block2 = DownBlock(32, 64)
         self.d_block3 = DownBlock(64, 128)
