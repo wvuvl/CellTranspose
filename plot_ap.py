@@ -11,7 +11,7 @@ from cellpose_src.metrics import average_precision
 import matplotlib.pyplot as plt
 
 label_dir = '/home/mrkeaton/Documents/Datasets/Neuro_Proj1_Data/2D Toy Dataset - 2-dim/labels'
-prediction_dir = '/home/mrkeaton/Documents/Datasets/Neuro_Proj1_Data/2D Toy Dataset - 2-dim/results/results2'
+prediction_dir = '/home/mrkeaton/Documents/Datasets/Neuro_Proj1_Data/2D Toy Dataset - 2-dim/results/results3'
 import numpy as np
 
 # Load in Ground Truth labels
@@ -34,8 +34,8 @@ overall_ap = ap_per_im.mean(axis=0)
 plt.figure()
 plt.plot(threshold, overall_ap)
 plt.title('Average Precision')  # Could add further arguments here
-plt.xlabel(r'IoU Matching Threshold $/Tau$')
+plt.xlabel(r'IoU Matching Threshold $\tau$')
 plt.ylabel('Average Precision')
-plt.show()
+plt.savefig(os.path.join(prediction_dir, 'Average_Precision.pdf'))
 
 print('test')
