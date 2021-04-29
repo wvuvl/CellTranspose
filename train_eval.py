@@ -1,13 +1,10 @@
 from torch.utils.data import DataLoader
-from torch import nn, device, no_grad, as_tensor
-from torch.optim import SGD
+from torch import nn, no_grad, as_tensor
 from time import time
-import os
-import pickle
 
 from misc_utils import elapsed_time
-from cellpose_src import dynamics
 from transforms import LabelsToFlows, FollowFlows, random_horizontal_flip, random_rotate
+from Cellpose_2D_PyTorch import SASClassLoss
 
 import matplotlib.pyplot as plt
 
@@ -30,13 +27,67 @@ def train_network(model: nn.Module, data_loader: DataLoader, optimizer, device, 
 
             optimizer.zero_grad()
             output = model(batch_data)
-            loss = model.loss_fn(output, batch_labels)
-            train_losses.append(loss.item())
-            loss.backward()
+            flow_loss = model.flow_loss(output, batch_labels)
+            mask_loss = model.flow_loss(output, batch_labels)
+            train_loss = flow_loss + mask_loss
+            train_losses.append(train_loss.item())
+            train_loss.backward()
             optimizer.step()
         print('Train time: {}'.format(elapsed_time(time() - start_train)))
 
     return train_losses
+
+
+def adapt_network(model: nn.Module, source_data_loader: DataLoader, target_data_loader: DataLoader, optimizer, device, n_epochs):
+    print('Beginning domain adaptation.\n')
+
+    train_losses = []
+
+    len_data = min(len(source_data_loader), len(target_data_loader))
+    for e in range(1, n_epochs + 1):
+        print('Epoch {}/{}:'.format(e, n_epochs))
+        source_iter = iter(source_data_loader)
+        target_iter = iter(target_data_loader)
+        model.train()
+        start_train = time()
+        for batch in range(len_data):
+            optimizer.zero_grad()
+
+            source_batch = source_iter.next()
+            source_batch_data, source_batch_labels, _ = source_batch
+            source_batch_data, source_batch_labels = random_horizontal_flip(source_batch_data, source_batch_labels)
+            source_batch_data, source_batch_labels = random_rotate(source_batch_data, source_batch_labels)
+            source_batch_labels = as_tensor(
+                [LabelsToFlows()(source_batch_labels[i].numpy()) for i in range(len(source_batch_labels))])
+            source_batch_data = source_batch_data.float().to(device)
+            source_batch_labels = source_batch_labels.float().to(device)
+
+            source_output = model(source_batch_data)
+
+            target_batch = target_iter.next()
+            target_batch_data, target_batch_labels, _ = target_batch
+            target_batch_data, target_batch_labels = random_horizontal_flip(target_batch_data, target_batch_labels)
+            target_batch_data, target_batch_labels = random_rotate(target_batch_data, target_batch_labels)
+            target_batch_labels = as_tensor(
+                [LabelsToFlows()(target_batch_labels[i].numpy()) for i in range(len(target_batch_labels))])
+            target_batch_data = target_batch_data.float().to(device)
+            target_batch_labels = target_batch_labels.float().to(device)
+
+            target_output = model(target_batch_data)
+
+            source_flow_loss = model.flow_loss(source_output, source_batch_labels)
+            adaptation_class_loss = model.sas_class_loss(source_output[:, 0], source_batch_labels[:, 0],
+                                                         target_output[:, 0], target_batch_labels[:, 0],
+                                                         margin=1, gamma=0.1)
+
+            train_loss = source_flow_loss + adaptation_class_loss
+            train_losses.append(train_loss.item())
+            train_loss.backward()
+            optimizer.step()
+        print('Train time: {}'.format(elapsed_time(time() - start_train)))
+
+    return train_losses
+
 
 def eval_network(model: nn.Module, data_loader: DataLoader, device):
 

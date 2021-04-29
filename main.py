@@ -14,9 +14,11 @@ import tifffile
 from transforms import Reshape, Normalize1stTo99th, ResizeImage
 from loaddata import StandardizedTiffData
 from Cellpose_2D_PyTorch import UpdatedCellpose
-from train_eval import train_network, eval_network
+from train_eval import train_network, adapt_network, eval_network
 
-results_dir = '/home/mrkeaton/Documents/Datasets/Neuro_Proj1_Data/2D Toy Dataset - 2-dim/results/results3'
+do_adaptation = True
+
+results_dir = '/home/mrkeaton/Documents/Datasets/Neuro_Proj1_Data/2D Toy Dataset - 2-dim/results/results16'
 assert not os.path.exists(results_dir), 'Results folder currently exists; please specify new location to save results.'
 os.mkdir(results_dir)
 os.mkdir(os.path.join(results_dir, 'tiff_results'))
@@ -28,7 +30,8 @@ n_epochs = 10
 # num_workers = 2
 device = device('cuda' if is_available() else 'cpu')
 
-width, height = 696, 520
+# width, height = 696, 520
+width, height = 352, 256
 
 data_transform = torchvision.transforms.Compose([
     Reshape(),
@@ -47,16 +50,26 @@ train_dataset = StandardizedTiffData('/home/mrkeaton/Documents/Datasets/Neuro_Pr
                                      )
 train_dl = DataLoader(train_dataset, batch_size=1, shuffle=True)  # num_workers=num_workers
 
+# if do_adaptation:
+#     target_dataset = StandardizedTiffData('/home/mrkeaton/Documents/Datasets/Neuro_Proj1_Data/2D Toy Dataset - 2-dim',
+#                                           do_3D=False, d_transform=data_transform, l_transform=label_transform,
+#                                           # augmentations=augmentations
+#                                           )
+#     target_dl = DataLoader(target_dataset, batch_size=1, shuffle=True)
+
 # val_dataset = StandardizedTiffData('/home/mrkeaton/Documents/Datasets/Neuro_Proj1_Data/2D Toy Dataset - 2-dim',
 #                                      do_3D=False, d_transform=data_transform, l_transform=label_transform)
 val_dataloader = DataLoader(train_dataset, batch_size=1, shuffle=True)  # num_workers=num_workers
 
-model = UpdatedCellpose(channels=1, flow_crit=nn.MSELoss(reduction='mean'),
-                        class_crit=nn.BCEWithLogitsLoss(reduction='mean')).to(device)
+model = UpdatedCellpose(channels=1, class_crit=nn.BCEWithLogitsLoss(reduction='mean'),
+                        flow_crit=nn.MSELoss(reduction='mean')).to(device)
 optimizer = SGD(model.parameters(), lr=learning_rate, momentum=momentum)
 # model = nn.DataParallel(model)
 
-train_losses = train_network(model, train_dl, optimizer=optimizer, device=device, n_epochs=n_epochs)
+if do_adaptation:
+    train_losses = adapt_network(model, train_dl, train_dl, optimizer=optimizer, device=device, n_epochs=n_epochs)
+else:
+    train_losses = train_network(model, train_dl, optimizer=optimizer, device=device, n_epochs=n_epochs)
 
 plt.figure()
 x_range = np.arange(1, len(train_losses)+1)
