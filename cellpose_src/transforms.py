@@ -3,11 +3,11 @@ import numpy as np
 import warnings
 import cv2
 
-def _taper_mask(ly=224, lx=224, sig=7.5):
-    bsize = max(224, max(ly, lx))
+def _taper_mask(ly=64, lx=64, sig=7.5):
+    bsize = max(64, max(ly, lx))
     xm = np.arange(bsize)
     xm = np.abs(xm - xm.mean())
-    mask = 1/(1 + np.exp((xm - (bsize/2-20)) / sig))
+    mask = 1/(1 + np.exp((xm - (bsize/2-6)) / sig))
     mask = mask * mask[:, np.newaxis]
     mask = mask[bsize//2-ly//2 : bsize//2+ly//2+ly%2, 
                 bsize//2-lx//2 : bsize//2+lx//2+lx%2]

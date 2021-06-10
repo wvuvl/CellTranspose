@@ -71,6 +71,4 @@ class StandardizedTiffData(Dataset):
             y = self.l_transform(as_tensor(y))
             y = as_tensor(y[np.newaxis, :])
 
-        # TODO: Eventually add translation with tiling implementation
-
         return X, y[0], label_file

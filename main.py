@@ -1,7 +1,7 @@
 import torchvision
 
 from torch.utils.data import DataLoader
-from torch import nn, device
+from torch import nn, device, save
 from torch.cuda import is_available, device_count
 from torch.optim import SGD
 import cv2
@@ -18,37 +18,40 @@ from train_eval import train_network, adapt_network, eval_network
 
 do_adaptation = True
 
-results_dir = '/home/mrkeaton/Documents/Datasets/Neuro_Proj1_Data/2D Toy Dataset - 2-dim/results/results16'
+results_dir = '/home/mrkeaton/Documents/Datasets/Neuro_Proj1_Data/2D Toy Dataset - 2-dim/results/results21'
 assert not os.path.exists(results_dir), 'Results folder currently exists; please specify new location to save results.'
 os.mkdir(results_dir)
 os.mkdir(os.path.join(results_dir, 'tiff_results'))
 learning_rate = 0.001
 momentum = 0.9
-batch_size = 8
+batch_size = 1
 n_epochs = 10
 # num_workers = device_count()
 # num_workers = 2
 device = device('cuda' if is_available() else 'cpu')
 
 # width, height = 696, 520
-width, height = 352, 256
+# Determine resize factor such that image is resized to where median diameter is 32
+default_x, default_y = 32, 32
+median_diam_x, median_diam_y = 96, 96
+resize_factor_x, resize_factor_y = default_x / median_diam_x, default_y / median_diam_y
 
 data_transform = torchvision.transforms.Compose([
     Reshape(),
     Normalize1stTo99th(),
-    ResizeImage(width, height, cv2.INTER_LINEAR),
+    ResizeImage(resize_factor_x, resize_factor_y, cv2.INTER_LINEAR),
     # torchvision.transforms.ToTensor()
 ])
 label_transform = torchvision.transforms.Compose([
     Reshape(),
-    ResizeImage(width, height, cv2.INTER_NEAREST)
+    ResizeImage(resize_factor_x, resize_factor_y, cv2.INTER_NEAREST)
 ])
 
 train_dataset = StandardizedTiffData('/home/mrkeaton/Documents/Datasets/Neuro_Proj1_Data/2D Toy Dataset - 2-dim',
                                      do_3D=False, d_transform=data_transform, l_transform=label_transform,
                                      # augmentations=augmentations
                                      )
-train_dl = DataLoader(train_dataset, batch_size=1, shuffle=True)  # num_workers=num_workers
+train_dl = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)  # num_workers=num_workers
 
 # if do_adaptation:
 #     target_dataset = StandardizedTiffData('/home/mrkeaton/Documents/Datasets/Neuro_Proj1_Data/2D Toy Dataset - 2-dim',
@@ -59,7 +62,7 @@ train_dl = DataLoader(train_dataset, batch_size=1, shuffle=True)  # num_workers=
 
 # val_dataset = StandardizedTiffData('/home/mrkeaton/Documents/Datasets/Neuro_Proj1_Data/2D Toy Dataset - 2-dim',
 #                                      do_3D=False, d_transform=data_transform, l_transform=label_transform)
-val_dataloader = DataLoader(train_dataset, batch_size=1, shuffle=True)  # num_workers=num_workers
+val_dataloader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)  # num_workers=num_workers
 
 model = UpdatedCellpose(channels=1, class_crit=nn.BCEWithLogitsLoss(reduction='mean'),
                         flow_crit=nn.MSELoss(reduction='mean')).to(device)
@@ -70,11 +73,12 @@ if do_adaptation:
     train_losses = adapt_network(model, train_dl, train_dl, optimizer=optimizer, device=device, n_epochs=n_epochs)
 else:
     train_losses = train_network(model, train_dl, optimizer=optimizer, device=device, n_epochs=n_epochs)
+save(model.state_dict(), os.path.join(results_dir, 'trained_model.pt'))
 
-plt.figure()
-x_range = np.arange(1, len(train_losses)+1)
-plt.plot(x_range, train_losses)
-plt.show()
+# plt.figure()
+# x_range = np.arange(1, len(train_losses)+1)
+# plt.plot(x_range, train_losses)
+# plt.show()
 
 masks, label_list = eval_network(model, val_dataloader, device)
 
@@ -84,3 +88,10 @@ for i in range(len(masks)):
     with open(os.path.join(results_dir, label_list[i] + '_predicted_labels.pkl'), 'wb') as pl:
         pickle.dump(mask.astype('int32'), pl)
     tifffile.imwrite(os.path.join(results_dir, 'tiff_results', label_list[i] + '.tif'), mask)
+
+with open(os.path.join(results_dir, 'settings.txt'), 'w') as txt:
+    txt.write('Adaptation: {}\n'.format(do_adaptation))
+    # if do_adaptation:
+        # txt.write('Gamma: {}; Margin: {}'.format())
+    txt.write('Learning rate: {}; Momentum: {}\n'.format(learning_rate, momentum))
+    txt.write('Epochs: {}; Batch size: {}'.format(n_epochs, batch_size))

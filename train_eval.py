@@ -3,7 +3,7 @@ from torch import nn, no_grad, as_tensor
 from time import time
 
 from misc_utils import elapsed_time
-from transforms import LabelsToFlows, FollowFlows, random_horizontal_flip, random_rotate
+from transforms import LabelsToFlows, FollowFlows, random_horizontal_flip, random_rotate, generate_patches, recombine_patches
 from Cellpose_2D_PyTorch import SASClassLoss
 
 import matplotlib.pyplot as plt
@@ -19,16 +19,20 @@ def train_network(model: nn.Module, data_loader: DataLoader, optimizer, device, 
         model.train()
         start_train = time()
         for step, (batch_data, batch_labels, _) in enumerate(data_loader):
+            # batch_labels = batch_labels.view(1, batch_labels.shape[0], batch_labels.shape[1], batch_labels.shape[2])
             batch_data, batch_labels = random_horizontal_flip(batch_data, batch_labels)
             batch_data, batch_labels = random_rotate(batch_data, batch_labels)
             batch_labels = as_tensor([LabelsToFlows()(batch_labels[i].numpy()) for i in range(len(batch_labels))])
+            batch_data, batch_labels = generate_patches(batch_data, batch_labels)
+            # batch_data = as_tensor(batch_data)
+            # batch_labels = as_tensor(batch_labels)
             batch_data = batch_data.float().to(device)
             batch_labels = batch_labels.float().to(device)
 
             optimizer.zero_grad()
             output = model(batch_data)
             flow_loss = model.flow_loss(output, batch_labels)
-            mask_loss = model.flow_loss(output, batch_labels)
+            mask_loss = model.class_loss(output, batch_labels)
             train_loss = flow_loss + mask_loss
             train_losses.append(train_loss.item())
             train_loss.backward()
@@ -59,6 +63,8 @@ def adapt_network(model: nn.Module, source_data_loader: DataLoader, target_data_
             source_batch_data, source_batch_labels = random_rotate(source_batch_data, source_batch_labels)
             source_batch_labels = as_tensor(
                 [LabelsToFlows()(source_batch_labels[i].numpy()) for i in range(len(source_batch_labels))])
+            # Patch here
+            source_batch_data, source_batch_labels = generate_patches(source_batch_data, source_batch_labels)
             source_batch_data = source_batch_data.float().to(device)
             source_batch_labels = source_batch_labels.float().to(device)
 
@@ -70,6 +76,8 @@ def adapt_network(model: nn.Module, source_data_loader: DataLoader, target_data_
             target_batch_data, target_batch_labels = random_rotate(target_batch_data, target_batch_labels)
             target_batch_labels = as_tensor(
                 [LabelsToFlows()(target_batch_labels[i].numpy()) for i in range(len(target_batch_labels))])
+            # Patch here
+            target_batch_data, target_batch_labels = generate_patches(target_batch_data, target_batch_labels)
             target_batch_data = target_batch_data.float().to(device)
             target_batch_labels = target_batch_labels.float().to(device)
 
@@ -97,9 +105,11 @@ def eval_network(model: nn.Module, data_loader: DataLoader, device):
         masks = []
         label_list = []
         for step, (batch_data, batch_labels, label_files) in enumerate(data_loader):
+            data_dims = (batch_data.shape[2], batch_data.shape[3])
+            batch_data, batch_labels = generate_patches(batch_data, batch_labels, eval=True)
             batch_data = batch_data.float().to(device)
             batch_labels = batch_labels.to(device)
-            ff = FollowFlows(niter=200, interp=True, use_gpu=True, cellprob_threshold=0.0, flow_threshold=1.0)
+            ff = FollowFlows(niter=100, interp=True, use_gpu=True, cellprob_threshold=0.0, flow_threshold=1.0)
             # Data already rescaled by data_loader transforms
             predictions = model(batch_data)
 
@@ -119,6 +129,7 @@ def eval_network(model: nn.Module, data_loader: DataLoader, device):
             # plt.imshow(batch_labels.cpu()[0])
             # plt.show()
 
+            predictions = recombine_patches(predictions, data_dims)
             batch_masks = ff(predictions)
             masks.append(batch_masks)
 
