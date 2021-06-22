@@ -1,6 +1,7 @@
 from torch.utils.data import DataLoader
-from torch import nn, no_grad, as_tensor
+from torch import nn, tensor, cat, no_grad, as_tensor
 from time import time
+from tqdm import tqdm
 
 from misc_utils import elapsed_time
 from transforms import LabelsToFlows, FollowFlows, random_horizontal_flip, random_rotate, generate_patches, recombine_patches
@@ -9,7 +10,7 @@ from Cellpose_2D_PyTorch import SASClassLoss
 import matplotlib.pyplot as plt
 
 
-def train_network(model: nn.Module, data_loader: DataLoader, optimizer, device, n_epochs):
+def train_network(model: nn.Module, data_loader: DataLoader, optimizer, device, n_epochs, patch_per_batch):
     print('Beginning network training.\n')
 
     train_losses = []
@@ -18,31 +19,40 @@ def train_network(model: nn.Module, data_loader: DataLoader, optimizer, device, 
         print('Epoch {}/{}:'.format(e, n_epochs))
         model.train()
         start_train = time()
-        for step, (batch_data, batch_labels, _) in enumerate(data_loader):
+        for (batch_data, batch_labels, _) in tqdm(data_loader):
             # batch_labels = batch_labels.view(1, batch_labels.shape[0], batch_labels.shape[1], batch_labels.shape[2])
             batch_data, batch_labels = random_horizontal_flip(batch_data, batch_labels)
             batch_data, batch_labels = random_rotate(batch_data, batch_labels)
             batch_labels = as_tensor([LabelsToFlows()(batch_labels[i].numpy()) for i in range(len(batch_labels))])
             batch_data, batch_labels = generate_patches(batch_data, batch_labels)
-            # batch_data = as_tensor(batch_data)
-            # batch_labels = as_tensor(batch_labels)
-            batch_data = batch_data.float().to(device)
-            batch_labels = batch_labels.float().to(device)
 
-            optimizer.zero_grad()
-            output = model(batch_data)
-            flow_loss = model.flow_loss(output, batch_labels)
-            mask_loss = model.class_loss(output, batch_labels)
-            train_loss = flow_loss + mask_loss
-            train_losses.append(train_loss.item())
-            train_loss.backward()
-            optimizer.step()
+            # Pass in only a subset of patches to GPU at a time
+            for patch_ind in range(0, len(batch_data), patch_per_batch):
+                batch_patch_data = batch_data[patch_ind:patch_ind + patch_per_batch].float().to(device)
+                # batch_patch_data = batch_patch_data.float().to(device)
+                batch_patch_labels = batch_labels[patch_ind:patch_ind + patch_per_batch].float().to(device)
+                # batch_patch_labels = batch_patch_labels.float().to(device)
+
+                # batch_data = as_tensor(batch_data)
+                # batch_labels = as_tensor(batch_labels)
+                # batch_data = batch_data.float().to(device)
+                # batch_labels = batch_labels.float().to(device)
+
+                optimizer.zero_grad()
+                output = model(batch_patch_data)
+                flow_loss = model.flow_loss(output, batch_patch_labels)
+                mask_loss = model.class_loss(output, batch_patch_labels)
+                train_loss = flow_loss + mask_loss
+                train_losses.append(train_loss.item())
+                train_loss.backward()
+                optimizer.step()
         print('Train time: {}'.format(elapsed_time(time() - start_train)))
 
     return train_losses
 
 
-def adapt_network(model: nn.Module, source_data_loader: DataLoader, target_data_loader: DataLoader, optimizer, device, n_epochs):
+def adapt_network(model: nn.Module, source_data_loader: DataLoader, target_data_loader: DataLoader, optimizer, device,
+                  n_epochs, patch_per_batch):
     print('Beginning domain adaptation.\n')
 
     train_losses = []
@@ -63,12 +73,7 @@ def adapt_network(model: nn.Module, source_data_loader: DataLoader, target_data_
             source_batch_data, source_batch_labels = random_rotate(source_batch_data, source_batch_labels)
             source_batch_labels = as_tensor(
                 [LabelsToFlows()(source_batch_labels[i].numpy()) for i in range(len(source_batch_labels))])
-            # Patch here
             source_batch_data, source_batch_labels = generate_patches(source_batch_data, source_batch_labels)
-            source_batch_data = source_batch_data.float().to(device)
-            source_batch_labels = source_batch_labels.float().to(device)
-
-            source_output = model(source_batch_data)
 
             target_batch = target_iter.next()
             target_batch_data, target_batch_labels, _ = target_batch
@@ -76,28 +81,37 @@ def adapt_network(model: nn.Module, source_data_loader: DataLoader, target_data_
             target_batch_data, target_batch_labels = random_rotate(target_batch_data, target_batch_labels)
             target_batch_labels = as_tensor(
                 [LabelsToFlows()(target_batch_labels[i].numpy()) for i in range(len(target_batch_labels))])
-            # Patch here
             target_batch_data, target_batch_labels = generate_patches(target_batch_data, target_batch_labels)
-            target_batch_data = target_batch_data.float().to(device)
-            target_batch_labels = target_batch_labels.float().to(device)
 
-            target_output = model(target_batch_data)
+            for patch_ind in range(0, len_data, patch_per_batch):
+                # TODO: Likely use below commented code to handle case when two datasets have different sizes
+                # patch_end = min(len_data, patch_ind + patch_per_batch)
+                source_batch_patch_data = source_batch_data[patch_ind:patch_ind + patch_per_batch].float().to(device)
+                source_batch_patch_labels = source_batch_labels[patch_ind:patch_ind + patch_per_batch].float().to(device)
+            # source_batch_data = source_batch_data.float().to(device)
+            # source_batch_labels = source_batch_labels.float().to(device)
+                source_output = model(source_batch_patch_data)
 
-            source_flow_loss = model.flow_loss(source_output, source_batch_labels)
-            adaptation_class_loss = model.sas_class_loss(source_output[:, 0], source_batch_labels[:, 0],
-                                                         target_output[:, 0], target_batch_labels[:, 0],
-                                                         margin=1, gamma=0.1)
+                target_batch_patch_data = target_batch_data[patch_ind:patch_ind + patch_per_batch].float().to(device)
+                target_batch_patch_labels = target_batch_labels[patch_ind:patch_ind + patch_per_batch].float().to(device)
+                # target_batch_data = target_batch_data.float().to(device)
+                # target_batch_labels = target_batch_labels.float().to(device)
+                target_output = model(target_batch_patch_data)
 
-            train_loss = source_flow_loss + adaptation_class_loss
-            train_losses.append(train_loss.item())
-            train_loss.backward()
-            optimizer.step()
-        print('Train time: {}'.format(elapsed_time(time() - start_train)))
+                source_flow_loss = model.flow_loss(source_output, source_batch_labels)
+                adaptation_class_loss = model.sas_class_loss(source_output[:, 0], source_batch_labels[:, 0],
+                                                             target_output[:, 0], target_batch_labels[:, 0],
+                                                             margin=1, gamma=0.1)
+                train_loss = source_flow_loss + adaptation_class_loss
+                train_losses.append(train_loss.item())
+                train_loss.backward()
+                optimizer.step()
 
+    print('Train time: {}'.format(elapsed_time(time() - start_train)))
     return train_losses
 
 
-def eval_network(model: nn.Module, data_loader: DataLoader, device):
+def eval_network(model: nn.Module, data_loader: DataLoader, device, patch_per_batch):
 
     model.eval()
     start_eval = time()
@@ -107,27 +121,37 @@ def eval_network(model: nn.Module, data_loader: DataLoader, device):
         for step, (batch_data, batch_labels, label_files) in enumerate(data_loader):
             data_dims = (batch_data.shape[2], batch_data.shape[3])
             batch_data, batch_labels = generate_patches(batch_data, batch_labels, eval=True)
-            batch_data = batch_data.float().to(device)
-            batch_labels = batch_labels.to(device)
-            ff = FollowFlows(niter=100, interp=True, use_gpu=True, cellprob_threshold=0.0, flow_threshold=1.0)
-            # Data already rescaled by data_loader transforms
-            predictions = model(batch_data)
+            predictions = tensor([]).to(device)
 
-            # plt.figure()
-            # plt.subplot(1, 3, 1)
-            # plt.imshow(predictions.cpu()[0][0])
-            # plt.colorbar()
-            # plt.subplot(1, 3, 2)
-            # plt.imshow(predictions.cpu()[0][1])
-            # plt.colorbar()
-            # plt.subplot(1, 3, 3)
-            # plt.imshow(predictions.cpu()[0][2])
-            # plt.colorbar()
-            # plt.tight_layout()
-            # plt.show()
-            # plt.figure()
-            # plt.imshow(batch_labels.cpu()[0])
-            # plt.show()
+            # TODO: Patches per batch
+            for patch_ind in range(0, len(batch_data), patch_per_batch):
+                batch_patch_data = batch_data[patch_ind:patch_ind + patch_per_batch].float().to(device)
+                # batch_patch_data = batch_patch_data.float().to(device)
+                batch_patch_labels = batch_labels[patch_ind:patch_ind + patch_per_batch].float().to(device)
+                # batch_patch_labels = batch_patch_labels.float().to(device)
+
+                # batch_data = batch_data.float().to(device)
+                # batch_labels = batch_labels.to(device)
+                ff = FollowFlows(niter=100, interp=True, use_gpu=True, cellprob_threshold=0.0, flow_threshold=1.0)
+                # Data already rescaled by data_loader transforms
+                p = model(batch_patch_data)
+                predictions = cat((predictions, p))
+
+                # plt.figure()
+                # plt.subplot(1, 3, 1)
+                # plt.imshow(predictions.cpu()[0][0])
+                # plt.colorbar()
+                # plt.subplot(1, 3, 2)
+                # plt.imshow(predictions.cpu()[0][1])
+                # plt.colorbar()
+                # plt.subplot(1, 3, 3)
+                # plt.imshow(predictions.cpu()[0][2])
+                # plt.colorbar()
+                # plt.tight_layout()
+                # plt.show()
+                # plt.figure()
+                # plt.imshow(batch_labels.cpu()[0])
+                # plt.show()
 
             predictions = recombine_patches(predictions, data_dims)
             batch_masks = ff(predictions)

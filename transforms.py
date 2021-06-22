@@ -1,6 +1,6 @@
 import torchvision
 import math
-from torch import tensor, nn, zeros, ones, empty, cat
+from torch import tensor, mean, unique, zeros, ones, empty, cat
 import cv2
 import numpy as np
 from cellpose_src.dynamics import masks_to_flows, follow_flows, get_masks, remove_bad_flow_masks
@@ -15,7 +15,7 @@ import matplotlib.pyplot as plt
 
 
 # Need to update to work for all situations (currently only for when 1-channel 2D image doesn't include channel dim)
-class Reshape(object):
+class Reformat(object):
     def __init__(self, do_2D=True):
         super().__init__()
         self.do_2D = do_2D
@@ -24,6 +24,16 @@ class Reshape(object):
         if self.do_2D:
             if x.dim() == 2:
                 x = x.view(1, x.shape[0], x.shape[1])
+            # Currently transforms multi-channel input to greyscale
+            elif x.dim() == 3:
+                # TODO: copying Cellpose implementation, find a cleaner method for solving this
+                if x.shape[2] < 10:
+                    info_chans = [len(unique(x[:, :, i])) > 1 for i in range(x.shape[2])]
+                    x = x[:, :, info_chans]
+                    if x.shape[2] == 1:
+                        x = x.view(1, x.shape[0], x.shape[1])
+                    # else:
+                # else:
         return x
 
 
@@ -88,6 +98,7 @@ class FollowFlows(object):
             cellprob = flow[0].cpu().numpy()
             dP = flow[1:].cpu().numpy()
             p = follow_flows(-1 * dP * (cellprob > self.cellprob_threshold) / 5., self.niter, self.interp, self.use_gpu)
+            # p = follow_flows(dP * (cellprob > self.cellprob_threshold) / 5., self.niter, self.interp, self.use_gpu)
 
             # plt.figure()
             # plt.subplot(1, 2, 1)
