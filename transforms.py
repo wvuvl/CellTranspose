@@ -50,17 +50,16 @@ class Normalize1stTo99th(object):
         return sample
 
 
-class ResizeImage(object):  # Pass as <tensor> or numpy array? Return as tensor or <numpy array>?
-    def __init__(self, x_rf, y_rf, interpolation):
-        super().__init__()
-        self.rescale_x = x_rf
-        self.rescale_y = y_rf
-        self.interpolation = interpolation
-
-    def __call__(self, im):
-        im = np.transpose(im.numpy(), (1, 2, 0))
-        im = cv2.resize(im, (int(im.shape[1] * self.rescale_x), int(im.shape[0] * self.rescale_y)), interpolation=self.interpolation)
-        return im
+# class ResizeImage(object):  # Pass as <tensor> or numpy array? Return as tensor or <numpy array>?
+#     def __init__(self, interpolation):
+#         super().__init__()
+#         self.interpolation = interpolation
+#
+#     def __call__(self, im, rescale_x, rescale_y):
+#         im = np.transpose(im.numpy(), (1, 2, 0))
+#         im = cv2.resize(im, (int(im.shape[1] * rescale_x), int(im.shape[0] * rescale_y)),
+#                         interpolation=self.interpolation)
+#         return im
 
         # Do 3D part
 

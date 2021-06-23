@@ -5,7 +5,6 @@ from tqdm import tqdm
 
 from misc_utils import elapsed_time
 from transforms import LabelsToFlows, FollowFlows, random_horizontal_flip, random_rotate, generate_patches, recombine_patches
-from Cellpose_2D_PyTorch import SASClassLoss
 
 import matplotlib.pyplot as plt
 
@@ -19,7 +18,8 @@ def train_network(model: nn.Module, data_loader: DataLoader, optimizer, device, 
         print('Epoch {}/{}:'.format(e, n_epochs))
         model.train()
         start_train = time()
-        for (batch_data, batch_labels, _) in tqdm(data_loader):
+        # for (batch_data, batch_labels, _) in tqdm(data_loader):
+        for (batch_data, batch_labels, _) in data_loader:
             # batch_labels = batch_labels.view(1, batch_labels.shape[0], batch_labels.shape[1], batch_labels.shape[2])
             batch_data, batch_labels = random_horizontal_flip(batch_data, batch_labels)
             batch_data, batch_labels = random_rotate(batch_data, batch_labels)
@@ -155,11 +155,13 @@ def eval_network(model: nn.Module, data_loader: DataLoader, device, patch_per_ba
 
             predictions = recombine_patches(predictions, data_dims)
             batch_masks = ff(predictions)
+
+            # Resize masks here
+
             masks.append(batch_masks)
 
             for i in range(len(label_files)):
                 label_list.append(label_files[i][label_files[i].rfind('/')+1: label_files[i].rfind('.')])
 
-            # Resize data back here
     print('Total time to evaluate: {}'.format(elapsed_time(time() - start_eval)))
     return masks, label_list

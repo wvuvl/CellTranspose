@@ -11,7 +11,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 import tifffile
 
-from transforms import Reformat, Normalize1stTo99th, ResizeImage
+from transforms import Reformat, Normalize1stTo99th
+    # , ResizeImage
 from loaddata import StandardizedTiffData
 from Cellpose_2D_PyTorch import UpdatedCellpose
 from train_eval import train_network, adapt_network, eval_network
@@ -19,39 +20,41 @@ from train_eval import train_network, adapt_network, eval_network
 do_adaptation = False
 
 # results_dir = '/home/mrkeaton/Documents/Datasets/Neuro_Proj1_Data/2D Toy Dataset - 2-dim/results/results51'
-results_dir = '/home/mrkeaton/Documents/Datasets/Neuro_Proj1_Data/2D Toy Dataset - 3-dim/results/results2'
+results_dir = '/home/mrkeaton/Documents/Datasets/Neuro_Proj1_Data/2D Toy Dataset - 3-dim/results/results103'
 assert not os.path.exists(results_dir), 'Results folder currently exists; please specify new location to save results.'
 os.mkdir(results_dir)
 os.mkdir(os.path.join(results_dir, 'tiff_results'))
 learning_rate = 1e-5
-momentum = 0.9
+momentum = 0.5
+# momentum = 0.9
 # batch_size = 1
 patches_per_batch = 128
-n_epochs = 2
+n_epochs = 20
 # num_workers = device_count()
 # num_workers = 2
 device = device('cuda' if is_available() else 'cpu')
 empty_cache()
 
 # Determine resize factor such that image is resized to where median diameter is 32
-default_x, default_y = 32, 32
+default_meds = (24, 24)
 # median_diam_x, median_diam_y = 22, 22
-median_diam_x, median_diam_y = 32, 32
-resize_factor_x, resize_factor_y = default_x / median_diam_x, default_y / median_diam_y
+# median_diam_x, median_diam_y = 32, 32
+# resize_factor_x, resize_factor_y = default_x / median_diam_x, default_y / median_diam_y
 
 data_transform = torchvision.transforms.Compose([
     Reformat(),
     Normalize1stTo99th(),
-    ResizeImage(resize_factor_x, resize_factor_y, cv2.INTER_LINEAR),
+    # ResizeImage(resize_factor_x, resize_factor_y, cv2.INTER_LINEAR),
     # torchvision.transforms.ToTensor()
 ])
 label_transform = torchvision.transforms.Compose([
     Reformat(),
-    ResizeImage(resize_factor_x, resize_factor_y, cv2.INTER_NEAREST)
+    # ResizeImage(resize_factor_x, resize_factor_y, cv2.INTER_NEAREST)
 ])
 
 train_dataset = StandardizedTiffData('/home/mrkeaton/Documents/Datasets/Neuro_Proj1_Data/2D Toy Dataset - 3-dim',
                                      do_3D=False, d_transform=data_transform, l_transform=label_transform,
+                                     default_meds=default_meds
                                      # augmentations=augmentations
                                      )
 train_dl = DataLoader(train_dataset, batch_size=1, shuffle=True)  # num_workers=num_workers
@@ -83,6 +86,7 @@ save(model.state_dict(), os.path.join(results_dir, 'trained_model.pt'))
 plt.figure()
 x_range = np.arange(1, len(train_losses)+1)
 plt.plot(x_range, train_losses)
+plt.savefig(os.path.join(results_dir, 'Training Loss'))
 plt.show()
 
 masks, label_list = eval_network(model, val_dataloader, device, patch_per_batch=patches_per_batch)

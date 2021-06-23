@@ -11,7 +11,7 @@ import argparse
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--input-folder', help='The directory containing the data to be segmented.')
-parser.add_argument('--output-folder', help='The directory which will contain segmented data')
+parser.add_argument('--output-folder', help='The directory which will contain segmented data.')
 args = parser.parse_args()
 
 os.mkdir(args.output_folder)
