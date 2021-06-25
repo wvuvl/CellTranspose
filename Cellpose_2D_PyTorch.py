@@ -80,7 +80,8 @@ class UpBlock(nn.Module):
 
 
 class UpdatedCellpose(nn.Module):
-    def __init__(self, channels, class_crit, flow_crit,):
+    def __init__(self, channels, class_crit=nn.BCEWithLogitsLoss(reduction='mean'),
+                 flow_crit=nn.MSELoss(reduction='mean')):
         super().__init__()
         self.class_criterion = class_crit
         self.flow_criterion = flow_crit
@@ -114,10 +115,19 @@ class UpdatedCellpose(nn.Module):
         z = self.u_block3(z, fm3, im_style)
         z = self.u_block2(z, fm2, im_style)
         z = self.u_block1(z, fm1, im_style)
-
         y = self.out_block(z)
 
         return y
+
+    # Produce the style vector for a given input image
+    def style_forward(self, x):
+        x = self.d_block1(x)
+        x = self.d_block2(x)
+        x = self.d_block3(x)
+        x = self.d_block4(x)
+        x = torch.sum(x, dim=(2, 3)).data
+        x = torch.div(x, torch.norm(x)).data
+        return x
 
     # Standard Cellpose class loss
     def class_loss(self, lbl, y):
@@ -160,6 +170,15 @@ class UpdatedCellpose(nn.Module):
         # loss = torch.mean(loss)
         return loss
 
+
+class SizeModel(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.linear = nn.Linear(256, 1)
+
+    def forward(self, x):
+        x = x.view(256)
+        return self.linear(x)
 
 class SASClassLoss(nn.Module):
     def __init__(self, margin, gamma):

@@ -1,10 +1,10 @@
 import torchvision
 import math
-from torch import tensor, mean, unique, zeros, ones, empty, cat
+from torch import tensor, mean, unique, zeros, ones, empty, cat, squeeze, unsqueeze
 import cv2
 import numpy as np
 from cellpose_src.dynamics import masks_to_flows, follow_flows, get_masks, remove_bad_flow_masks
-from cellpose_src.utils import fill_holes_and_remove_small_masks
+from cellpose_src.utils import diameters, fill_holes_and_remove_small_masks
 from cellpose_src.transforms import _taper_mask
 import tifffile
 import os
@@ -120,6 +120,42 @@ class FollowFlows(object):
             masks[i] = tensor(maski)
         return masks
 
+
+# def resize(X, y, im_dims):
+#     X = np.transpose(X.numpy(), (1, 2, 0))
+#     X = cv2.resize(X, im_dims[1], im_dims[0], interpolation=cv2.INTER_LINEAR)
+#     return X
+
+
+def resize_from_labels(X, y, default_med):
+    X = squeeze(X, dim=0)
+    y = squeeze(y, dim=0)
+    med, cts = diameters(y)
+    rescale_x, rescale_y = default_med[0] / med, default_med[1] / med
+    X = np.transpose(X.numpy(), (1, 2, 0))
+    X = cv2.resize(X, (int(X.shape[1] * rescale_x), int(X.shape[0] * rescale_y)),
+                   interpolation=cv2.INTER_LINEAR)[np.newaxis, :]
+    y = np.transpose(y.numpy(), (1, 2, 0))
+    y = cv2.resize(y, (int(y.shape[1] * rescale_x), int(y.shape[0] * rescale_y)),
+                   interpolation=cv2.INTER_NEAREST)[np.newaxis, :]
+    return unsqueeze(tensor(X), 0), tensor(y)
+
+
+def predict_and_resize(X, y, default_med, gc_model, sz_model, refine=False):
+    style = gc_model.style_forward(X)
+    med = sz_model(style)
+    if refine:
+        print('Add refined code later.')
+    X = squeeze(X, dim=0)
+    y = squeeze(y, dim=0)
+    rescale_x, rescale_y = default_med[0] / med, default_med[1] / med
+    X = np.transpose(X.cpu().numpy(), (1, 2, 0))
+    X = cv2.resize(X, (int(X.shape[1] * rescale_x), int(X.shape[0] * rescale_y)),
+                   interpolation=cv2.INTER_LINEAR)[np.newaxis, :]
+    y = np.transpose(y.cpu().numpy(), (1, 2, 0))
+    y = cv2.resize(y, (int(y.shape[1] * rescale_x), int(y.shape[0] * rescale_y)),
+                   interpolation=cv2.INTER_NEAREST)[np.newaxis, :]
+    return unsqueeze(tensor(X), 0), tensor(y)
 
 def random_horizontal_flip(X, y):
     if np.random.rand() > .5:
