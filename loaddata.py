@@ -36,8 +36,7 @@ class StandardizedTiffData(Dataset):
     """
 
     # Currently, set to load in volumes upfront (via __init__()) rather than one at a time (via __getitem__())
-    def __init__(self, data_dir, train=True, do_3D=False, d_transform=None, l_transform=None, size_model=None):
-        self.train = train
+    def __init__(self, data_dir, do_3D=False, d_transform=None, l_transform=None, size_model=None):
         self.d_transform = d_transform
         self.l_transform = l_transform
         # self.augmentations = augmentations

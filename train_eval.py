@@ -76,6 +76,9 @@ def adapt_network(model: nn.Module, source_data_loader: DataLoader, target_data_
 
             source_sample = source_iter.next()
             source_sample_data, source_sample_labels, _ = source_sample
+
+            source_sample_data, source_sample_labels = resize_from_labels(source_sample_data, source_sample_labels, default_meds)
+
             source_sample_data, source_sample_labels = random_horizontal_flip(source_sample_data, source_sample_labels)
             source_sample_data, source_sample_labels = random_rotate(source_sample_data, source_sample_labels)
             source_sample_labels = as_tensor(
@@ -84,6 +87,9 @@ def adapt_network(model: nn.Module, source_data_loader: DataLoader, target_data_
 
             target_sample = target_iter.next()
             target_sample_data, target_sample_labels, _ = target_sample
+
+            target_sample_data, target_sample_labels = resize_from_labels(target_sample_data, target_sample_labels, default_meds)
+
             target_sample_data, target_sample_labels = random_horizontal_flip(target_sample_data, target_sample_labels)
             target_sample_data, target_sample_labels = random_rotate(target_sample_data, target_sample_labels)
             target_sample_labels = as_tensor(
@@ -105,9 +111,9 @@ def adapt_network(model: nn.Module, source_data_loader: DataLoader, target_data_
                 # target_batch_labels = target_batch_labels.float().to(device)
                 target_output = model(target_sample_patch_data)
 
-                source_flow_loss = model.flow_loss(source_output, source_sample_labels)
-                adaptation_class_loss = model.sas_class_loss(source_output[:, 0], source_sample_labels[:, 0],
-                                                             target_output[:, 0], target_sample_labels[:, 0],
+                source_flow_loss = model.flow_loss(source_output, source_sample_patch_labels)
+                adaptation_class_loss = model.sas_class_loss(source_output[:, 0], source_sample_patch_labels[:, 0],
+                                                             target_output[:, 0], target_sample_patch_labels[:, 0],
                                                              margin=1, gamma=0.1)
                 train_loss = source_flow_loss + adaptation_class_loss
                 train_losses.append(train_loss.item())
@@ -169,7 +175,7 @@ def eval_network(model: nn.Module, data_loader: DataLoader, device, patch_per_ba
 
             # Resize masks here
             sample_mask = np.transpose(sample_mask.numpy(), (1, 2, 0))
-            sample_mask = cv2.resize(sample_mask, (original_dims[1], original_dims[0]), interpolation=cv2.INTER_LINEAR)
+            sample_mask = cv2.resize(sample_mask, (original_dims[1], original_dims[0]), interpolation=cv2.INTER_NEAREST)
 
             masks.append(sample_mask)
 

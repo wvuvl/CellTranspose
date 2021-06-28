@@ -81,10 +81,11 @@ class UpBlock(nn.Module):
 
 class UpdatedCellpose(nn.Module):
     def __init__(self, channels, class_crit=nn.BCEWithLogitsLoss(reduction='mean'),
-                 flow_crit=nn.MSELoss(reduction='mean')):
+                 flow_crit=nn.MSELoss(reduction='mean'), device='cuda'):
         super().__init__()
         self.class_criterion = class_crit
         self.flow_criterion = flow_crit
+        self.device = device
         self.d_block1 = DownBlock(channels, 32, pool=False)
         self.d_block2 = DownBlock(32, 64)
         self.d_block3 = DownBlock(64, 128)
@@ -160,7 +161,7 @@ class UpdatedCellpose(nn.Module):
         st_dist = torch.linalg.norm(g_source - g_target) / g_source.data.nelement()
 
         sa_loss = (1 - gamma) * 0.5 * torch.square(st_dist)
-        s_loss = (1 - gamma) * 0.5 * torch.square(torch.max(torch.tensor(0).to('cuda'), margin - st_dist))
+        s_loss = (1 - gamma) * 0.5 * torch.square(torch.max(torch.tensor(0).to(self.device), margin - st_dist))
         # class_mse_loss = self.gamma * torch.square(g_source - lbl_source)  # Mean-squared error classification loss from source
         source_class_loss = self.class_criterion(g_source, lbl_source)
         # class_bcewithlogits_loss = nn.BCEWithLogitsLoss(reduction='mean')(g_source, lbl_source)
