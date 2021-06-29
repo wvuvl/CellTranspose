@@ -14,7 +14,12 @@ import torchvision.transforms.functional as TF
 import matplotlib.pyplot as plt
 
 
-# Need to update to work for all situations (currently only for when 1-channel 2D image doesn't include channel dim)
+# TODO: Need to update to work for all situations (currently only for when 1-channel 2D image doesn't include channel dim)
+"""
+Reformats raw input data with the following expected output:
+If 2-D -> torch.tensor with shape [1, x_dim, y_dim]
+If 3-D -> torch.tensor with shape [1, x_dim, y_dim, z_dim]
+"""
 class Reformat(object):
     def __init__(self, do_2D=True):
         super().__init__()
@@ -34,6 +39,7 @@ class Reformat(object):
                         x = x.view(1, x.shape[0], x.shape[1])
                     # else:
                 # else:
+        # else:
         return x
 
 
