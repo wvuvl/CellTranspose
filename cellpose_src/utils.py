@@ -96,7 +96,7 @@ def distance_to_boundary(masks):
         for i, si in enumerate(slices):
             if si is not None:
                 sr, sc = si
-                mask = (masks[sr, sc] == (i + 1)).astype(np.uint8)
+                mask = (masks[sr, sc] == (i + 1)).astype(np.int16)
                 contours = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
                 pvc, pvr = np.concatenate(contours[-2], axis=0).squeeze().T
                 ypix, xpix = np.nonzero(mask)
@@ -148,7 +148,7 @@ def masks_to_outlines(masks):
         for i, si in enumerate(slices):
             if si is not None:
                 sr, sc = si
-                mask = (masks[sr, sc] == (i + 1)).astype(np.uint8)
+                mask = (masks[sr, sc] == (i + 1)).astype(np.int16)
                 contours = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
                 pvc, pvr = np.concatenate(contours[-2], axis=0).squeeze().T
                 vr, vc = pvr + sr.start, pvc + sc.start
@@ -162,7 +162,7 @@ def outlines_list(masks):
     for n in np.unique(masks)[1:]:
         mn = masks == n
         if mn.sum() > 0:
-            contours = cv2.findContours(mn.astype(np.uint8), mode=cv2.RETR_EXTERNAL, method=cv2.CHAIN_APPROX_NONE)
+            contours = cv2.findContours(mn.astype(np.uint16), mode=cv2.RETR_EXTERNAL, method=cv2.CHAIN_APPROX_NONE)
             contours = contours[-2]
             cmax = np.argmax([c.shape[0] for c in contours])
             pix = contours[cmax].astype(int).squeeze()
@@ -200,7 +200,7 @@ def get_mask_perimeters(masks):
     for n in range(masks.max()):
         mn = masks == (n + 1)
         if mn.sum() > 0:
-            contours = cv2.findContours(mn.astype(np.uint8), mode=cv2.RETR_EXTERNAL,
+            contours = cv2.findContours(mn.astype(np.uint16), mode=cv2.RETR_EXTERNAL,
                                         method=cv2.CHAIN_APPROX_NONE)[-2]
             # cmax = np.argmax([c.shape[0] for c in contours])
             # perimeters[n] = get_perimeter(contours[cmax].astype(int).squeeze())
