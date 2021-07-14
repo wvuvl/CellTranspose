@@ -10,6 +10,39 @@ import torch
 from torch import nn
 
 
+# Standard Cellpose class loss
+def class_loss(lbl, y):
+    class_pred = (lbl[:, 0] > 0.5).float()
+    class_y = y[:, 0]
+    class_loss = nn.BCEWithLogitsLoss(reduction='mean')(class_y, class_pred)
+    return class_loss
+
+
+# Standard Cellpose flow loss
+def flow_loss(lbl, y):
+    flow_pred = 5. * lbl[:, 1:]
+    flow_y = 5. * y[:, 1:]
+    flow_loss = nn.MSELoss(reduction='mean')(flow_y, flow_pred)
+    return flow_loss
+
+
+def sas_class_loss(g_source, lbl_source, g_target, lbl_target, margin=1, gamma=0.1):
+
+    match_mask = torch.eq(lbl_source, lbl_target)  # Mask where each pixel is 1 (source GT = target GT) or 0 (source GT != target GT)
+    st_dist = torch.linalg.norm(g_source - g_target) / g_source.data.nelement()
+
+    sa_loss = (1 - gamma) * 0.5 * torch.square(st_dist)
+    s_loss = (1 - gamma) * 0.5 * torch.square(torch.max(torch.tensor(0).to(torch.device('cuda' if torch.cuda.is_available() else 'cpu')), margin - st_dist))
+    # class_mse_loss = self.gamma * torch.square(g_source - lbl_source)  # Mean-squared error classification loss from source
+    source_class_loss = nn.BCEWithLogitsLoss(reduction='mean')(g_source, lbl_source)
+    # class_bcewithlogits_loss = nn.BCEWithLogitsLoss(reduction='mean')(g_source, lbl_source)
+
+    # loss = torch.mean(match_mask * sa_loss + (~match_mask * s_loss) + class_mse_loss)
+    loss = torch.mean(match_mask * sa_loss + (~match_mask * s_loss) + source_class_loss)
+    # loss = torch.mean(loss)
+    return loss
+
+
 def conv_block(in_feat, out_feat):
     return nn.Sequential(
         nn.BatchNorm2d(num_features=in_feat),
@@ -80,11 +113,8 @@ class UpBlock(nn.Module):
 
 
 class UpdatedCellpose(nn.Module):
-    def __init__(self, channels, class_crit=nn.BCEWithLogitsLoss(reduction='mean'),
-                 flow_crit=nn.MSELoss(reduction='mean'), device='cuda'):
+    def __init__(self, channels, device='cuda'):
         super().__init__()
-        self.class_criterion = class_crit
-        self.flow_criterion = flow_crit
         self.device = device
         self.d_block1 = DownBlock(channels, 32, pool=False)
         self.d_block2 = DownBlock(32, 64)
@@ -117,7 +147,6 @@ class UpdatedCellpose(nn.Module):
         z = self.u_block2(z, fm2, im_style)
         z = self.u_block1(z, fm1, im_style)
         y = self.out_block(z)
-
         return y
 
     # Produce the style vector for a given input image
@@ -130,47 +159,6 @@ class UpdatedCellpose(nn.Module):
         x = torch.div(x, torch.norm(x)).data
         return x
 
-    # Standard Cellpose class loss
-    def class_loss(self, lbl, y):
-        class_pred = (lbl[:, 0] > 0.5).float()
-        class_y = y[:, 0]
-        class_loss = self.class_criterion(class_y, class_pred)
-        return class_loss
-
-    # Standard Cellpose flow loss
-    def flow_loss(self, lbl, y):
-        flow_pred = 5. * lbl[:, 1:]
-        flow_y = 5. * y[:, 1:]
-        flow_loss = self.flow_criterion(flow_y, flow_pred)
-        return flow_loss
-
-    # # Standard Cellpose combined flow and mask loss
-    # def loss_fn(self, lbl, y):
-    #     flow_pred = 5. * lbl[:, 1:]
-    #     class_pred = (lbl[:, 0] > 0.5).float()
-    #     flow_y = 5. * y[:, 1:]
-    #     class_y = y[:, 0]
-    #     flow_loss = self.flow_criterion(flow_y, flow_pred)
-    #     class_loss = self.class_criterion(class_y, class_pred)
-    #     loss = flow_loss + class_loss
-    #     return loss
-
-    def sas_class_loss(self, g_source, lbl_source, g_target, lbl_target, margin=1, gamma=0.1):
-
-        match_mask = torch.eq(lbl_source, lbl_target)  # Mask where each pixel is 1 (source GT = target GT) or 0 (source GT != target GT)
-        st_dist = torch.linalg.norm(g_source - g_target) / g_source.data.nelement()
-
-        sa_loss = (1 - gamma) * 0.5 * torch.square(st_dist)
-        s_loss = (1 - gamma) * 0.5 * torch.square(torch.max(torch.tensor(0).to(self.device), margin - st_dist))
-        # class_mse_loss = self.gamma * torch.square(g_source - lbl_source)  # Mean-squared error classification loss from source
-        source_class_loss = self.class_criterion(g_source, lbl_source)
-        # class_bcewithlogits_loss = nn.BCEWithLogitsLoss(reduction='mean')(g_source, lbl_source)
-
-        # loss = torch.mean(match_mask * sa_loss + (~match_mask * s_loss) + class_mse_loss)
-        loss = torch.mean(match_mask * sa_loss + (~match_mask * s_loss) + source_class_loss)
-        # loss = torch.mean(loss)
-        return loss
-
 
 class SizeModel(nn.Module):
     def __init__(self):
@@ -181,25 +169,26 @@ class SizeModel(nn.Module):
         x = x.view(256)
         return self.linear(x)
 
-class SASClassLoss(nn.Module):
-    def __init__(self, margin, gamma):
-        super(SASClassLoss, self).__init__()
-        self.margin = margin
-        self.gamma = gamma
 
-    def forward(self, g_source, lbl_source, g_target, lbl_target):
-        match_mask = torch.eq(lbl_source, lbl_target) # Mask where each pixel is 1 (source GT = target GT) or 0 (source GT != target GT)
-        st_dist = torch.linalg.norm(g_source - g_target) / g_source.data.nelement()
-
-        sa_loss = (1 - self.gamma) * 0.5 * torch.square(st_dist)
-        s_loss = (1 - self.gamma) * 0.5 * torch.square(torch.max(torch.tensor(0).to('cuda'), self.margin - st_dist))
-        # class_mse_loss = self.gamma * torch.square(g_source - lbl_source)  # Mean-squared error classification loss from source
-        class_bcewithlogits_loss = nn.BCEWithLogitsLoss()(g_source, lbl_source)
-        # class_bcewithlogits_loss = nn.BCEWithLogitsLoss(reduction='mean')(g_source, lbl_source)
-
-        # loss = torch.mean(match_mask * sa_loss + (~match_mask * s_loss) + class_mse_loss)
-        loss = torch.mean(match_mask * sa_loss + (~match_mask * s_loss) + class_bcewithlogits_loss)
-        return loss
+# class SASClassLoss(nn.Module):
+#     def __init__(self, margin, gamma):
+#         super(SASClassLoss, self).__init__()
+#         self.margin = margin
+#         self.gamma = gamma
+#
+#     def forward(self, g_source, lbl_source, g_target, lbl_target):
+#         match_mask = torch.eq(lbl_source, lbl_target) # Mask where each pixel is 1 (source GT = target GT) or 0 (source GT != target GT)
+#         st_dist = torch.linalg.norm(g_source - g_target) / g_source.data.nelement()
+#
+#         sa_loss = (1 - self.gamma) * 0.5 * torch.square(st_dist)
+#         s_loss = (1 - self.gamma) * 0.5 * torch.square(torch.max(torch.tensor(0).to((torch.device('cuda' if torch.cuda.is_available() else 'cpu'))), self.margin - st_dist))
+#         # class_mse_loss = self.gamma * torch.square(g_source - lbl_source)  # Mean-squared error classification loss from source
+#         class_bcewithlogits_loss = nn.BCEWithLogitsLoss()(g_source, lbl_source)
+#         # class_bcewithlogits_loss = nn.BCEWithLogitsLoss(reduction='mean')(g_source, lbl_source)
+#
+#         # loss = torch.mean(match_mask * sa_loss + (~match_mask * s_loss) + class_mse_loss)
+#         loss = torch.mean(match_mask * sa_loss + (~match_mask * s_loss) + class_bcewithlogits_loss)
+#         return loss
 
 
 if __name__ == '__main__()':
