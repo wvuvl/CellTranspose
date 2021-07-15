@@ -17,6 +17,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--results-dir', help='Folder in which to save experiment results.')
 parser.add_argument('--learning_rate', type=float)
 parser.add_argument('--momentum', type=float)
+parser.add_argument('--batch-size', type=int)
 parser.add_argument('--epochs', type=int)
 parser.add_argument('--cellpose-pretrained', help='Location of the generalized cellpose model to use for diameter estimation.')
 parser.add_argument('--train-dataset', help='The directory containing data to be used for training.')
@@ -46,7 +47,7 @@ label_transform = torchvision.transforms.Compose([
 ])
 train_dataset = StandardizedTiffData('Training', args.train_dataset,
                                      do_3D=False, from_3D=False, d_transform=data_transform, l_transform=label_transform)
-train_dl = torch.utils.data.DataLoader(train_dataset, batch_size=1, shuffle=True)  # num_workers=num_workers
+train_dl = torch.utils.data.DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True)  # num_workers=num_workers
 
 # Training network
 train_losses = []
@@ -74,7 +75,7 @@ torch.save(size_model.state_dict(), os.path.join(args.results_dir, 'size_model.p
 
 with open(os.path.join(args.results_dir, 'settings.txt'), 'w') as txt:
     txt.write('Learning rate: {}; Momentum: {}\n'.format(args.learning_rate, args.momentum))
-    txt.write('Epochs: {}; Batch size: {}'.format(args.epochs, batch_size))
+    txt.write('Epochs: {}; Batch size: {}'.format(args.epochs, args.batch_size))
 
 step_size = args.epochs/len(train_losses)
 train_steps = np.arange(step_size, args.epochs + step_size, step_size)
@@ -85,7 +86,6 @@ plt.savefig(os.path.join(args.results_dir, 'Training Loss'))
 
 # Evaluation
 size_model.eval()
-print('Evaluating network.')
 start_eval = time()
 eval_losses = []
 diams = []
