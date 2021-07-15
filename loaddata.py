@@ -4,17 +4,11 @@ custom dataloaders for new data.
 
 Created by Matthew Keaton 2/18/21
 """
-
-import numpy as np
 from torch.utils.data import Dataset
 from torch import as_tensor
 import os
 from tifffile import imread
 from tqdm import tqdm
-import cv2
-from cellpose_src.utils import diameters
-
-from transforms import random_horizontal_flip, random_rotate
 
 import matplotlib.pyplot as plt
 
@@ -35,7 +29,7 @@ class StandardizedTiffData(Dataset):
     """
 
     # Currently, set to load in volumes upfront (via __init__()) rather than one at a time (via __getitem__())
-    def __init__(self, data_dir, do_3D=False, from_3D=False, d_transform=None, l_transform=None, size_model=None):
+    def __init__(self, split_name, data_dir, do_3D=False, from_3D=False, d_transform=None, l_transform=None):
         """"
         Args:
             data_dir: root directory of the dataset, containing 'data' and 'labels' folders
@@ -47,49 +41,39 @@ class StandardizedTiffData(Dataset):
         """
         self.d_transform = d_transform
         self.l_transform = l_transform
-        # if size_model != None:
-        #     print('Add size_model loading code here')
-        #     # TODO: Add this later
         self.d_list = sorted([data_dir + os.sep + 'data' + os.sep + f for f in os.listdir(os.path.join(data_dir, 'data'))
                               if f.lower().endswith('.tiff') or f.lower().endswith('.tif')])
         self.data = []
         if do_3D:  # and from_3D
-            for d_file in tqdm(self.d_list, desc='Loading Dataset Data Volumes...'):
-            # for d_file in self.d_list:
+            for d_file in tqdm(self.d_list, desc='Loading {} Dataset Data Volumes...'.format(split_name)):
                 self.data.extend(list(imread(d_file).astype('float')))
         else:
             if from_3D:
-                for d_file in tqdm(self.d_list, desc='Loading Dataset Data Volumes...'):
+                for d_file in tqdm(self.d_list, desc='Loading {} Dataset Data Images...'.format(split_name)):
                     raw_vol = imread(d_file).astype('float')
-                    # raw_vol = raw_vol.astype('float')
-             
                     self.data.append(raw_vol[len(raw_vol)//2])
-                print('handle this')
             else:
-                for d_file in tqdm(self.d_list, desc='Loading Dataset Data Volumes...'):
-                # for d_file in self.d_list:
+                for d_file in tqdm(self.d_list, desc='Loading {} Dataset Label Images...'.format(split_name)):
                     self.data.append(imread(d_file).astype('float'))
-        self.l_list = sorted([data_dir + os.sep + 'labels' + os.sep + f for f in os.listdir(os.path.join(data_dir, 'labels'))
-                              if f.lower().endswith('.tiff') or f.lower().endswith('.tif')])
+        self.l_list = sorted([data_dir + os.sep + 'labels' + os.sep + f for f in os.listdir(os.path.join(
+            data_dir, 'labels')) if f.lower().endswith('.tiff') or f.lower().endswith('.tif')])
         self.labels = []
         if do_3D:  # and from_3D
-            for l_file in tqdm(self.l_list, desc='Loading Dataset Labels...'):
-            # for l_file in self.l_list:
+            for l_file in tqdm(self.l_list, desc='Loading {} Dataset Labels...'.format(split_name)):
                 self.labels.extend(list(imread(l_file).astype('int16')))
         else:
             if from_3D:
-                # TODO: handle this
-                print('do this')
+                for l_file in tqdm(self.l_list, desc='Loading {} Dataset Labels...'.format(split_name)):
+                    raw_vol = imread(l_file).astype('int16')
+                    self.labels.append(raw_vol[len(raw_vol) // 2])
             else:
-                for l_file in tqdm(self.l_list, desc='Loading Dataset Labels...'):
-                # for l_file in self.l_list:
+                for l_file in tqdm(self.l_list, desc='Loading {} Dataset Labels...'.format(split_name)):
                     self.labels.append(imread(l_file).astype('int16'))
 
     def __len__(self):
         return len(self.data)
 
     def __getitem__(self, index):
-        # resize = ResizeImage()
         X = self.data[index]
         y = self.labels[index]
         label_file = self.l_list[index]

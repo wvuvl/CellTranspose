@@ -16,16 +16,29 @@ from Cellpose_2D_PyTorch import UpdatedCellpose, SizeModel, class_loss, flow_los
 from train_eval import train_network, adapt_network, eval_network
 
 parser = argparse.ArgumentParser()
+parser.add_argument('--learning-rate', type=float)
+parser.add_argument('--momentum', type=float)
+parser.add_argument('--epochs', type=int)
+parser.add_argument('--patches-per-batch', type=int,
+                    help='Number of patches to pass into GPU at once - effectively batch size.')
 parser.add_argument('--results-dir', help='Folder in which to save experiment results.')
-parser.add_argument('--do-adaptation', help='Whether to perform domain adaptation or standard training.', action='store_true')
-parser.add_argument('--do-3D', help='Whether or not to use 3D-Cellpose (Must use 3D volumes).', action='store_true')
+parser.add_argument('--do-adaptation', help='Whether to perform domain adaptation or standard training.',
+                    action='store_true', default=None)
+parser.add_argument('--do-3D', help='Whether or not to use 3D-Cellpose (Must use 3D volumes).',
+                    action='store_true', default=None)
 parser.add_argument('--train-dataset', help='The directory containing data to be used for training.')
-parser.add_argument('--train-from-3D', help='Whether the input training (source) data is 3D: assumes 2D if set to False.', action='store_true')
+parser.add_argument('--train-from-3D', help='Whether the input training source data is 3D: assumes 2D if set to False.',
+                    action='store_true', default=None)
+parser.add_argument('--val-dataset', help='The directory containing data to be used for validation.')
+parser.add_argument('--val-from-3D', help='Whether the input validation data is 3D: assumes 2D if set to False.',
+                    action='store_true', default=None)
 parser.add_argument('--test-dataset', help='The directory containing data to be used for testing.')
-parser.add_argument('--test-from-3D', help='Whether the input test data is 3D: assumes 2D if set to False.', action='store_true')
+parser.add_argument('--test-from-3D', help='Whether the input test data is 3D: assumes 2D if set to False.',
+                    action='store_true', default=None)
 parser.add_argument('--target-dataset', help='The directory containing target data to be used for domain adaptation.'
-                                           'Note: if do-adaptation is set to False, this parameter will be ignored.')
-parser.add_argument('--target-from-3D', help='Whether the input target data is 3D: assumes 2D if set to False.', action='store_true')
+                                             'Note: if do-adaptation is set to False, this parameter will be ignored.')
+parser.add_argument('--target-from-3D', help='Whether the input target data is 3D: assumes 2D if set to False.',
+                    action='store_true', default=None)
 parser.add_argument('--cellpose-model', help='The generalized cellpose model to use for diameter estimation.')
 parser.add_argument('--size-model', help='The generalized size model to use for diameter estimation.')
 args = parser.parse_args()
@@ -33,11 +46,6 @@ args = parser.parse_args()
 assert not os.path.exists(args.results_dir), 'Results folder currently exists; please specify new location to save results.'
 os.mkdir(args.results_dir)
 os.mkdir(os.path.join(args.results_dir, 'tiff_results'))
-learning_rate = 1e-6
-momentum = 0.5
-# momentum = 0.9
-patches_per_batch = 128
-n_epochs = 10
 num_workers = device_count()
 device = device('cuda' if is_available() else 'cpu')
 empty_cache()
@@ -58,44 +66,49 @@ label_transform = torchvision.transforms.Compose([
     Reformat()
 ])
 
-print('Training dataset:')
-train_dataset = StandardizedTiffData(args.train_dataset,
-                                     do_3D=args.do_3D, from_3D=args.train_from_3D, d_transform=data_transform, l_transform=label_transform)
-train_dl = DataLoader(train_dataset, batch_size=1, shuffle=True, num_workers=num_workers)  # num_workers=num_workers
+train_dataset = StandardizedTiffData('Training', args.train_dataset, do_3D=args.do_3D, from_3D=args.train_from_3D,
+                                     d_transform=data_transform, l_transform=label_transform)
+train_dl = DataLoader(train_dataset, batch_size=1, shuffle=True)
 
-if args.do_adaptation:
-    print('Target dataset:')
-    target_dataset = StandardizedTiffData(args.target_dataset,
-                                          do_3D=args.do_3D, from_3D=args.target_from_3D, d_transform=data_transform, l_transform=label_transform)
-    target_dl = DataLoader(target_dataset, batch_size=1, shuffle=True, num_workers=num_workers)  # num_workers=num_workers
+val_dataset = StandardizedTiffData('Validation', args.val_dataset, do_3D=args.do_3D, from_3D=args.val_from_3D,
+                                   d_transform=data_transform, l_transform=label_transform)
+val_dl = DataLoader(val_dataset, batch_size=1, shuffle=True)
 
 model = UpdatedCellpose(channels=1, device=device)
-optimizer = SGD(model.parameters(), lr=learning_rate, momentum=momentum)
+optimizer = SGD(model.parameters(), lr=args.learning_rate, momentum=args.momentum)
 model = nn.DataParallel(model)
 model.to(device)
 
 if args.do_adaptation:
-    train_losses = adapt_network(model, train_dl, target_dl, sas_class_loss, flow_loss, median_diams, optimizer=optimizer,
-                                 device=device, n_epochs=n_epochs, patch_per_batch=patches_per_batch)
+    target_dataset = StandardizedTiffData('Target', args.target_dataset, do_3D=args.do_3D, from_3D=args.target_from_3D,
+                                          d_transform=data_transform, l_transform=label_transform)
+    target_dl = DataLoader(target_dataset, batch_size=1, shuffle=True)
+    train_losses, val_losses = adapt_network(model, train_dl, target_dl, val_dl, sas_class_loss, class_loss, flow_loss,
+                                             median_diams, optimizer=optimizer, device=device, n_epochs=args.epochs,
+                                             patch_per_batch=args.patches_per_batch)
 else:  # Train network without adaptation
-    train_losses = train_network(model, train_dl, class_loss, flow_loss, median_diams, optimizer=optimizer,
-                                 device=device, n_epochs=n_epochs, patch_per_batch=patches_per_batch)
+    train_losses, val_losses = train_network(model, train_dl, val_dl, class_loss, flow_loss, median_diams,
+                                             optimizer=optimizer, device=device, n_epochs=args.epochs,
+                                             patch_per_batch=args.patches_per_batch)
 save(model.state_dict(), os.path.join(args.results_dir, 'trained_model.pt'))
 
 plt.figure()
 x_range = np.arange(1, len(train_losses)+1)
 plt.plot(x_range, train_losses)
-plt.title('Training Loss')
-plt.savefig(os.path.join(args.results_dir, 'Training Loss'))
+plt.plot(x_range, val_losses)
+plt.xlabel('Epoch')
+plt.ylabel('Combined Losses')
+plt.title('Training and Validation Losses')
+plt.legend(['Training Losses', 'Validation Losses'])
+plt.savefig(os.path.join(args.results_dir, 'Training-Validation Losses'))
 plt.show()
 
-print('Test dataset:')
-test_dataset = StandardizedTiffData(args.test_dataset, do_3D=args.do_3D, from_3D=args.test_from_3D,
+test_dataset = StandardizedTiffData('Test', args.test_dataset, do_3D=args.do_3D, from_3D=args.test_from_3D,
                                     d_transform=data_transform, l_transform=label_transform)
 
-val_dataloader = DataLoader(test_dataset, batch_size=1, shuffle=True, num_workers=num_workers)  # num_workers=num_workers
+val_dataloader = DataLoader(test_dataset, batch_size=1, shuffle=True)
 
-masks, label_list = eval_network(model, val_dataloader, device, patch_per_batch=patches_per_batch,
+masks, label_list = eval_network(model, val_dataloader, device, patch_per_batch=args.patches_per_batch,
                                  default_meds=median_diams, gc_model=gen_cellpose, sz_model=gen_size_model)
 
 for i in range(len(masks)):
@@ -107,5 +120,5 @@ with open(os.path.join(args.results_dir, 'settings.txt'), 'w') as txt:
     txt.write('Adaptation: {}\n'.format(args.do_adaptation))
     # if do_adaptation:
     #     txt.write('Gamma: {}; Margin: {}'.format())
-    txt.write('Learning rate: {}; Momentum: {}\n'.format(learning_rate, momentum))
-    txt.write('Epochs: {}; Batch size: {}'.format(n_epochs, patches_per_batch))
+    txt.write('Learning rate: {}; Momentum: {}\n'.format(args.learning_rate, args.momentum))
+    txt.write('Epochs: {}; Batch size: {}'.format(args.epochs, args.patches_per_batch))

@@ -26,6 +26,7 @@ def flow_loss(lbl, y):
     return flow_loss
 
 
+# Semantic Alignment/Separation Contrastive Loss for classification
 def sas_class_loss(g_source, lbl_source, g_target, lbl_target, margin=1, gamma=0.1):
 
     match_mask = torch.eq(lbl_source, lbl_target)  # Mask where each pixel is 1 (source GT = target GT) or 0 (source GT != target GT)
