@@ -26,7 +26,7 @@ parser.add_argument('--do-adaptation', help='Whether to perform domain adaptatio
                     action='store_true', default=None)
 parser.add_argument('--do-3D', help='Whether or not to use 3D-Cellpose (Must use 3D volumes).',
                     action='store_true', default=None)
-parser.add_argument('--train-dataset', help='The directory containing data to be used for training.')
+parser.add_argument('--train-dataset', help='The directory containing (source) data to be used for training.')
 parser.add_argument('--train-from-3D', help='Whether the input training source data is 3D: assumes 2D if set to False.',
                     action='store_true', default=None)
 parser.add_argument('--val-dataset', help='The directory containing data to be used for validation.')
@@ -39,8 +39,8 @@ parser.add_argument('--target-dataset', help='The directory containing target da
                                              'Note: if do-adaptation is set to False, this parameter will be ignored.')
 parser.add_argument('--target-from-3D', help='Whether the input target data is 3D: assumes 2D if set to False.',
                     action='store_true', default=None)
-parser.add_argument('--cellpose-model', help='The generalized cellpose model to use for diameter estimation.')
-parser.add_argument('--size-model', help='The generalized size model to use for diameter estimation.')
+parser.add_argument('--cellpose-model', help='Location of the generalized cellpose model to use for diameter estimation.')
+parser.add_argument('--size-model', help='Location of the generalized size model to use for diameter estimation.')
 args = parser.parse_args()
 
 assert not os.path.exists(args.results_dir), 'Results folder currently exists; please specify new location to save results.'
@@ -106,9 +106,9 @@ plt.show()
 test_dataset = StandardizedTiffData('Test', args.test_dataset, do_3D=args.do_3D, from_3D=args.test_from_3D,
                                     d_transform=data_transform, l_transform=label_transform)
 
-val_dataloader = DataLoader(test_dataset, batch_size=1, shuffle=True)
+eval_dataloader = DataLoader(test_dataset, batch_size=1, shuffle=True)
 
-masks, label_list = eval_network(model, val_dataloader, device, patch_per_batch=args.patches_per_batch,
+masks, label_list = eval_network(model, eval_dataloader, device, patch_per_batch=args.patches_per_batch,
                                  default_meds=median_diams, gc_model=gen_cellpose, sz_model=gen_size_model)
 
 for i in range(len(masks)):

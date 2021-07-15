@@ -56,20 +56,6 @@ class Normalize1stTo99th(object):
         return sample
 
 
-# class ResizeImage(object):  # Pass as <tensor> or numpy array? Return as tensor or <numpy array>?
-#     def __init__(self, interpolation):
-#         super().__init__()
-#         self.interpolation = interpolation
-#
-#     def __call__(self, im, rescale_x, rescale_y):
-#         im = np.transpose(im.numpy(), (1, 2, 0))
-#         im = cv2.resize(im, (int(im.shape[1] * rescale_x), int(im.shape[0] * rescale_y)),
-#                         interpolation=self.interpolation)
-#         return im
-
-        # Do 3D part
-
-
 class LabelsToFlows(object):
     """
     Converts labels to flows for training and validation - Interfaces with Cellpose's masks_to_flows dynamics
@@ -105,32 +91,10 @@ class FollowFlows(object):
             p = follow_flows(-1 * dP * (cellprob > self.cellprob_threshold) / 5., self.niter, self.interp, self.use_gpu)
             # p = follow_flows(dP * (cellprob > self.cellprob_threshold) / 5., self.niter, self.interp, self.use_gpu)
 
-            # plt.figure()
-            # plt.subplot(1, 2, 1)
-            # plt.imshow(p[0])
-            # plt.colorbar()
-            # plt.subplot(1, 2, 2)
-            # plt.imshow(p[1])
-            # plt.colorbar()
-            # plt.tight_layout()
-            # plt.show()
-
             maski = get_masks(p, iscell=(cellprob > self.cellprob_threshold), flows=dP, threshold=self.flow_threshold)
-
             maski = fill_holes_and_remove_small_masks(maski, min_size=self.min_size)
-
-            # plt.figure()
-            # plt.imshow(maski)
-            # plt.show()
-
             masks[i] = tensor(maski)
         return masks
-
-
-# def resize(X, y, im_dims):
-#     X = np.transpose(X.numpy(), (1, 2, 0))
-#     X = cv2.resize(X, im_dims[1], im_dims[0], interpolation=cv2.INTER_LINEAR)
-#     return X
 
 
 def resize_from_labels(X, y, default_med):
@@ -148,7 +112,7 @@ def resize_from_labels(X, y, default_med):
 
 
 def predict_and_resize(X, y, default_med, gc_model, sz_model, refine=False):
-    style = gc_model.style_forward(X)
+    style = gc_model(X, style_only=True)
     med = sz_model(style)
     if refine:
         print('Add refined code later.')
@@ -162,6 +126,7 @@ def predict_and_resize(X, y, default_med, gc_model, sz_model, refine=False):
     y = cv2.resize(y, (int(y.shape[1] * rescale_x), int(y.shape[0] * rescale_y)),
                    interpolation=cv2.INTER_NEAREST)[np.newaxis, :]
     return unsqueeze(tensor(X), 0), tensor(y)
+
 
 def random_horizontal_flip(X, y):
     if np.random.rand() > .5:

@@ -133,7 +133,7 @@ class UpdatedCellpose(nn.Module):
             nn.Conv2d(in_channels=32, out_channels=3, kernel_size=1)
         )
 
-    def forward(self, x):
+    def forward(self, x, style_only=False):
         fm1 = self.d_block1(x)
         fm2 = self.d_block2(fm1)
         fm3 = self.d_block3(fm2)
@@ -143,22 +143,15 @@ class UpdatedCellpose(nn.Module):
         im_style = torch.sum(fm4, dim=(2, 3)).data
         im_style = torch.div(im_style, torch.norm(im_style)).data
 
-        z = self.u_block4(fm4, fm4, im_style)
-        z = self.u_block3(z, fm3, im_style)
-        z = self.u_block2(z, fm2, im_style)
-        z = self.u_block1(z, fm1, im_style)
-        y = self.out_block(z)
-        return y
-
-    # Produce the style vector for a given input image
-    def style_forward(self, x):
-        x = self.d_block1(x)
-        x = self.d_block2(x)
-        x = self.d_block3(x)
-        x = self.d_block4(x)
-        x = torch.sum(x, dim=(2, 3)).data
-        x = torch.div(x, torch.norm(x)).data
-        return x
+        if style_only:
+            return im_style
+        else:
+            z = self.u_block4(fm4, fm4, im_style)
+            z = self.u_block3(z, fm3, im_style)
+            z = self.u_block2(z, fm2, im_style)
+            z = self.u_block1(z, fm1, im_style)
+            y = self.out_block(z)
+            return y
 
 
 class SizeModel(nn.Module):
