@@ -145,13 +145,14 @@ def eval_network(model: nn.Module, data_loader: DataLoader, device, patch_per_ba
     ff = FollowFlows(niter=100, interp=True, use_gpu=True, cellprob_threshold=0.0, flow_threshold=1.0)
     with no_grad():
         masks = []
+        labels = []
         label_list = []
         for (sample_data, sample_labels, label_files) in data_loader:
             original_dims = (sample_data.shape[2], sample_data.shape[3])
-            sample_data, sample_labels = predict_and_resize(sample_data.float().to(device), sample_labels.to(device),
+            sample_data, resized_sample_labels = predict_and_resize(sample_data.float().to(device), sample_labels.to(device),
                                                             default_meds, gc_model, sz_model, refine=False)
             resized_dims = (sample_data.shape[2], sample_data.shape[3])
-            sample_data, sample_labels = generate_patches(sample_data, sample_labels, eval=True)
+            sample_data, _ = generate_patches(sample_data, resized_sample_labels, eval=True)
             predictions = tensor([]).to(device)
 
             for patch_ind in range(0, len(sample_data), patch_per_batch):
@@ -164,8 +165,9 @@ def eval_network(model: nn.Module, data_loader: DataLoader, device, patch_per_ba
             sample_mask = np.transpose(sample_mask.numpy(), (1, 2, 0))
             sample_mask = cv2.resize(sample_mask, (original_dims[1], original_dims[0]), interpolation=cv2.INTER_NEAREST)
             masks.append(sample_mask)
+            labels.append(sample_labels.numpy().squeeze(axis=(0,1)))
             for i in range(len(label_files)):
                 label_list.append(label_files[i][label_files[i].rfind('/')+1: label_files[i].rfind('.')])
 
     print('Total time to evaluate: {}'.format(elapsed_time(time() - start_eval)))
-    return masks, label_list
+    return masks, labels, label_list

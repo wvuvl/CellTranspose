@@ -14,6 +14,7 @@ from transforms import Reformat, Normalize1stTo99th
 from loaddata import StandardizedTiffData
 from Cellpose_2D_PyTorch import UpdatedCellpose, SizeModel, class_loss, flow_loss, sas_class_loss
 from train_eval import train_network, adapt_network, eval_network
+from cellpose_src.metrics import average_precision
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--learning-rate', type=float)
@@ -21,6 +22,7 @@ parser.add_argument('--momentum', type=float)
 parser.add_argument('--epochs', type=int)
 parser.add_argument('--patches-per-batch', type=int,
                     help='Number of patches to pass into GPU at once - effectively batch size.')
+parser.add_argument('--dataset-name', help='Name of dataset to use for reporting results (omit the word "Dataset").')
 parser.add_argument('--results-dir', help='Folder in which to save experiment results.')
 parser.add_argument('--do-adaptation', help='Whether to perform domain adaptation or standard training.',
                     action='store_true', default=None)
@@ -41,6 +43,8 @@ parser.add_argument('--target-from-3D', help='Whether the input target data is 3
                     action='store_true', default=None)
 parser.add_argument('--cellpose-model', help='Location of the generalized cellpose model to use for diameter estimation.')
 parser.add_argument('--size-model', help='Location of the generalized size model to use for diameter estimation.')
+parser.add_argument('--calculate-ap', help='Whether to perform AP calculation at the end of evaluation.',
+                    action='store_true', default=None)
 args = parser.parse_args()
 
 assert not os.path.exists(args.results_dir), 'Results folder currently exists; please specify new location to save results.'
@@ -110,12 +114,13 @@ test_dataset = StandardizedTiffData('Test', args.test_dataset, do_3D=args.do_3D,
 
 eval_dataloader = DataLoader(test_dataset, batch_size=1, shuffle=True)
 
-masks, label_list = eval_network(model, eval_dataloader, device, patch_per_batch=args.patches_per_batch,
+masks, labels, label_list = eval_network(model, eval_dataloader, device, patch_per_batch=args.patches_per_batch,
                                  default_meds=median_diams, gc_model=gen_cellpose, sz_model=gen_size_model)
 
 for i in range(len(masks)):
+    masks[i] = masks[i].astype('int16')  # Can change back to int32 if necessary
     with open(os.path.join(args.results_dir, label_list[i] + '_predicted_labels.pkl'), 'wb') as pl:
-        pickle.dump(masks[i].astype('int32'), pl)
+        pickle.dump(masks[i], pl)
     tifffile.imwrite(os.path.join(args.results_dir, 'tiff_results', label_list[i] + '.tif'), masks[i].astype('int32'))
 
 with open(os.path.join(args.results_dir, 'settings.txt'), 'w') as txt:
@@ -124,3 +129,20 @@ with open(os.path.join(args.results_dir, 'settings.txt'), 'w') as txt:
     #     txt.write('Gamma: {}; Margin: {}'.format())
     txt.write('Learning rate: {}; Momentum: {}\n'.format(args.learning_rate, args.momentum))
     txt.write('Epochs: {}; Batch size: {}'.format(args.epochs, args.patches_per_batch))
+
+# AP Calculation
+if args.calculate_ap:
+    tau = np.arange(0.01, 1.01, 0.01)
+    ap_info = average_precision(labels, masks, threshold=tau)
+    ap_per_im = ap_info[0]
+    ap_overall = np.average(ap_per_im, axis=0)
+
+    plt.figure()
+    plt.plot(tau, ap_overall)
+    plt.title('Average Precision for Cellpose on {} Dataset'.format(args.dataset_name))
+    plt.xlabel(r'IoU Matching Threshold $\tau$')
+    plt.ylabel('Average Precision')
+    plt.savefig(os.path.join(args.results_dir, 'AP Results'))
+    plt.show()
+    with open(os.path.join(args.results_dir, '{}_AP_Results.pkl'.format(args.dataset_name)), 'wb') as apr:
+        pickle.dump((tau, ap_overall), apr)
