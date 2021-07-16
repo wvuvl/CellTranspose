@@ -52,7 +52,9 @@ empty_cache()
 
 # Default median diameter to resize cells to
 median_diams = (24, 24)
-gen_cellpose = UpdatedCellpose(channels=1).to(device)
+gen_cellpose = UpdatedCellpose(channels=1, device=device)
+gen_cellpose = nn.DataParallel(gen_cellpose)
+gen_cellpose.to(device)
 gen_cellpose.load_state_dict(load(args.cellpose_model))
 
 gen_size_model = SizeModel().to(device)

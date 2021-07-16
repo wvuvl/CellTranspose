@@ -36,7 +36,8 @@ gen_cellpose.eval()
 
 size_model = SizeModel().to(device)
 optimizer = torch.optim.SGD(size_model.parameters(), lr=args.learning_rate, momentum=args.momentum)
-loss_fn = torch.nn.MSELoss()
+# loss_fn = torch.nn.MSELoss()
+loss_fn = torch.nn.L1Loss()
 
 data_transform = torchvision.transforms.Compose([
     Reformat(),
