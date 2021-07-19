@@ -112,10 +112,10 @@ plt.show()
 test_dataset = StandardizedTiffData('Test', args.test_dataset, do_3D=args.do_3D, from_3D=args.test_from_3D,
                                     d_transform=data_transform, l_transform=label_transform)
 
-eval_dataloader = DataLoader(test_dataset, batch_size=1, shuffle=True)
+eval_dl = DataLoader(test_dataset, batch_size=1, shuffle=True)
 
-masks, labels, label_list = eval_network(model, eval_dataloader, device, patch_per_batch=args.patches_per_batch,
-                                 default_meds=median_diams, gc_model=gen_cellpose, sz_model=gen_size_model)
+masks, labels, label_list = eval_network(model, eval_dl, device, patch_per_batch=args.patches_per_batch,
+                                         default_meds=median_diams, gc_model=gen_cellpose, sz_model=gen_size_model)
 
 for i in range(len(masks)):
     masks[i] = masks[i].astype('int16')  # Can change back to int32 if necessary

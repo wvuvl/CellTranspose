@@ -3,6 +3,7 @@ import math
 from torch import tensor, mean, unique, zeros, ones, empty, cat, squeeze, unsqueeze
 import cv2
 import numpy as np
+import copy
 from cellpose_src.dynamics import masks_to_flows, follow_flows, get_masks, remove_bad_flow_masks
 from cellpose_src.utils import diameters, fill_holes_and_remove_small_masks
 from cellpose_src.transforms import _taper_mask
@@ -100,7 +101,13 @@ class FollowFlows(object):
 def resize_from_labels(X, y, default_med):
     X = squeeze(X, dim=0)
     y = squeeze(y, dim=0)
-    med, cts = diameters(y)
+    # calculate diameters using only full cells in image - remove cut off cells during median diameter calculation
+    y_cf = copy.deepcopy(squeeze(y, dim=0))
+    cc = sorted(np.unique(np.concatenate((np.unique(y_cf[0]), np.unique(y_cf[:, 0]),
+                                          np.unique(y_cf[-1]), np.unique(y_cf[:, -1])))))
+    for i in range(1, len(cc)):
+        y_cf[y_cf == cc[i]] = 0
+    med, cts = diameters(y_cf)
     rescale_x, rescale_y = default_med[0] / med, default_med[1] / med
     X = np.transpose(X.numpy(), (1, 2, 0))
     X = cv2.resize(X, (int(X.shape[1] * rescale_x), int(X.shape[0] * rescale_y)),
