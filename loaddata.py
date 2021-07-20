@@ -53,7 +53,7 @@ class StandardizedTiffData(Dataset):
                     raw_vol = imread(d_file).astype('float')
                     self.data.append(raw_vol[len(raw_vol)//2])
             else:
-                for d_file in tqdm(self.d_list, desc='Loading {} Dataset Label Images...'.format(split_name)):
+                for d_file in tqdm(self.d_list, desc='Loading {} Dataset Data Images...'.format(split_name)):
                     self.data.append(imread(d_file).astype('float'))
         self.l_list = sorted([data_dir + os.sep + 'labels' + os.sep + f for f in os.listdir(os.path.join(
             data_dir, 'labels')) if f.lower().endswith('.tiff') or f.lower().endswith('.tif')])

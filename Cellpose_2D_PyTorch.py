@@ -34,13 +34,9 @@ def sas_class_loss(g_source, lbl_source, g_target, lbl_target, margin=1, gamma=0
 
     sa_loss = (1 - gamma) * 0.5 * torch.square(st_dist)
     s_loss = (1 - gamma) * 0.5 * torch.square(torch.max(torch.tensor(0).to(torch.device('cuda' if torch.cuda.is_available() else 'cpu')), margin - st_dist))
-    # class_mse_loss = self.gamma * torch.square(g_source - lbl_source)  # Mean-squared error classification loss from source
     source_class_loss = nn.BCEWithLogitsLoss(reduction='mean')(g_source, lbl_source)
-    # class_bcewithlogits_loss = nn.BCEWithLogitsLoss(reduction='mean')(g_source, lbl_source)
 
-    # loss = torch.mean(match_mask * sa_loss + (~match_mask * s_loss) + class_mse_loss)
     loss = torch.mean(match_mask * sa_loss + (~match_mask * s_loss) + source_class_loss)
-    # loss = torch.mean(loss)
     return loss
 
 
@@ -161,30 +157,8 @@ class SizeModel(nn.Module):
         self.linear2 = nn.Linear(512, 1)
 
     def forward(self, x):
-        x = x.view(256)
         x = self.linear1(x)
         return self.linear2(x)
-
-
-# class SASClassLoss(nn.Module):
-#     def __init__(self, margin, gamma):
-#         super(SASClassLoss, self).__init__()
-#         self.margin = margin
-#         self.gamma = gamma
-#
-#     def forward(self, g_source, lbl_source, g_target, lbl_target):
-#         match_mask = torch.eq(lbl_source, lbl_target) # Mask where each pixel is 1 (source GT = target GT) or 0 (source GT != target GT)
-#         st_dist = torch.linalg.norm(g_source - g_target) / g_source.data.nelement()
-#
-#         sa_loss = (1 - self.gamma) * 0.5 * torch.square(st_dist)
-#         s_loss = (1 - self.gamma) * 0.5 * torch.square(torch.max(torch.tensor(0).to((torch.device('cuda' if torch.cuda.is_available() else 'cpu'))), self.margin - st_dist))
-#         # class_mse_loss = self.gamma * torch.square(g_source - lbl_source)  # Mean-squared error classification loss from source
-#         class_bcewithlogits_loss = nn.BCEWithLogitsLoss()(g_source, lbl_source)
-#         # class_bcewithlogits_loss = nn.BCEWithLogitsLoss(reduction='mean')(g_source, lbl_source)
-#
-#         # loss = torch.mean(match_mask * sa_loss + (~match_mask * s_loss) + class_mse_loss)
-#         loss = torch.mean(match_mask * sa_loss + (~match_mask * s_loss) + class_bcewithlogits_loss)
-#         return loss
 
 
 if __name__ == '__main__()':

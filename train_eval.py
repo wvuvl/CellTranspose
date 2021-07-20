@@ -8,7 +8,7 @@ from statistics import mean
 import math
 from misc_utils import elapsed_time
 from transforms import LabelsToFlows, FollowFlows, resize_from_labels, predict_and_resize, random_horizontal_flip,\
-    random_rotate, generate_patches, recombine_patches
+    random_rotate, generate_patches, recombine_patches, refined_predict_and_resize
 
 import matplotlib.pyplot as plt
 
@@ -138,7 +138,8 @@ def validate_network(model, data_loader, flow_loss, class_loss, device, patch_pe
     return mean(val_epoch_losses)
 
 
-def eval_network(model: nn.Module, data_loader: DataLoader, device, patch_per_batch, default_meds, gc_model, sz_model):
+def eval_network(model: nn.Module, data_loader: DataLoader, device, patch_per_batch, default_meds, gc_model, sz_model,
+                 refine):
 
     model.eval()
     start_eval = time()
@@ -149,8 +150,13 @@ def eval_network(model: nn.Module, data_loader: DataLoader, device, patch_per_ba
         label_list = []
         for (sample_data, sample_labels, label_files) in data_loader:
             original_dims = (sample_data.shape[2], sample_data.shape[3])
-            sample_data, resized_sample_labels = predict_and_resize(sample_data.float().to(device), sample_labels.to(device),
-                                                            default_meds, gc_model, sz_model, refine=False)
+            sample_data, resized_sample_labels = predict_and_resize(sample_data.float().to(device),
+                                                                    sample_labels.to(device), default_meds, gc_model,
+                                                                    sz_model)
+            if refine:
+                sample_data, resized_sample_labels = refined_predict_and_resize(sample_data, resized_sample_labels,
+                                                                                default_meds, gc_model, device,
+                                                                                patch_per_batch, ff)
             resized_dims = (sample_data.shape[2], sample_data.shape[3])
             sample_data, _ = generate_patches(sample_data, resized_sample_labels, eval=True)
             predictions = tensor([]).to(device)
@@ -165,7 +171,7 @@ def eval_network(model: nn.Module, data_loader: DataLoader, device, patch_per_ba
             sample_mask = np.transpose(sample_mask.numpy(), (1, 2, 0))
             sample_mask = cv2.resize(sample_mask, (original_dims[1], original_dims[0]), interpolation=cv2.INTER_NEAREST)
             masks.append(sample_mask)
-            labels.append(sample_labels.numpy().squeeze(axis=(0,1)))
+            labels.append(sample_labels.numpy().squeeze(axis=(0, 1)))
             for i in range(len(label_files)):
                 label_list.append(label_files[i][label_files[i].rfind('/')+1: label_files[i].rfind('.')])
 

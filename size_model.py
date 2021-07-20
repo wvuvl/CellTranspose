@@ -36,8 +36,8 @@ gen_cellpose.eval()
 
 size_model = SizeModel().to(device)
 optimizer = torch.optim.SGD(size_model.parameters(), lr=args.learning_rate, momentum=args.momentum)
-# loss_fn = torch.nn.MSELoss()
-loss_fn = torch.nn.L1Loss()
+loss_fn = torch.nn.MSELoss()
+# loss_fn = torch.nn.L1Loss()
 
 data_transform = torchvision.transforms.Compose([
     Reformat(),
@@ -57,7 +57,6 @@ for e in range(1, args.epochs + 1):
     optimizer.zero_grad()
     size_model.train()
     start_train = time()
-    # for (batch_data, batch_labels, _) in tqdm(data_loader):
     for (batch_data, batch_labels, _) in tqdm(train_dl, desc='Epoch {}/{}'.format(e, args.epochs)):
         batch_data = batch_data.float().to(device)
         batch_diams = torch.tensor([]).to(device)
@@ -76,7 +75,8 @@ torch.save(size_model.state_dict(), os.path.join(args.results_dir, 'size_model.p
 
 with open(os.path.join(args.results_dir, 'settings.txt'), 'w') as txt:
     txt.write('Learning rate: {}; Momentum: {}\n'.format(args.learning_rate, args.momentum))
-    txt.write('Epochs: {}; Batch size: {}'.format(args.epochs, args.batch_size))
+    txt.write('Epochs: {}; Batch size: {}\n'.format(args.epochs, args.batch_size))
+    txt.write('Loss: {}'.format(loss_fn))
 
 step_size = args.epochs/len(train_losses)
 train_steps = np.arange(step_size, args.epochs + step_size, step_size)
@@ -106,7 +106,10 @@ for (batch_data, batch_labels, _) in tqdm(train_dl, desc='Testing'):
     predictions.append(batch_predictions.tolist())
 
 plt.figure()
+
 plt.scatter(diams, predictions)
+diam_range = (min(diams), max(diams))
+plt.plot(diam_range, diam_range)
 plt.title('True Diameters vs. Predicted')
 plt.xlabel('True Diameters')
 plt.ylabel('Predicted Diameters')

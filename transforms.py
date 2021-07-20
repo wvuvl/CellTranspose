@@ -22,12 +22,12 @@ If 2-D -> torch.tensor with shape [1, x_dim, y_dim]
 If 3-D -> torch.tensor with shape [1, x_dim, y_dim, z_dim]
 """
 class Reformat(object):
-    def __init__(self, do_2D=True):
+    def __init__(self, do_3D=False):
         super().__init__()
-        self.do_2D = do_2D
+        self.do_3D = do_3D
 
     def __call__(self, x):
-        if self.do_2D:
+        if not self.do_3D:
             if x.dim() == 2:
                 x = x.view(1, x.shape[0], x.shape[1])
             # Currently transforms multi-channel input to greyscale
@@ -39,7 +39,8 @@ class Reformat(object):
                     if x.shape[2] == 1:
                         x = x.view(1, x.shape[0], x.shape[1])
                     # else:
-                # else:
+                else:
+                    raise ValueError('Data is not 2D; if intending to use 3D volumes, pass in "--do_3D" argument.')
         # else:
         return x
 
@@ -118,11 +119,9 @@ def resize_from_labels(X, y, default_med):
     return unsqueeze(tensor(X), 0), tensor(y)
 
 
-def predict_and_resize(X, y, default_med, gc_model, sz_model, refine=False):
+def predict_and_resize(X, y, default_med, gc_model, sz_model):
     style = gc_model(X, style_only=True)
     med = sz_model(style)
-    if refine:
-        print('Add refined code later.')
     X = squeeze(X, dim=0)
     y = squeeze(y, dim=0)
     rescale_x, rescale_y = default_med[0] / med, default_med[1] / med
@@ -133,6 +132,29 @@ def predict_and_resize(X, y, default_med, gc_model, sz_model, refine=False):
     y = cv2.resize(y, (int(y.shape[1] * rescale_x), int(y.shape[0] * rescale_y)),
                    interpolation=cv2.INTER_NEAREST)[np.newaxis, :]
     return unsqueeze(tensor(X), 0), tensor(y)
+
+
+# produce output masks using gc_model, then calculate mean diameter
+def refined_predict_and_resize(X, y, default_med, gc_model, device, patch_per_batch, follow_flows_function):
+        im_dims = (X.shape[2], X.shape[3])
+        sample_data, _ = generate_patches(X, y, eval=True)
+        predictions = tensor([]).to(device)
+        for patch_ind in range(0, len(sample_data), patch_per_batch):
+            sample_patch_data = sample_data[patch_ind:patch_ind + patch_per_batch].float().to(device)
+            p = gc_model(sample_patch_data)
+            predictions = cat((predictions, p))
+        predictions = recombine_patches(predictions, im_dims)
+        sample_mask = follow_flows_function(predictions)
+        med, cts = diameters(sample_mask.numpy())
+        rescale_x, rescale_y = default_med[0] / med, default_med[1] / med
+        X = squeeze(X, dim=0)
+        X = np.transpose(X.cpu().numpy(), (1, 2, 0))
+        X = cv2.resize(X, (int(X.shape[1] * rescale_x), int(X.shape[0] * rescale_y)),
+                       interpolation=cv2.INTER_LINEAR)[np.newaxis, :]
+        y = np.transpose(y.cpu().numpy(), (1, 2, 0))
+        y = cv2.resize(y, (int(y.shape[1] * rescale_x), int(y.shape[0] * rescale_y)),
+                       interpolation=cv2.INTER_NEAREST)[np.newaxis, :]
+        return unsqueeze(tensor(X), 0), tensor(y)
 
 
 def random_horizontal_flip(X, y):
