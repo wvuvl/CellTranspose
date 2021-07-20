@@ -74,7 +74,6 @@ class LabelsToFlows(object):
 class FollowFlows(object):
     """
     Combines follow_flows, get_masks, and fill_holes_and_remove_small_masks from Cellpose implementation
-
     """
     def __init__(self, niter, interp, use_gpu, cellprob_threshold=0.0, flow_threshold=0.4, min_size=30):  # min_size=15
         super().__init__()

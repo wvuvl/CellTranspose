@@ -20,7 +20,7 @@ parser.add_argument('--momentum', type=float)
 parser.add_argument('--batch-size', type=int)
 parser.add_argument('--epochs', type=int)
 parser.add_argument('--cellpose-pretrained', help='Location of the generalized cellpose model to use for diameter estimation.')
-parser.add_argument('--train-dataset', help='The directory containing data to be used for training.')
+parser.add_argument('--train-dataset', help='The directory(s) containing data to be used for training.', nargs='+')
 args = parser.parse_args()
 
 assert not os.path.exists(args.results_dir), 'Results folder currently exists; please specify new location to save results.'
@@ -106,7 +106,6 @@ for (batch_data, batch_labels, _) in tqdm(train_dl, desc='Testing'):
     predictions.append(batch_predictions.tolist())
 
 plt.figure()
-
 plt.scatter(diams, predictions)
 diam_range = (min(diams), max(diams))
 plt.plot(diam_range, diam_range)

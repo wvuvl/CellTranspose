@@ -33,17 +33,19 @@ parser.add_argument('--do-adaptation', help='Whether to perform domain adaptatio
                     action='store_true', default=False)
 parser.add_argument('--do-3D', help='Whether or not to use 3D-Cellpose (Must use 3D volumes).',
                     action='store_true', default=False)
-parser.add_argument('--train-dataset', help='The directory containing (source) data to be used for training.')
+parser.add_argument('--train-dataset', help='The directory(s) containing (source) data to be used for training.',
+                    nargs='+')
 parser.add_argument('--train-from-3D', help='Whether the input training source data is 3D: assumes 2D if set to False.',
                     action='store_true', default=False)
-parser.add_argument('--val-dataset', help='The directory containing data to be used for validation.')
+parser.add_argument('--val-dataset', help='The directory(s) containing data to be used for validation.', nargs='+')
 parser.add_argument('--val-from-3D', help='Whether the input validation data is 3D: assumes 2D if set to False.',
                     action='store_true', default=False)
-parser.add_argument('--test-dataset', help='The directory containing data to be used for testing.')
+parser.add_argument('--test-dataset', help='The directory(s) containing data to be used for testing.', nargs='+')
 parser.add_argument('--test-from-3D', help='Whether the input test data is 3D: assumes 2D if set to False.',
                     action='store_true', default=False)
 parser.add_argument('--target-dataset', help='The directory containing target data to be used for domain adaptation.'
-                                             'Note: if do-adaptation is set to False, this parameter will be ignored.')
+                                             'Note: if do-adaptation is set to False, this parameter will be ignored.',
+                    nargs='+')
 parser.add_argument('--target-from-3D', help='Whether the input target data is 3D: assumes 2D if set to False.',
                     action='store_true', default=False)
 parser.add_argument('--cellpose-model',
@@ -58,9 +60,9 @@ args = parser.parse_args()
 
 assert not os.path.exists(args.results_dir),\
     'Results folder currently exists; please specify new location to save results.'
-assert not (args.train_only and args.eval_only), 'Cannot pass in "train-only" and "eval-only" arguments simultaneously.'
 os.mkdir(args.results_dir)
 os.mkdir(os.path.join(args.results_dir, 'tiff_results'))
+assert not (args.train_only and args.eval_only), 'Cannot pass in "train-only" and "eval-only" arguments simultaneously.'
 num_workers = device_count()
 device = device('cuda' if is_available() else 'cpu')
 empty_cache()

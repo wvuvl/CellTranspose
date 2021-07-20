@@ -32,7 +32,7 @@ class StandardizedTiffData(Dataset):
     def __init__(self, split_name, data_dir, do_3D=False, from_3D=False, d_transform=None, l_transform=None):
         """"
         Args:
-            data_dir: root directory of the dataset, containing 'data' and 'labels' folders
+            data_dir: root directory/directories of the dataset, containing 'data' and 'labels' folders
             do_3D: whether or not to train 3D cellpose model (requires that from_3d is true)
             from_3D: whether input samples are 2D images (False) or 3D volumes (True)
             d_transform: composed transformation to be applied to input data
@@ -41,8 +41,21 @@ class StandardizedTiffData(Dataset):
         """
         self.d_transform = d_transform
         self.l_transform = l_transform
-        self.d_list = sorted([data_dir + os.sep + 'data' + os.sep + f for f in os.listdir(os.path.join(data_dir, 'data'))
-                              if f.lower().endswith('.tiff') or f.lower().endswith('.tif')])
+        if isinstance(data_dir, list):
+            self.d_list = []
+            self.l_list = []
+            for dir_i in data_dir:
+                self.d_list = self.d_list + sorted([dir_i + os.sep + 'data' + os.sep + f for f in
+                                                    os.listdir(os.path.join(dir_i, 'data')) if f.lower()
+                                                   .endswith('.tiff') or f.lower().endswith('.tif')])
+                self.l_list = self.l_list + sorted([dir_i + os.sep + 'labels' + os.sep + f for f in
+                                                    os.listdir(os.path.join(dir_i, 'labels')) if f.lower()
+                                                   .endswith('.tiff') or f.lower().endswith('.tif')])
+        else:
+            self.d_list = sorted([data_dir + os.sep + 'data' + os.sep + f for f in os.listdir(os.path.join(
+                data_dir, 'data')) if f.lower().endswith('.tiff') or f.lower().endswith('.tif')])
+            self.l_list = sorted([data_dir + os.sep + 'labels' + os.sep + f for f in os.listdir(os.path.join(
+                data_dir, 'labels')) if f.lower().endswith('.tiff') or f.lower().endswith('.tif')])
         self.data = []
         if do_3D:  # and from_3D
             for d_file in tqdm(self.d_list, desc='Loading {} Dataset Data Volumes...'.format(split_name)):
@@ -55,8 +68,6 @@ class StandardizedTiffData(Dataset):
             else:
                 for d_file in tqdm(self.d_list, desc='Loading {} Dataset Data Images...'.format(split_name)):
                     self.data.append(imread(d_file).astype('float'))
-        self.l_list = sorted([data_dir + os.sep + 'labels' + os.sep + f for f in os.listdir(os.path.join(
-            data_dir, 'labels')) if f.lower().endswith('.tiff') or f.lower().endswith('.tif')])
         self.labels = []
         if do_3D:  # and from_3D
             for l_file in tqdm(self.l_list, desc='Loading {} Dataset Labels...'.format(split_name)):
