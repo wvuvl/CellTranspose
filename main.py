@@ -11,7 +11,7 @@ import matplotlib.pyplot as plt
 import tifffile
 
 from transforms import Reformat, Normalize1stTo99th
-from loaddata import StandardizedTiffData
+from loaddata import CellPoseData
 from Cellpose_2D_PyTorch import UpdatedCellpose, SizeModel, class_loss, flow_loss, sas_class_loss
 from train_eval import train_network, adapt_network, eval_network
 from cellpose_src.metrics import average_precision
@@ -59,7 +59,7 @@ parser.add_argument('--calculate-ap', help='Whether to perform AP calculation at
 args = parser.parse_args()
 
 assert not os.path.exists(args.results_dir),\
-    'Results folder currently exists; please specify new location to save results.'
+    'Results folder {} currently exists; please specify new location to save results.'.format(args.results_dir)
 os.mkdir(args.results_dir)
 os.mkdir(os.path.join(args.results_dir, 'tiff_results'))
 assert not (args.train_only and args.eval_only), 'Cannot pass in "train-only" and "eval-only" arguments simultaneously.'
@@ -93,17 +93,17 @@ if args.pretrained_model is not None:
 
 if not args.eval_only:
     optimizer = SGD(model.parameters(), lr=args.learning_rate, momentum=args.momentum)
-    train_dataset = StandardizedTiffData('Training', args.train_dataset, do_3D=args.do_3D, from_3D=args.train_from_3D,
-                                         d_transform=data_transform, l_transform=label_transform)
+    train_dataset = CellPoseData('Training', args.train_dataset, do_3D=args.do_3D, from_3D=args.train_from_3D,
+                                 d_transform=data_transform, l_transform=label_transform)
     train_dl = DataLoader(train_dataset, batch_size=1, shuffle=True)
 
-    val_dataset = StandardizedTiffData('Validation', args.val_dataset, do_3D=args.do_3D, from_3D=args.val_from_3D,
-                                       d_transform=data_transform, l_transform=label_transform)
+    val_dataset = CellPoseData('Validation', args.val_dataset, do_3D=args.do_3D, from_3D=args.val_from_3D,
+                               d_transform=data_transform, l_transform=label_transform)
     val_dl = DataLoader(val_dataset, batch_size=1, shuffle=True)
 
     if args.do_adaptation:
-        target_dataset = StandardizedTiffData('Target', args.target_dataset, do_3D=args.do_3D, from_3D=args.target_from_3D,
-                                              d_transform=data_transform, l_transform=label_transform)
+        target_dataset = CellPoseData('Target', args.target_dataset, do_3D=args.do_3D, from_3D=args.target_from_3D,
+                                      d_transform=data_transform, l_transform=label_transform)
         target_dl = DataLoader(target_dataset, batch_size=1, shuffle=True)
         train_losses, val_losses = adapt_network(model, train_dl, target_dl, val_dl, sas_class_loss, class_loss, flow_loss,
                                                  median_diams, optimizer=optimizer, device=device, n_epochs=args.epochs,
@@ -125,9 +125,17 @@ if not args.eval_only:
     plt.savefig(os.path.join(args.results_dir, 'Training-Validation Losses'))
     plt.show()
 
+    with open(os.path.join(args.results_dir, 'settings.txt'), 'w') as txt:
+        txt.write('Adaptation: {}\n'.format(args.do_adaptation))
+        # if do_adaptation:
+        #     txt.write('Gamma: {}; Margin: {}'.format())
+        txt.write('Learning rate: {}; Momentum: {}\n'.format(args.learning_rate, args.momentum))
+        txt.write('Epochs: {}; Batch size: {}\n'.format(args.epochs, args.patches_per_batch))
+        txt.write('GPUs: {}'.format(num_workers))
+
 if not args.train_only:
-    test_dataset = StandardizedTiffData('Test', args.test_dataset, do_3D=args.do_3D, from_3D=args.test_from_3D,
-                                        d_transform=data_transform, l_transform=label_transform)
+    test_dataset = CellPoseData('Test', args.test_dataset, do_3D=args.do_3D, from_3D=args.test_from_3D,
+                                d_transform=data_transform, l_transform=label_transform)
 
     eval_dl = DataLoader(test_dataset, batch_size=1, shuffle=True)
 
@@ -140,14 +148,6 @@ if not args.train_only:
         with open(os.path.join(args.results_dir, label_list[i] + '_predicted_labels.pkl'), 'wb') as pl:
             pickle.dump(masks[i], pl)
         tifffile.imwrite(os.path.join(args.results_dir, 'tiff_results', label_list[i] + '.tif'), masks[i].astype('int32'))
-
-    with open(os.path.join(args.results_dir, 'settings.txt'), 'w') as txt:
-        txt.write('Adaptation: {}\n'.format(args.do_adaptation))
-        # if do_adaptation:
-        #     txt.write('Gamma: {}; Margin: {}'.format())
-        txt.write('Learning rate: {}; Momentum: {}\n'.format(args.learning_rate, args.momentum))
-        txt.write('Epochs: {}; Batch size: {}\n'.format(args.epochs, args.patches_per_batch))
-        txt.write('GPUs: {}'.format(num_workers))
 
     # AP Calculation
     if args.calculate_ap:

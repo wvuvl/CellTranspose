@@ -13,7 +13,7 @@ from tqdm import tqdm
 import matplotlib.pyplot as plt
 
 
-class StandardizedTiffData(Dataset):
+class CellPoseData(Dataset):
     """
     Dataset subclass for loading in any tiff data, where the dataset follows the following format:
         - /data

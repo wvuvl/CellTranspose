@@ -1,6 +1,6 @@
 import argparse
 import os
-from loaddata import StandardizedTiffData
+from loaddata import CellPoseData
 from transforms import Reformat, Normalize1stTo99th
 from Cellpose_2D_PyTorch import UpdatedCellpose, SizeModel
 import torch
@@ -32,6 +32,7 @@ gen_cellpose = UpdatedCellpose(channels=1, device=device)
 gen_cellpose = torch.nn.DataParallel(gen_cellpose)
 gen_cellpose.to(device)
 gen_cellpose.load_state_dict(torch.load(args.cellpose_pretrained))
+# gen_cellpose = torch.nn.DataParallel(gen_cellpose)
 gen_cellpose.eval()
 
 size_model = SizeModel().to(device)
@@ -46,8 +47,8 @@ data_transform = torchvision.transforms.Compose([
 label_transform = torchvision.transforms.Compose([
     Reformat()
 ])
-train_dataset = StandardizedTiffData('Training', args.train_dataset,
-                                     do_3D=False, from_3D=False, d_transform=data_transform, l_transform=label_transform)
+train_dataset = CellPoseData('Training', args.train_dataset,
+                             do_3D=False, from_3D=False, d_transform=data_transform, l_transform=label_transform)
 train_dl = torch.utils.data.DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True)  # num_workers=num_workers
 
 # Training network
