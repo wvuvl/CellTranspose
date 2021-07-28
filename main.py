@@ -19,6 +19,7 @@ from cellpose_src.metrics import average_precision
 parser = argparse.ArgumentParser()
 parser.add_argument('--learning-rate', type=float)
 parser.add_argument('--momentum', type=float)
+parser.add_argument('--batch-size', type=int)
 parser.add_argument('--epochs', type=int)
 parser.add_argument('--patches-per-batch', type=int,
                     help='Number of patches to pass into GPU at once - effectively batch size.')
@@ -51,6 +52,8 @@ parser.add_argument('--target-from-3D', help='Whether the input target data is 3
 parser.add_argument('--cellpose-model',
                     help='Location of the generalized cellpose model to use for diameter estimation.')
 parser.add_argument('--size-model', help='Location of the generalized size model to use for diameter estimation.')
+parser.add_argument('--resize-from-labels', help='Whether to resize validation/test data from labels. Default is to '
+                                                 'use prediction for resizing.', action='store_true', default=False)
 parser.add_argument('--refine-prediction', help='Whether or not to apply refined diameter prediction with diameters of '
                                                 'generalized Cellpose model predictions (better accuracy,'
                                                 'slower evaluation).', action='store_true', default=False)
@@ -93,18 +96,18 @@ if args.pretrained_model is not None:
 
 if not args.eval_only:
     optimizer = SGD(model.parameters(), lr=args.learning_rate, momentum=args.momentum)
-    train_dataset = CellPoseData('Training', args.train_dataset, do_3D=args.do_3D, from_3D=args.train_from_3D,
-                                 d_transform=data_transform, l_transform=label_transform)
-    train_dl = DataLoader(train_dataset, batch_size=1, shuffle=True)
+    train_dataset = CellPoseData('Training', args.train_dataset, default_meds=median_diams,
+                                 do_3D=args.do_3D, from_3D=args.train_from_3D)
+    train_dl = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True)
 
-    val_dataset = CellPoseData('Validation', args.val_dataset, do_3D=args.do_3D, from_3D=args.val_from_3D,
-                               d_transform=data_transform, l_transform=label_transform)
+    val_dataset = CellPoseData('Validation', args.val_dataset, default_meds=median_diams, evaluate=True,
+                               do_3D=args.do_3D, from_3D=args.val_from_3D)
     val_dl = DataLoader(val_dataset, batch_size=1, shuffle=True)
 
     if args.do_adaptation:
-        target_dataset = CellPoseData('Target', args.target_dataset, do_3D=args.do_3D, from_3D=args.target_from_3D,
-                                      d_transform=data_transform, l_transform=label_transform)
-        target_dl = DataLoader(target_dataset, batch_size=1, shuffle=True)
+        target_dataset = CellPoseData('Target', args.target_dataset, default_meds=median_diams,
+                                      do_3D=args.do_3D, from_3D=args.target_from_3D)
+        target_dl = DataLoader(target_dataset, batch_size=args.batch_size, shuffle=True)
         train_losses, val_losses = adapt_network(model, train_dl, target_dl, val_dl, sas_class_loss, class_loss, flow_loss,
                                                  median_diams, optimizer=optimizer, device=device, n_epochs=args.epochs,
                                                  patch_per_batch=args.patches_per_batch)
@@ -134,8 +137,8 @@ if not args.eval_only:
         txt.write('GPUs: {}'.format(num_workers))
 
 if not args.train_only:
-    test_dataset = CellPoseData('Test', args.test_dataset, do_3D=args.do_3D, from_3D=args.test_from_3D,
-                                d_transform=data_transform, l_transform=label_transform)
+    test_dataset = CellPoseData('Test', args.test_dataset, default_meds=median_diams, evaluate=True,
+                                do_3D=args.do_3D, from_3D=args.test_from_3D)
 
     eval_dl = DataLoader(test_dataset, batch_size=1, shuffle=True)
 

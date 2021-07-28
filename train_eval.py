@@ -1,5 +1,5 @@
 from torch.utils.data import DataLoader
-from torch import nn, tensor, cat, no_grad, as_tensor
+from torch import nn, tensor, cat, no_grad, as_tensor, unsqueeze
 from time import time
 from tqdm import tqdm
 import cv2
@@ -31,20 +31,18 @@ def train_network(model, train_dl, val_dl, class_loss, flow_loss,
     for e in range(1, n_epochs + 1):
         train_epoch_losses = []
         model.train()
-        for (sample_data, sample_labels, _) in tqdm(train_dl, desc='Training - Epoch {}/{}'.format(e, n_epochs)):
-            sample_data, sample_labels = preprocess_samples(sample_data, sample_labels, default_meds)
-            # Passes in only a subset of patches (effectively batch size) to GPU at a time
-            for patch_ind in range(0, len(sample_data), patch_per_batch):
-                sample_patch_data = sample_data[patch_ind:patch_ind + patch_per_batch].float().to(device)
-                sample_patch_labels = sample_labels[patch_ind:patch_ind + patch_per_batch].float().to(device)
-                optimizer.zero_grad()
-                output = model(sample_patch_data)
-                grad_loss = flow_loss(output, sample_patch_labels)
-                mask_loss = class_loss(output, sample_patch_labels)
-                train_loss = grad_loss + mask_loss
-                train_epoch_losses.append(train_loss.item())
-                train_loss.backward()
-                optimizer.step()
+        train_dl.dataset.reprocess_on_epoch(default_meds)
+        for (sample_data, sample_labels) in tqdm(train_dl, desc='Training - Epoch {}/{}'.format(e, n_epochs)):
+            sample_data = sample_data.to(device)
+            sample_labels = sample_labels.to(device)
+            optimizer.zero_grad()
+            output = model(sample_data)
+            grad_loss = flow_loss(output, sample_labels)
+            mask_loss = class_loss(output, sample_labels)
+            train_loss = grad_loss + mask_loss
+            train_epoch_losses.append(train_loss.item())
+            train_loss.backward()
+            optimizer.step()
 
         train_losses.append(mean(train_epoch_losses))
         val_losses.append(validate_network(model, val_dl, flow_loss, class_loss, device, patch_per_batch, default_meds))
@@ -59,57 +57,56 @@ def adapt_network(model: nn.Module, source_dl, target_dl, val_dl, sas_class_loss
     val_losses = []
     print('Beginning domain adaptation.\n')
 
-    # Load in target data initially (Note: this assumes small target data size)
-    target_data = tensor([])
-    target_labels = tensor([])
-    for (target_sample_data, target_sample_labels, _) in target_dl:
-        target_sample_data, target_sample_labels = preprocess_samples(target_sample_data, target_sample_labels, default_meds)
-        target_data = cat((target_data, target_sample_data))
-        target_labels = cat((target_labels, target_sample_labels))
-    batched_target_data = target_data
-    batched_target_labels = target_labels
-    for _ in range(1, math.ceil(patch_per_batch/len(target_data))):
-        batched_target_data = cat((batched_target_data, target_data))
-        batched_target_labels = cat((batched_target_labels, target_labels))
-
     # Assume # of target samples << # of source samples
     start_train = time()
     for e in range(1, n_epochs + 1):
         model.train()
         train_epoch_losses = []
-        for (source_sample_data, source_sample_labels, _) in tqdm(source_dl, desc='Training - Epoch {}/{}'.format(e, n_epochs)):
+        reprocess_source_time = time()
+        source_dl.dataset.reprocess_on_epoch(default_meds)
+        print('Time to reprocess source data: {}'.format(time() - reprocess_source_time))
+
+        reprocess_target_time = time()
+        target_dl.dataset.reprocess_on_epoch(default_meds)
+        target_data = target_dl.dataset.data_samples
+        target_labels = target_dl.dataset.label_samples
+        batched_target_data = target_data
+        batched_target_labels = target_labels
+        for _ in range(1, math.ceil(len(source_dl.dataset) / len(target_data))):
+            batched_target_data = cat((batched_target_data, target_data))
+            batched_target_labels = cat((batched_target_labels, target_labels))
+
+        # Shuffle the target data
+        t_len = len(source_dl.dataset)
+        shuffled_inds = np.array(range(t_len))
+        np.random.shuffle(shuffled_inds)
+        batched_target_data = batched_target_data[:t_len]
+        batched_target_data[np.array(range(t_len))] = batched_target_data[shuffled_inds]
+        batched_target_data = batched_target_data.float()
+        batched_target_labels = batched_target_labels[:t_len]
+        batched_target_labels[np.array(range(t_len))] = batched_target_labels[shuffled_inds]
+        batched_target_labels = batched_target_labels.float()
+        print('Time to reprocess target data: {}'.format(time() - reprocess_target_time))
+
+        for i, (source_sample_data, source_sample_labels) in enumerate(tqdm(source_dl, desc='Training - Epoch {}/{}'.format(e, n_epochs))):
             optimizer.zero_grad()
-            source_sample_data, source_sample_labels = preprocess_samples(source_sample_data, source_sample_labels, default_meds)
 
-            # Passes in only a subset of patches (effectively batch size) to GPU at a time
-            for patch_ind in range(0, len(source_sample_data), patch_per_batch):
-                source_sample_patch_data = source_sample_data[patch_ind:patch_ind + patch_per_batch].float().to(device)
-                source_sample_patch_labels = source_sample_labels[patch_ind:patch_ind + patch_per_batch].float().to(device)
-                source_output = model(source_sample_patch_data)
+            source_sample_data = source_sample_data.to(device)
+            source_sample_labels = source_sample_labels.to(device)
+            source_output = model(source_sample_data)
 
-                # Shuffle the target data
-                t_len = len(source_sample_patch_data)
-                target_sample_patch_data = batched_target_data
-                target_sample_patch_labels = batched_target_labels
-                shuffled_inds = np.array(range(t_len))
-                np.random.shuffle(shuffled_inds)
-                target_sample_patch_data = target_sample_patch_data[:t_len]
-                target_sample_patch_data[np.array(range(t_len))] = target_sample_patch_data[shuffled_inds]
-                target_sample_patch_data = target_sample_patch_data.float().to(device)
-                target_sample_patch_labels = target_sample_patch_labels[:t_len]
-                target_sample_patch_labels[np.array(range(t_len))] = target_sample_patch_labels[shuffled_inds]
-                target_sample_patch_labels = target_sample_patch_labels.float().to(device)
+            target_sample_data = batched_target_data[i*target_dl.batch_size:(i+1)*target_dl.batch_size].to(device)
+            target_sample_labels = batched_target_labels[i*target_dl.batch_size:(i+1)*target_dl.batch_size].to(device)
+            target_output = model(target_sample_data)
+            source_grad_loss = flow_loss(source_output, source_sample_labels)
+            adaptation_class_loss = sas_class_loss(source_output[:, 0], source_sample_labels[:, 0],
+                                                   target_output[:, 0], target_sample_labels[:, 0],
+                                                   margin=1, gamma=0.1)
 
-                target_output = model(target_sample_patch_data)
-                source_grad_loss = flow_loss(source_output, source_sample_patch_labels)
-                adaptation_class_loss = sas_class_loss(source_output[:, 0], source_sample_patch_labels[:, 0],
-                                                       target_output[:, 0], target_sample_patch_labels[:, 0],
-                                                       margin=1, gamma=0.1)
-
-                train_loss = source_grad_loss + adaptation_class_loss
-                train_epoch_losses.append(train_loss.item())
-                train_loss.backward()
-                optimizer.step()
+            train_loss = source_grad_loss + adaptation_class_loss
+            train_epoch_losses.append(train_loss.item())
+            train_loss.backward()
+            optimizer.step()
 
         train_losses.append(mean(train_epoch_losses))
         val_losses.append(validate_network(model, val_dl, flow_loss, class_loss, device, patch_per_batch, default_meds))
@@ -123,8 +120,8 @@ def validate_network(model, data_loader, flow_loss, class_loss, device, patch_pe
     val_epoch_losses = []
     with no_grad():
         for (val_sample_data, val_sample_labels, _) in tqdm(data_loader, desc='Performing validation'):
-            val_sample_data, val_sample_labels = resize_from_labels(val_sample_data, val_sample_labels, default_meds)
-            val_sample_data, val_sample_labels = generate_patches(val_sample_data, val_sample_labels, eval=True)
+            val_sample_data, val_sample_labels = resize_from_labels(val_sample_data[0], val_sample_labels[0], default_meds)  # MUST BE FIXED IF BATCH SIZE > 1 IS USED
+            val_sample_data, val_sample_labels = generate_patches(unsqueeze(val_sample_data, 0), val_sample_labels, eval=True)
             val_sample_labels = as_tensor(
                 [LabelsToFlows()(val_sample_labels[i].numpy()) for i in range(len(val_sample_labels))])
             for patch_ind in range(0, len(val_sample_data), patch_per_batch):

@@ -1,6 +1,6 @@
 import torchvision
 import math
-from torch import tensor, mean, unique, zeros, ones, empty, cat, squeeze, unsqueeze
+from torch import tensor, mean, unique, zeros, ones, empty, cat, squeeze, unsqueeze, as_tensor
 import cv2
 import numpy as np
 import copy
@@ -99,8 +99,6 @@ class FollowFlows(object):
 
 
 def resize_from_labels(X, y, default_med):
-    X = squeeze(X, dim=0)
-    y = squeeze(y, dim=0)
     # calculate diameters using only full cells in image - remove cut off cells during median diameter calculation
     y_cf = copy.deepcopy(squeeze(y, dim=0))
     cc = sorted(np.unique(np.concatenate((np.unique(y_cf[0]), np.unique(y_cf[:, 0]),
@@ -115,7 +113,8 @@ def resize_from_labels(X, y, default_med):
     y = np.transpose(y.numpy(), (1, 2, 0))
     y = cv2.resize(y, (int(y.shape[1] * rescale_x), int(y.shape[0] * rescale_y)),
                    interpolation=cv2.INTER_NEAREST)[np.newaxis, :]
-    return unsqueeze(tensor(X), 0), tensor(y)
+    # return unsqueeze(tensor(X), 0), tensor(y)
+    return tensor(X), tensor(y)
 
 
 def predict_and_resize(X, y, default_med, gc_model, sz_model):
