@@ -1,7 +1,6 @@
 import argparse
-import torchvision
 from torch.utils.data import DataLoader
-from torch import nn, device, load, save
+from torch import nn, device, load, save, squeeze
 from torch.cuda import is_available, device_count, empty_cache
 from torch.optim import SGD
 import os
@@ -10,7 +9,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import tifffile
 
-from transforms import Reformat, Normalize1stTo99th
+from transforms import FollowFlows, Resize
 from loaddata import CellPoseData
 from Cellpose_2D_PyTorch import UpdatedCellpose, SizeModel, class_loss, flow_loss, sas_class_loss
 from train_eval import train_network, adapt_network, eval_network
@@ -70,6 +69,8 @@ num_workers = device_count()
 device = device('cuda' if is_available() else 'cpu')
 empty_cache()
 
+ff = FollowFlows(niter=100, interp=True, use_gpu=True, cellprob_threshold=0.0, flow_threshold=1.0)
+
 # Default median diameter to resize cells to
 median_diams = (24, 24)
 gen_cellpose = UpdatedCellpose(channels=1, device=device)
@@ -80,14 +81,6 @@ gen_cellpose.load_state_dict(load(args.cellpose_model))
 gen_size_model = SizeModel().to(device)
 gen_size_model.load_state_dict(load(args.size_model))
 
-data_transform = torchvision.transforms.Compose([
-    Reformat(do_3D=args.do_3D),
-    Normalize1stTo99th()
-])
-label_transform = torchvision.transforms.Compose([
-    Reformat(do_3D=args.do_3D)
-])
-
 model = UpdatedCellpose(channels=1, device=device)
 model = nn.DataParallel(model)
 model.to(device)
@@ -96,17 +89,23 @@ if args.pretrained_model is not None:
 
 if not args.eval_only:
     optimizer = SGD(model.parameters(), lr=args.learning_rate, momentum=args.momentum)
-    train_dataset = CellPoseData('Training', args.train_dataset, default_meds=median_diams,
-                                 do_3D=args.do_3D, from_3D=args.train_from_3D)
+    train_dataset = CellPoseData('Training', args.train_dataset, do_3D=args.do_3D, from_3D=args.train_from_3D,
+                                 resize=Resize(median_diams, use_labels=True,
+                                               patch_per_batch=args.patches_per_batch))
     train_dl = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True)
 
-    val_dataset = CellPoseData('Validation', args.val_dataset, default_meds=median_diams, evaluate=True,
-                               do_3D=args.do_3D, from_3D=args.val_from_3D)
-    val_dl = DataLoader(val_dataset, batch_size=1, shuffle=True)
+    val_dataset = CellPoseData('Validation', args.val_dataset, evaluate=False, do_3D=args.do_3D,
+                               from_3D=args.val_from_3D,
+                               resize=Resize(median_diams, use_labels=True, refine=True, gc_model=gen_cellpose,
+                                             sz_model=gen_size_model, device=device, follow_flows_function=ff,
+                                             patch_per_batch=args.patches_per_batch)
+                               )
+    val_dl = DataLoader(val_dataset, batch_size=args.batch_size, shuffle=False)
 
     if args.do_adaptation:
-        target_dataset = CellPoseData('Target', args.target_dataset, default_meds=median_diams,
-                                      do_3D=args.do_3D, from_3D=args.target_from_3D)
+        target_dataset = CellPoseData('Target', args.target_dataset, do_3D=args.do_3D, from_3D=args.target_from_3D,
+                                      resize=Resize(median_diams, use_labels=True,
+                                                    patch_per_batch=args.patches_per_batch))
         target_dl = DataLoader(target_dataset, batch_size=args.batch_size, shuffle=True)
         train_losses, val_losses = adapt_network(model, train_dl, target_dl, val_dl, sas_class_loss, class_loss, flow_loss,
                                                  median_diams, optimizer=optimizer, device=device, n_epochs=args.epochs,
@@ -137,12 +136,14 @@ if not args.eval_only:
         txt.write('GPUs: {}'.format(num_workers))
 
 if not args.train_only:
-    test_dataset = CellPoseData('Test', args.test_dataset, default_meds=median_diams, evaluate=True,
-                                do_3D=args.do_3D, from_3D=args.test_from_3D)
+    test_dataset = CellPoseData('Test', args.test_dataset, evaluate=True, do_3D=args.do_3D, from_3D=args.test_from_3D,
+                                resize=Resize(median_diams, use_labels=True, refine=True, gc_model=gen_cellpose,
+                                              sz_model=gen_size_model, device=device,
+                                              patch_per_batch=args.patches_per_batch, follow_flows_function=ff))
 
-    eval_dl = DataLoader(test_dataset, batch_size=1, shuffle=True)
+    eval_dl = DataLoader(test_dataset, batch_size=1, shuffle=False)
 
-    masks, labels, label_list = eval_network(model, eval_dl, device, patch_per_batch=args.patches_per_batch,
+    masks, label_list = eval_network(model, eval_dl, device, patch_per_batch=args.patches_per_batch,
                                              default_meds=median_diams, gc_model=gen_cellpose, sz_model=gen_size_model,
                                              refine=args.refine_prediction)
 
@@ -154,6 +155,20 @@ if not args.train_only:
 
     # AP Calculation
     if args.calculate_ap:
+
+        labels = []
+        # Temporary - TODO: solve this in next update
+        from transforms import Reformat
+        from torch import as_tensor
+        from tifffile import imread
+        reformat = Reformat()
+        # for label in label_list:
+        for l in test_dataset.l_list:
+            label = as_tensor(imread(l).astype('int16'))
+            label = squeeze(reformat(label), dim=0).numpy()
+            labels.append(label)
+
+        #TODO: Recover label files from label_list
         tau = np.arange(0.01, 1.01, 0.01)
         ap_info = average_precision(labels, masks, threshold=tau)
         ap_per_im = ap_info[0]

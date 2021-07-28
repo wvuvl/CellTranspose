@@ -1,5 +1,5 @@
 from torch.utils.data import DataLoader
-from torch import nn, tensor, cat, no_grad, as_tensor, unsqueeze
+from torch import nn, tensor, cat, no_grad, as_tensor, squeeze
 from time import time
 from tqdm import tqdm
 import cv2
@@ -7,19 +7,9 @@ import numpy as np
 from statistics import mean
 import math
 from misc_utils import elapsed_time
-from transforms import LabelsToFlows, FollowFlows, resize_from_labels, predict_and_resize, random_horizontal_flip,\
-    random_rotate, generate_patches, recombine_patches, refined_predict_and_resize
+from transforms import LabelsToFlows, FollowFlows, generate_patches, recombine_patches
 
 import matplotlib.pyplot as plt
-
-
-def preprocess_samples(data, labels, default_meds):
-    data, labels = resize_from_labels(data, labels, default_meds)
-    data, labels = random_horizontal_flip(data, labels)
-    data, labels = random_rotate(data, labels)
-    labels = as_tensor([LabelsToFlows()(labels[i].numpy()) for i in range(len(labels))])
-    data, labels = generate_patches(data, labels)
-    return data, labels
 
 
 def train_network(model, train_dl, val_dl, class_loss, flow_loss,
@@ -118,20 +108,17 @@ def adapt_network(model: nn.Module, source_dl, target_dl, val_dl, sas_class_loss
 def validate_network(model, data_loader, flow_loss, class_loss, device, patch_per_batch, default_meds):
     model.eval()
     val_epoch_losses = []
+    data_loader.dataset.pre_generate_patches()
     with no_grad():
-        for (val_sample_data, val_sample_labels, _) in tqdm(data_loader, desc='Performing validation'):
-            val_sample_data, val_sample_labels = resize_from_labels(val_sample_data[0], val_sample_labels[0], default_meds)  # MUST BE FIXED IF BATCH SIZE > 1 IS USED
-            val_sample_data, val_sample_labels = generate_patches(unsqueeze(val_sample_data, 0), val_sample_labels, eval=True)
+        for (val_sample_data, val_sample_labels) in tqdm(data_loader, desc='Performing validation'):
+            val_sample_data = val_sample_data.to(device)
             val_sample_labels = as_tensor(
-                [LabelsToFlows()(val_sample_labels[i].numpy()) for i in range(len(val_sample_labels))])
-            for patch_ind in range(0, len(val_sample_data), patch_per_batch):
-                val_sample_patch_data = val_sample_data[patch_ind:patch_ind + patch_per_batch].float().to(device)
-                val_sample_patch_labels = val_sample_labels[patch_ind:patch_ind + patch_per_batch].float().to(device)
-                output = model(val_sample_patch_data)
-                grad_loss = flow_loss(output, val_sample_patch_labels).item()
-                mask_loss = class_loss(output, val_sample_patch_labels).item()
-                val_loss = grad_loss + mask_loss
-                val_epoch_losses.append(val_loss)
+                [LabelsToFlows()(val_sample_labels[i].numpy()) for i in range(len(val_sample_labels))]).to(device)
+            output = model(val_sample_data)
+            grad_loss = flow_loss(output, val_sample_labels).item()
+            mask_loss = class_loss(output, val_sample_labels).item()
+            val_loss = grad_loss + mask_loss
+            val_epoch_losses.append(val_loss)
     return mean(val_epoch_losses)
 
 
@@ -140,22 +127,14 @@ def eval_network(model: nn.Module, data_loader: DataLoader, device, patch_per_ba
 
     model.eval()
     start_eval = time()
+    print('Beginning evaluation.')
     ff = FollowFlows(niter=100, interp=True, use_gpu=True, cellprob_threshold=0.0, flow_threshold=1.0)
     with no_grad():
         masks = []
-        labels = []
         label_list = []
-        for (sample_data, sample_labels, label_files) in data_loader:
-            original_dims = (sample_data.shape[2], sample_data.shape[3])
-            sample_data, resized_sample_labels = predict_and_resize(sample_data.float().to(device),
-                                                                    sample_labels.to(device), default_meds, gc_model,
-                                                                    sz_model)
-            if refine:
-                sample_data, resized_sample_labels = refined_predict_and_resize(sample_data, resized_sample_labels,
-                                                                                default_meds, gc_model, device,
-                                                                                patch_per_batch, ff)
+        for (sample_data, sample_labels, label_files, original_dims) in data_loader:
             resized_dims = (sample_data.shape[2], sample_data.shape[3])
-            sample_data, _ = generate_patches(sample_data, resized_sample_labels, eval=True)
+            sample_data, _ = generate_patches(sample_data, squeeze(sample_labels, dim=0), eval=True)
             predictions = tensor([]).to(device)
 
             for patch_ind in range(0, len(sample_data), patch_per_batch):
@@ -168,9 +147,8 @@ def eval_network(model: nn.Module, data_loader: DataLoader, device, patch_per_ba
             sample_mask = np.transpose(sample_mask.numpy(), (1, 2, 0))
             sample_mask = cv2.resize(sample_mask, (original_dims[1], original_dims[0]), interpolation=cv2.INTER_NEAREST)
             masks.append(sample_mask)
-            labels.append(sample_labels.numpy().squeeze(axis=(0, 1)))
             for i in range(len(label_files)):
                 label_list.append(label_files[i][label_files[i].rfind('/')+1: label_files[i].rfind('.')])
 
     print('Total time to evaluate: {}'.format(elapsed_time(time() - start_eval)))
-    return masks, labels, label_list
+    return masks, label_list

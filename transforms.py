@@ -1,6 +1,6 @@
 import torchvision
 import math
-from torch import tensor, mean, unique, zeros, ones, empty, cat, squeeze, unsqueeze, as_tensor
+from torch import tensor, mean, unique, zeros, ones, empty, cat, squeeze, unsqueeze, as_tensor, no_grad
 import cv2
 import numpy as np
 import copy
@@ -98,6 +98,33 @@ class FollowFlows(object):
         return masks
 
 
+class Resize(object):
+    def __init__(self, default_med, use_labels=False, refine=True, gc_model=None, sz_model=None,
+                 device='cpu', patch_per_batch=None, follow_flows_function=None):
+        self.use_labels = use_labels
+        self.default_med = default_med
+        if not self.use_labels:
+            self.gc_model = gc_model
+            self.sz_model = sz_model
+            self.refine = refine
+            if refine:
+                self.device = device
+                self.patch_per_batch = patch_per_batch
+                self.follow_flows_function = follow_flows_function
+
+    def __call__(self, X, y):
+        original_dims = X.shape[1], X.shape[2]  # CHECK HERE DEBUG
+        if self.use_labels:
+            X, y = resize_from_labels(X, y, self.default_med)
+            return X, y, original_dims
+        else:
+            X, y = predict_and_resize(X, y, self.default_med, self.gc_model, self.sz_model)
+            if self.refine:
+                X, y = refined_predict_and_resize(X, y, self.default_med, self.gc_model, self.device,
+                                                  self.patch_per_batch, self.follow_flows_function)
+            return X, y, original_dims
+
+
 def resize_from_labels(X, y, default_med):
     # calculate diameters using only full cells in image - remove cut off cells during median diameter calculation
     y_cf = copy.deepcopy(squeeze(y, dim=0))
@@ -113,15 +140,15 @@ def resize_from_labels(X, y, default_med):
     y = np.transpose(y.numpy(), (1, 2, 0))
     y = cv2.resize(y, (int(y.shape[1] * rescale_x), int(y.shape[0] * rescale_y)),
                    interpolation=cv2.INTER_NEAREST)[np.newaxis, :]
-    # return unsqueeze(tensor(X), 0), tensor(y)
     return tensor(X), tensor(y)
 
 
 def predict_and_resize(X, y, default_med, gc_model, sz_model):
-    style = gc_model(X, style_only=True)
-    med = sz_model(style)
+    X = unsqueeze(X, dim=0).float()
+    with no_grad():
+        style = gc_model(X, style_only=True)
+        med = sz_model(style)
     X = squeeze(X, dim=0)
-    y = squeeze(y, dim=0)
     rescale_x, rescale_y = default_med[0] / med, default_med[1] / med
     X = np.transpose(X.cpu().numpy(), (1, 2, 0))
     X = cv2.resize(X, (int(X.shape[1] * rescale_x), int(X.shape[0] * rescale_y)),
@@ -129,18 +156,20 @@ def predict_and_resize(X, y, default_med, gc_model, sz_model):
     y = np.transpose(y.cpu().numpy(), (1, 2, 0))
     y = cv2.resize(y, (int(y.shape[1] * rescale_x), int(y.shape[0] * rescale_y)),
                    interpolation=cv2.INTER_NEAREST)[np.newaxis, :]
-    return unsqueeze(tensor(X), 0), tensor(y)
+    return tensor(X), tensor(y)
 
 
 # produce output masks using gc_model, then calculate mean diameter
 def refined_predict_and_resize(X, y, default_med, gc_model, device, patch_per_batch, follow_flows_function):
+        X = unsqueeze(X, dim=0)
         im_dims = (X.shape[2], X.shape[3])
         sample_data, _ = generate_patches(X, y, eval=True)
-        predictions = tensor([]).to(device)
-        for patch_ind in range(0, len(sample_data), patch_per_batch):
-            sample_patch_data = sample_data[patch_ind:patch_ind + patch_per_batch].float().to(device)
-            p = gc_model(sample_patch_data)
-            predictions = cat((predictions, p))
+        with no_grad():
+            predictions = tensor([]).to(device)
+            for patch_ind in range(0, len(sample_data), patch_per_batch):
+                sample_patch_data = sample_data[patch_ind:patch_ind + patch_per_batch].float().to(device)
+                p = gc_model(sample_patch_data)
+                predictions = cat((predictions, p))
         predictions = recombine_patches(predictions, im_dims)
         sample_mask = follow_flows_function(predictions)
         med, cts = diameters(sample_mask.numpy())
@@ -152,7 +181,7 @@ def refined_predict_and_resize(X, y, default_med, gc_model, device, patch_per_ba
         y = np.transpose(y.cpu().numpy(), (1, 2, 0))
         y = cv2.resize(y, (int(y.shape[1] * rescale_x), int(y.shape[0] * rescale_y)),
                        interpolation=cv2.INTER_NEAREST)[np.newaxis, :]
-        return unsqueeze(tensor(X), 0), tensor(y)
+        return tensor(X), tensor(y)
 
 
 def random_horizontal_flip(X, y):
@@ -193,6 +222,7 @@ def generate_patches(data, label=None, eval=False, patch=(64, 64), min_overlap=(
                 patch_label[(b * num_y_patches * num_x_patches) + (num_y_patches * i + j)] = l_patch
 
     return patch_data, patch_label
+
 
 """
 Creates recombined images after averaging together.
