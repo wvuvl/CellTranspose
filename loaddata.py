@@ -72,7 +72,8 @@ class CellPoseData(Dataset):
                 new_data = normalize(new_data)
                 new_label = as_tensor(list(imread(l_file)).astype('int16'))
                 new_label = reformat(new_label)
-                new_data, new_label, original_dim = resize(new_data, new_label)
+                if resize is not None:
+                    new_data, new_label, original_dim = resize(new_data, new_label)
                 self.data.extend(new_data)
                 self.labels.extend(new_label)
                 self.original_dims.append(original_dim)
@@ -85,10 +86,11 @@ class CellPoseData(Dataset):
                     new_data = normalize(new_data)
                     raw_vol = imread(l_file).astype('int16')
                     new_label = reformat(as_tensor(raw_vol[len(raw_vol) // 2]))
-                    new_data, new_label, original_dim = resize(new_data, new_label)
+                    if resize is not None:
+                        new_data, new_label, original_dim = resize(new_data, new_label)
+                        self.original_dims.append(original_dim)
                     self.data.append(new_data)
                     self.labels.append(new_label)
-                    self.original_dims.append(original_dim)
             else:
                 for d_file, l_file in tzip(self.d_list, self.l_list, desc='Loading {} Dataset...'.format(split_name)):
                     new_data = as_tensor(imread(d_file).astype('float'))
@@ -96,10 +98,11 @@ class CellPoseData(Dataset):
                     new_data = normalize(new_data)
                     new_label = as_tensor(imread(l_file).astype('int16'))
                     new_label = reformat(new_label)
-                    new_data, new_label, original_dim = resize(new_data, new_label)
+                    if resize is not None:
+                        new_data, new_label, original_dim = resize(new_data, new_label)
+                        self.original_dims.append(original_dim)
                     self.data.append(new_data)
                     self.labels.append(new_label)
-                    self.original_dims.append(original_dim)
         self.data_samples = self.data
         self.label_samples = self.labels
 

@@ -40,8 +40,12 @@ parser.add_argument('--train-from-3D', help='Whether the input training source d
 parser.add_argument('--val-dataset', help='The directory(s) containing data to be used for validation.', nargs='+')
 parser.add_argument('--val-from-3D', help='Whether the input validation data is 3D: assumes 2D if set to False.',
                     action='store_true', default=False)
+parser.add_argument('--val-use-labels', help='Whether to use labels for resizing validation data.',
+                    action='store_true', default=False)
 parser.add_argument('--test-dataset', help='The directory(s) containing data to be used for testing.', nargs='+')
 parser.add_argument('--test-from-3D', help='Whether the input test data is 3D: assumes 2D if set to False.',
+                    action='store_true', default=False)
+parser.add_argument('--test-use-labels', help='Whether to use labels for resizing test data.',
                     action='store_true', default=False)
 parser.add_argument('--target-dataset', help='The directory containing target data to be used for domain adaptation.'
                                              'Note: if do-adaptation is set to False, this parameter will be ignored.',
@@ -58,6 +62,7 @@ parser.add_argument('--refine-prediction', help='Whether or not to apply refined
                                                 'slower evaluation).', action='store_true', default=False)
 parser.add_argument('--calculate-ap', help='Whether to perform AP calculation at the end of evaluation.',
                     action='store_true', default=False)
+# TODO: Add new command line args for using labels - validation and test
 args = parser.parse_args()
 
 assert not os.path.exists(args.results_dir),\
@@ -78,7 +83,7 @@ gen_cellpose = nn.DataParallel(gen_cellpose)
 gen_cellpose.to(device)
 gen_cellpose.load_state_dict(load(args.cellpose_model))
 
-gen_size_model = SizeModel().to(device)
+gen_size_model = SizeModel().to('cuda:0')
 gen_size_model.load_state_dict(load(args.size_model))
 
 model = UpdatedCellpose(channels=1, device=device)
@@ -96,7 +101,7 @@ if not args.eval_only:
 
     val_dataset = CellPoseData('Validation', args.val_dataset, evaluate=False, do_3D=args.do_3D,
                                from_3D=args.val_from_3D,
-                               resize=Resize(median_diams, use_labels=True, refine=True, gc_model=gen_cellpose,
+                               resize=Resize(median_diams, use_labels=args.val_use_labels, refine=True, gc_model=gen_cellpose,
                                              sz_model=gen_size_model, device=device, follow_flows_function=ff,
                                              patch_per_batch=args.patches_per_batch)
                                )
@@ -128,6 +133,7 @@ if not args.eval_only:
     plt.show()
 
     with open(os.path.join(args.results_dir, 'settings.txt'), 'w') as txt:
+        # TODO: Update this with new command line args
         txt.write('Adaptation: {}\n'.format(args.do_adaptation))
         # if do_adaptation:
         #     txt.write('Gamma: {}; Margin: {}'.format())
@@ -137,7 +143,7 @@ if not args.eval_only:
 
 if not args.train_only:
     test_dataset = CellPoseData('Test', args.test_dataset, evaluate=True, do_3D=args.do_3D, from_3D=args.test_from_3D,
-                                resize=Resize(median_diams, use_labels=True, refine=True, gc_model=gen_cellpose,
+                                resize=Resize(median_diams, use_labels=args.test_use_labels, refine=True, gc_model=gen_cellpose,
                                               sz_model=gen_size_model, device=device,
                                               patch_per_batch=args.patches_per_batch, follow_flows_function=ff))
 

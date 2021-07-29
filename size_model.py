@@ -19,6 +19,10 @@ parser.add_argument('--learning_rate', type=float)
 parser.add_argument('--momentum', type=float)
 parser.add_argument('--batch-size', type=int)
 parser.add_argument('--epochs', type=int)
+parser.add_argument('--do-3D', help='Whether or not to use 3D-Cellpose (Must use 3D volumes).',
+                    action='store_true', default=False)
+parser.add_argument('--from-3D', help='Whether the input training source data is 3D: assumes 2D if set to False.',
+                    action='store_true', default=False)
 parser.add_argument('--cellpose-pretrained', help='Location of the generalized cellpose model to use for diameter estimation.')
 parser.add_argument('--train-dataset', help='The directory(s) containing data to be used for training.', nargs='+')
 args = parser.parse_args()
@@ -47,8 +51,7 @@ data_transform = torchvision.transforms.Compose([
 label_transform = torchvision.transforms.Compose([
     Reformat()
 ])
-train_dataset = CellPoseData('Training', args.train_dataset,
-                             do_3D=False, from_3D=False, d_transform=data_transform, l_transform=label_transform)
+train_dataset = CellPoseData('Training', args.train_dataset, do_3D=args.do_3D, from_3D=args.from_3D)
 train_dl = torch.utils.data.DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True)  # num_workers=num_workers
 
 # Training network
@@ -58,7 +61,7 @@ for e in range(1, args.epochs + 1):
     optimizer.zero_grad()
     size_model.train()
     start_train = time()
-    for (batch_data, batch_labels, _) in tqdm(train_dl, desc='Epoch {}/{}'.format(e, args.epochs)):
+    for (batch_data, batch_labels) in tqdm(train_dl, desc='Epoch {}/{}'.format(e, args.epochs)):
         batch_data = batch_data.float().to(device)
         batch_diams = torch.tensor([]).to(device)
         for i in range(len(batch_data)):
@@ -92,7 +95,7 @@ start_eval = time()
 eval_losses = []
 diams = []
 predictions = []
-for (batch_data, batch_labels, _) in tqdm(train_dl, desc='Testing'):
+for (batch_data, batch_labels) in tqdm(train_dl, desc='Testing'):
     batch_data = batch_data.float().to(device)
     batch_diams = torch.tensor([]).to(device)
     for i in range(len(batch_data)):

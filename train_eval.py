@@ -21,7 +21,9 @@ def train_network(model, train_dl, val_dl, class_loss, flow_loss,
     for e in range(1, n_epochs + 1):
         train_epoch_losses = []
         model.train()
+        reprocess_train_time = time()
         train_dl.dataset.reprocess_on_epoch(default_meds)
+        print('Time to reprocess training data: {}'.format(time() - reprocess_train_time))
         for (sample_data, sample_labels) in tqdm(train_dl, desc='Training - Epoch {}/{}'.format(e, n_epochs)):
             sample_data = sample_data.to(device)
             sample_labels = sample_labels.to(device)
