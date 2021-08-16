@@ -6,12 +6,11 @@ from Cellpose_2D_PyTorch import UpdatedCellpose, SizeModel
 import torch
 import torchvision
 import numpy as np
-from time import time
+import time
 import matplotlib.pyplot as plt
 from tqdm import tqdm
 
 from cellpose_src.utils import diameters
-from misc_utils import elapsed_time
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--results-dir', help='Folder in which to save experiment results.')
@@ -41,8 +40,8 @@ gen_cellpose.eval()
 
 size_model = SizeModel().to(device)
 optimizer = torch.optim.SGD(size_model.parameters(), lr=args.learning_rate, momentum=args.momentum)
-loss_fn = torch.nn.MSELoss()
-# loss_fn = torch.nn.L1Loss()
+# loss_fn = torch.nn.MSELoss()
+loss_fn = torch.nn.L1Loss()
 
 data_transform = torchvision.transforms.Compose([
     Reformat(),
@@ -56,11 +55,11 @@ train_dl = torch.utils.data.DataLoader(train_dataset, batch_size=args.batch_size
 
 # Training network
 train_losses = []
+start_train = time.time()
 print('Beginning size model network training.')
 for e in range(1, args.epochs + 1):
     optimizer.zero_grad()
     size_model.train()
-    start_train = time()
     for (batch_data, batch_labels) in tqdm(train_dl, desc='Epoch {}/{}'.format(e, args.epochs)):
         batch_data = batch_data.float().to(device)
         batch_diams = torch.tensor([]).to(device)
@@ -76,23 +75,19 @@ for e in range(1, args.epochs + 1):
         optimizer.step()
 
 torch.save(size_model.state_dict(), os.path.join(args.results_dir, 'size_model.pt'))
-
-with open(os.path.join(args.results_dir, 'settings.txt'), 'w') as txt:
-    txt.write('Learning rate: {}; Momentum: {}\n'.format(args.learning_rate, args.momentum))
-    txt.write('Epochs: {}; Batch size: {}\n'.format(args.epochs, args.batch_size))
-    txt.write('Loss: {}'.format(loss_fn))
+end_train = time.time()
 
 step_size = args.epochs/len(train_losses)
 train_steps = np.arange(step_size, args.epochs + step_size, step_size)
 plt.figure()
 plt.plot(train_steps, train_losses)
 plt.title('Training Loss')
-plt.savefig(os.path.join(args.results_dir, 'Training Loss'))
+plt.savefig(os.path.join(args.results_dir, 'Training_Loss'))
 plt.show()
 
 # Evaluation
 size_model.eval()
-start_eval = time()
+start_eval = time.time()
 eval_losses = []
 diams = []
 predictions = []
@@ -118,3 +113,12 @@ plt.title('True Diameters vs. Predicted')
 plt.xlabel('True Diameters')
 plt.ylabel('Predicted Diameters')
 plt.savefig(os.path.join(args.results_dir, 'Diameter_Predictions'))
+plt.show()
+
+with open(os.path.join(args.results_dir, 'logfile.txt'), 'w') as txt:
+    txt.write('Time to train: {}\n'.format(time.strftime("%H:%M:%S", time.gmtime(end_train - start_train))))
+    txt.write('Learning rate: {}; Momentum: {}\n'.format(args.learning_rate, args.momentum))
+    txt.write('Epochs: {}; Batch size: {}\n'.format(args.epochs, args.batch_size))
+    txt.write('Loss: {}'.format(loss_fn))
+    txt.write('Training dataset(s): {}\n'.format(args.train_dataset))
+    txt.write('Cellpose model for size prediction: {}\n'.format(args.cellpose_pretrained))

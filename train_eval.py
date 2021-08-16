@@ -6,11 +6,9 @@ import cv2
 import numpy as np
 from statistics import mean
 import math
-from misc_utils import elapsed_time
 from transforms import LabelsToFlows, FollowFlows, generate_patches, recombine_patches
 
 import matplotlib.pyplot as plt
-
 
 def train_network(model, train_dl, val_dl, class_loss, flow_loss,
                   optimizer, device, n_epochs):
@@ -23,7 +21,8 @@ def train_network(model, train_dl, val_dl, class_loss, flow_loss,
         model.train()
         reprocess_train_time = time()
         train_dl.dataset.reprocess_on_epoch()
-        print('Time to reprocess training data: {}'.format(time() - reprocess_train_time))
+        print('Time to reprocess training data: {}'.format(time.strftime("%H:%M:%S",
+                                                                         time.gmtime(time() - reprocess_train_time))))
         for (sample_data, sample_labels) in tqdm(train_dl, desc='Training - Epoch {}/{}'.format(e, n_epochs)):
             sample_data = sample_data.to(device)
             sample_labels = sample_labels.to(device)
@@ -41,7 +40,7 @@ def train_network(model, train_dl, val_dl, class_loss, flow_loss,
         val_losses.append(val_epoch_loss)
         print('Train loss: {:.3f}; Validation loss: {:.3f}'.format(mean(train_epoch_losses), val_epoch_loss))
 
-    print('Train time: {}'.format(elapsed_time(time() - start_train)))
+    print('Train time: {}'.format(time.strftime("%H:%M:%S", time.gmtime(time() - start_train))))
     return train_losses, val_losses
 
 
@@ -58,7 +57,8 @@ def adapt_network(model: nn.Module, source_dl, target_dl, val_dl, sas_class_loss
         train_epoch_losses = []
         reprocess_source_time = time()
         source_dl.dataset.reprocess_on_epoch()
-        print('Time to reprocess source data: {}'.format(time() - reprocess_source_time))
+        print('Time to reprocess source data: {}'.format(time.strftime("%H:%M:%S",
+                                                                       time.gmtime(time() - reprocess_source_time))))
 
         reprocess_target_time = time()
         target_dl.dataset.reprocess_on_epoch()
@@ -80,9 +80,11 @@ def adapt_network(model: nn.Module, source_dl, target_dl, val_dl, sas_class_loss
         batched_target_labels = batched_target_labels[:t_len]
         batched_target_labels[np.array(range(t_len))] = batched_target_labels[shuffled_inds]
         batched_target_labels = batched_target_labels.float()
-        print('Time to reprocess target data: {}'.format(time() - reprocess_target_time))
+        print('Time to reprocess target data: {}'.format(time.strftime("%H:%M:%S",
+                                                                       time.gmtime(time() - reprocess_target_time))))
 
-        for i, (source_sample_data, source_sample_labels) in enumerate(tqdm(source_dl, desc='Training - Epoch {}/{}'.format(e, n_epochs))):
+        for i, (source_sample_data, source_sample_labels) in enumerate(tqdm(
+                source_dl, desc='Training - Epoch {}/{}'.format(e, n_epochs))):
             optimizer.zero_grad()
 
             source_sample_data = source_sample_data.to(device)
@@ -107,14 +109,13 @@ def adapt_network(model: nn.Module, source_dl, target_dl, val_dl, sas_class_loss
         val_losses.append(val_epoch_loss)
         print('Train loss: {:.3f}; Validation loss: {:.3f}'.format(mean(train_epoch_losses), val_epoch_loss))
 
-    print('Train time: {}'.format(elapsed_time(time() - start_train)))
+    print('Train time: {}'.format(time.strftime("%H:%M:%S", time.gmtime(time() - start_train))))
     return train_losses, val_losses
 
 
 def validate_network(model, data_loader, flow_loss, class_loss, device):
     model.eval()
     val_epoch_losses = []
-    # data_loader.dataset.pre_generate_patches()
     with no_grad():
         for (val_sample_data, val_sample_labels) in tqdm(data_loader, desc='Performing validation'):
             val_sample_data = val_sample_data.to(device)
@@ -131,7 +132,6 @@ def validate_network(model, data_loader, flow_loss, class_loss, device):
 def eval_network(model: nn.Module, data_loader: DataLoader, device, patch_per_batch):
 
     model.eval()
-    start_eval = time()
     print('Beginning evaluation.')
     ff = FollowFlows(niter=100, interp=True, use_gpu=True, cellprob_threshold=0.0, flow_threshold=1.0)
     with no_grad():
@@ -150,10 +150,10 @@ def eval_network(model: nn.Module, data_loader: DataLoader, device, patch_per_ba
             predictions = recombine_patches(predictions, resized_dims)
             sample_mask = ff(predictions)
             sample_mask = np.transpose(sample_mask.numpy(), (1, 2, 0))
-            sample_mask = cv2.resize(sample_mask, (original_dims[1], original_dims[0]), interpolation=cv2.INTER_NEAREST)
+            sample_mask = cv2.resize(sample_mask, (original_dims[1].item(), original_dims[0].item()),
+                                     interpolation=cv2.INTER_NEAREST)
             masks.append(sample_mask)
             for i in range(len(label_files)):
                 label_list.append(label_files[i][label_files[i].rfind('/')+1: label_files[i].rfind('.')])
 
-    print('Total time to evaluate: {}'.format(elapsed_time(time() - start_eval)))
     return masks, label_list

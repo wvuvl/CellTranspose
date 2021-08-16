@@ -8,12 +8,15 @@ import pickle
 import numpy as np
 import matplotlib.pyplot as plt
 import tifffile
+import time
 
 from transforms import FollowFlows, Resize
 from loaddata import CellPoseData
 from Cellpose_2D_PyTorch import UpdatedCellpose, SizeModel, class_loss, flow_loss, sas_class_loss
 from train_eval import train_network, adapt_network, eval_network
 from cellpose_src.metrics import average_precision
+
+start_time = time.time()
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--learning-rate', type=float)
@@ -55,8 +58,6 @@ parser.add_argument('--target-from-3D', help='Whether the input target data is 3
 parser.add_argument('--cellpose-model',
                     help='Location of the generalized cellpose model to use for diameter estimation.')
 parser.add_argument('--size-model', help='Location of the generalized size model to use for diameter estimation.')
-parser.add_argument('--resize-from-labels', help='Whether to resize validation/test data from labels. Default is to '
-                                                 'use prediction for resizing.', action='store_true')
 parser.add_argument('--refine-prediction', help='Whether or not to apply refined diameter prediction with diameters of '
                                                 'generalized Cellpose model predictions (better accuracy,'
                                                 'slower evaluation).', action='store_true')
@@ -93,6 +94,7 @@ if args.pretrained_model is not None:
     model.load_state_dict(load(args.pretrained_model))
 
 if not args.eval_only:
+    start_train = time.time()
     optimizer = SGD(model.parameters(), lr=args.learning_rate, momentum=args.momentum)
     train_dataset = CellPoseData('Training', args.train_dataset, do_3D=args.do_3D, from_3D=args.train_from_3D,
                                  resize=Resize(median_diams, use_labels=True,
@@ -101,11 +103,11 @@ if not args.eval_only:
 
     val_dataset = CellPoseData('Validation', args.val_dataset, evaluate=False, do_3D=args.do_3D,
                                from_3D=args.val_from_3D,
-                               resize=Resize(median_diams, use_labels=args.val_use_labels, refine=True, gc_model=gen_cellpose,
-                                             sz_model=gen_size_model, device=device, follow_flows_function=ff,
-                                             patch_per_batch=args.patches_per_batch)
+                               resize=Resize(median_diams, use_labels=args.val_use_labels, refine=True,
+                                             gc_model=gen_cellpose, sz_model=gen_size_model, device=device,
+                                             follow_flows_function=ff, patch_per_batch=args.patches_per_batch)
                                )
-    val_dataset.pre_generate_patches()  # TODO: Watch this
+    val_dataset.pre_generate_patches()
     val_dl = DataLoader(val_dataset, batch_size=args.batch_size, shuffle=False)
 
     if args.do_adaptation:
@@ -113,12 +115,14 @@ if not args.eval_only:
                                       resize=Resize(median_diams, use_labels=True,
                                                     patch_per_batch=args.patches_per_batch))
         target_dl = DataLoader(target_dataset, batch_size=args.batch_size, shuffle=True)
-        train_losses, val_losses = adapt_network(model, train_dl, target_dl, val_dl, sas_class_loss, class_loss, flow_loss,
-                                                 optimizer=optimizer, device=device, n_epochs=args.epochs)
+        train_losses, val_losses = adapt_network(model, train_dl, target_dl, val_dl, sas_class_loss, class_loss,
+                                                 flow_loss, optimizer=optimizer, device=device, n_epochs=args.epochs)
     else:
         train_losses, val_losses = train_network(model, train_dl, val_dl, class_loss, flow_loss,
                                                  optimizer=optimizer, device=device, n_epochs=args.epochs)
     save(model.state_dict(), os.path.join(args.results_dir, 'trained_model.pt'))
+    end_train = time.time()
+    print('Time to train: {}'.format(time.strftime("%H:%M:%S", time.gmtime(end_train - start_train))))
 
     plt.figure()
     x_range = np.arange(1, len(train_losses)+1)
@@ -131,19 +135,12 @@ if not args.eval_only:
     plt.savefig(os.path.join(args.results_dir, 'Training-Validation Losses'))
     plt.show()
 
-    with open(os.path.join(args.results_dir, 'settings.txt'), 'w') as txt:
-        # TODO: Update this with new command line args
-        txt.write('Adaptation: {}\n'.format(args.do_adaptation))
-        # if do_adaptation:
-        #     txt.write('Gamma: {}; Margin: {}'.format())
-        txt.write('Learning rate: {}; Momentum: {}\n'.format(args.learning_rate, args.momentum))
-        txt.write('Epochs: {}; Batch size: {}\n'.format(args.epochs, args.patches_per_batch))
-        txt.write('GPUs: {}'.format(num_workers))
 
 if not args.train_only:
+    start_eval = time.time()
     test_dataset = CellPoseData('Test', args.test_dataset, evaluate=True, do_3D=args.do_3D, from_3D=args.test_from_3D,
-                                resize=Resize(median_diams, use_labels=args.test_use_labels, refine=True, gc_model=gen_cellpose,
-                                              sz_model=gen_size_model, device=device,
+                                resize=Resize(median_diams, use_labels=args.test_use_labels, refine=True,
+                                              gc_model=gen_cellpose, sz_model=gen_size_model, device=device,
                                               patch_per_batch=args.patches_per_batch, follow_flows_function=ff))
 
     eval_dl = DataLoader(test_dataset, batch_size=1, shuffle=False)
@@ -154,7 +151,10 @@ if not args.train_only:
         masks[i] = masks[i].astype('int16')  # Can change back to int32 if necessary
         with open(os.path.join(args.results_dir, label_list[i] + '_predicted_labels.pkl'), 'wb') as pl:
             pickle.dump(masks[i], pl)
-        tifffile.imwrite(os.path.join(args.results_dir, 'tiff_results', label_list[i] + '.tif'), masks[i].astype('int32'))
+        tifffile.imwrite(os.path.join(args.results_dir, 'tiff_results', label_list[i] + '.tif'),
+                         masks[i].astype('int32'))
+    end_eval = time.time()
+    print('Time to evaluate: {}'.format(time.strftime("%H:%M:%S", time.gmtime(end_eval - start_eval))))
 
     # AP Calculation
     if args.calculate_ap:
@@ -171,7 +171,6 @@ if not args.train_only:
             label = squeeze(reformat(label), dim=0).numpy()
             labels.append(label)
 
-        #TODO: Recover label files from label_list
         tau = np.arange(0.01, 1.01, 0.01)
         ap_info = average_precision(labels, masks, threshold=tau)
         ap_per_im = ap_info[0]
@@ -186,3 +185,39 @@ if not args.train_only:
         plt.show()
         with open(os.path.join(args.results_dir, '{}_AP_Results.pkl'.format(args.dataset_name)), 'wb') as apr:
             pickle.dump((tau, ap_overall), apr)
+
+with open(os.path.join(args.results_dir, 'logfile.txt'), 'w') as txt:
+    if args.train_only:
+        txt.write('train-only\n')
+    if not args.eval_only:
+        txt.write('Time to train: {}\n'.format(time.strftime("%H:%M:%S", time.gmtime(end_train - start_train))))
+    else:
+        txt.write('eval-only\n')
+    if not args.train_only:
+        txt.write('Time to evaluate: {}\n'.format(time.strftime("%H:%M:%S", time.gmtime(end_eval - start_eval))))
+    txt.write('\n')
+    if not args.eval_only:
+        txt.write('Adaptation: {}\n'.format(args.do_adaptation))
+        # if do_adaptation:
+        #     txt.write('Gamma: {}; Margin: {}'.format())
+        txt.write('Learning rate: {}; Momentum: {}\n'.format(args.learning_rate, args.momentum))
+        txt.write('Epochs: {}; Batch size: {}\n'.format(args.epochs, args.batch_size))
+        txt.write('Patches per batch (for evaluation, or if refining size prediction): {}\n'
+                  .format(args.patches_per_batch))
+        txt.write('GPUs: {}\n'.format(num_workers))
+        txt.write('Pretrained model: {}\n'.format(args.pretrained_model))
+        txt.write('\n')
+        if args.do_adaptation:
+            txt.write('Source dataset(s): {}\n'.format(args.train_dataset))
+            txt.write('Target Dataset(s): {}\n'.format(args.target_dataset))
+        else:
+            txt.write('Training dataset(s): {}\n'.format(args.train_dataset))
+        txt.write('Validation dataset(s): {}\n'.format(args.val_dataset))
+        txt.write('Labels used for validation: {}\n'.format(args.val_use_labels))
+    if not args.train_only:
+        txt.write('Test dataset(s): {}\n'.format(args.test_dataset))
+        txt.write('Labels used for testing: {}\n'.format(args.test_use_labels))
+    txt.write('Refined size predictions: {}\n'.format(args.refine_prediction))
+    txt.write('\n')
+    txt.write('Cellpose model for size prediction: {}\n'.format(args.cellpose_model))
+    txt.write('Size model: {}'.format(args.size_model))

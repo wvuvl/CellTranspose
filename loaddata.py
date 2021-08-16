@@ -11,7 +11,7 @@ from tifffile import imread
 from tqdm.contrib import tzip
 
 from transforms import Reformat, Normalize1stTo99th, Resize, random_horizontal_flip,\
-    random_rotate, LabelsToFlows, generate_patches
+    random_rotate, LabelsToFlows, generate_patches, remove_empty_label_patches
 
 import matplotlib.pyplot as plt
 
@@ -116,7 +116,8 @@ class CellPoseData(Dataset):
             data, labels = random_horizontal_flip(data, labels)
             data, labels = random_rotate(data, labels)
             labels = as_tensor([LabelsToFlows()(labels[i].numpy()) for i in range(len(labels))])
-            data, labels = generate_patches(unsqueeze(data, 0), labels)  # TODO: See if unsqueeze can be put in generate patches (check with eval and validation)
+            data, labels = generate_patches(unsqueeze(data, 0), labels)
+            data, labels = remove_empty_label_patches(data, labels)
             self.data_samples = cat((self.data_samples, data))
             self.label_samples = cat((self.label_samples, labels))
 
@@ -127,6 +128,7 @@ class CellPoseData(Dataset):
         new_original_dims = []
         for (data, labels, label_fname, original_dim) in zip(self.data, self.labels, self.l_list, self.original_dims):
             data, labels = generate_patches(unsqueeze(data, 0), labels, eval=True)
+            data, labels = remove_empty_label_patches(data, labels)
             self.data_samples = cat((self.data_samples, data))
             self.label_samples = cat((self.label_samples, labels))
             for _ in range(len(data)):

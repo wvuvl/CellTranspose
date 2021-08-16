@@ -1,14 +1,12 @@
-import torchvision
 import math
-from torch import tensor, mean, unique, zeros, ones, empty, cat, squeeze, unsqueeze, as_tensor, no_grad
+# from torch import tensor, mean, unique, zeros, ones, empty, cat, squeeze, unsqueeze, as_tensor, no_grad, equal
+import torch
 import cv2
 import numpy as np
 import copy
 from cellpose_src.dynamics import masks_to_flows, follow_flows, get_masks, remove_bad_flow_masks
 from cellpose_src.utils import diameters, fill_holes_and_remove_small_masks
 from cellpose_src.transforms import _taper_mask
-import tifffile
-import os
 import random
 import torchvision.transforms.functional as TF
 
@@ -34,7 +32,7 @@ class Reformat(object):
             elif x.dim() == 3:
                 # TODO: copying Cellpose implementation, find a cleaner method for solving this
                 if x.shape[2] < 10:
-                    info_chans = [len(unique(x[:, :, i])) > 1 for i in range(x.shape[2])]
+                    info_chans = [len(torch.unique(x[:, :, i])) > 1 for i in range(x.shape[2])]
                     x = x[:, :, info_chans]
                     if x.shape[2] == 1:
                         x = x.view(1, x.shape[0], x.shape[1])
@@ -85,7 +83,7 @@ class FollowFlows(object):
         self.min_size = min_size
 
     def __call__(self, flows):
-        masks = zeros((flows.shape[0], flows.shape[-2], flows.shape[-1]))
+        masks = torch.zeros((flows.shape[0], flows.shape[-2], flows.shape[-1]))
         for i, flow in enumerate(flows):
             cellprob = flow[0].cpu().numpy()
             dP = flow[1:].cpu().numpy()
@@ -94,7 +92,7 @@ class FollowFlows(object):
 
             maski = get_masks(p, iscell=(cellprob > self.cellprob_threshold), flows=dP, threshold=self.flow_threshold)
             maski = fill_holes_and_remove_small_masks(maski, min_size=self.min_size)
-            masks[i] = tensor(maski)
+            masks[i] = torch.tensor(maski)
         return masks
 
 
@@ -127,7 +125,7 @@ class Resize(object):
 
 def resize_from_labels(X, y, default_med):
     # calculate diameters using only full cells in image - remove cut off cells during median diameter calculation
-    y_cf = copy.deepcopy(squeeze(y, dim=0))
+    y_cf = copy.deepcopy(torch.squeeze(y, dim=0))
     cc = sorted(np.unique(np.concatenate((np.unique(y_cf[0]), np.unique(y_cf[:, 0]),
                                           np.unique(y_cf[-1]), np.unique(y_cf[:, -1])))))
     for i in range(1, len(cc)):
@@ -140,15 +138,15 @@ def resize_from_labels(X, y, default_med):
     y = np.transpose(y.numpy(), (1, 2, 0))
     y = cv2.resize(y, (int(y.shape[1] * rescale_x), int(y.shape[0] * rescale_y)),
                    interpolation=cv2.INTER_NEAREST)[np.newaxis, :]
-    return tensor(X), tensor(y)
+    return torch.tensor(X), torch.tensor(y)
 
 
 def predict_and_resize(X, y, default_med, gc_model, sz_model):
-    X = unsqueeze(X, dim=0).float()
-    with no_grad():
+    X = torch.unsqueeze(X, dim=0).float()
+    with torch.no_grad():
         style = gc_model(X, style_only=True)
         med = sz_model(style)
-    X = squeeze(X, dim=0)
+    X = torch.squeeze(X, dim=0)
     rescale_x, rescale_y = default_med[0] / med, default_med[1] / med
     X = np.transpose(X.cpu().numpy(), (1, 2, 0))
     X = cv2.resize(X, (int(X.shape[1] * rescale_x), int(X.shape[0] * rescale_y)),
@@ -156,32 +154,32 @@ def predict_and_resize(X, y, default_med, gc_model, sz_model):
     y = np.transpose(y.cpu().numpy(), (1, 2, 0))
     y = cv2.resize(y, (int(y.shape[1] * rescale_x), int(y.shape[0] * rescale_y)),
                    interpolation=cv2.INTER_NEAREST)[np.newaxis, :]
-    return tensor(X), tensor(y)
+    return torch.tensor(X), torch.tensor(y)
 
 
 # produce output masks using gc_model, then calculate mean diameter
 def refined_predict_and_resize(X, y, default_med, gc_model, device, patch_per_batch, follow_flows_function):
-        X = unsqueeze(X, dim=0)
+        X = torch.unsqueeze(X, dim=0)
         im_dims = (X.shape[2], X.shape[3])
         sample_data, _ = generate_patches(X, y, eval=True)
-        with no_grad():
-            predictions = tensor([]).to(device)
+        with torch.no_grad():
+            predictions = torch.tensor([]).to(device)
             for patch_ind in range(0, len(sample_data), patch_per_batch):
                 sample_patch_data = sample_data[patch_ind:patch_ind + patch_per_batch].float().to(device)
                 p = gc_model(sample_patch_data)
-                predictions = cat((predictions, p))
+                predictions = torch.cat((predictions, p))
         predictions = recombine_patches(predictions, im_dims)
         sample_mask = follow_flows_function(predictions)
         med, cts = diameters(sample_mask.numpy())
         rescale_x, rescale_y = default_med[0] / med, default_med[1] / med
-        X = squeeze(X, dim=0)
+        X = torch.squeeze(X, dim=0)
         X = np.transpose(X.cpu().numpy(), (1, 2, 0))
         X = cv2.resize(X, (int(X.shape[1] * rescale_x), int(X.shape[0] * rescale_y)),
                        interpolation=cv2.INTER_LINEAR)[np.newaxis, :]
         y = np.transpose(y.cpu().numpy(), (1, 2, 0))
         y = cv2.resize(y, (int(y.shape[1] * rescale_x), int(y.shape[0] * rescale_y)),
                        interpolation=cv2.INTER_NEAREST)[np.newaxis, :]
-        return tensor(X), tensor(y)
+        return torch.tensor(X), torch.tensor(y)
 
 
 def random_horizontal_flip(X, y):
@@ -204,11 +202,11 @@ def generate_patches(data, label=None, eval=False, patch=(64, 64), min_overlap=(
     num_y_patches = math.ceil((data.shape[2] - min_overlap[1]) / (patch[1] - min_overlap[1]))
     y_patches = np.linspace(0, data.shape[2] - patch[1], num_y_patches, dtype=int)
 
-    patch_data = empty((data.shape[0] * num_x_patches * num_y_patches, 1, patch[0], patch[1]))
+    patch_data = torch.empty((data.shape[0] * num_x_patches * num_y_patches, 1, patch[0], patch[1]))
     if eval:
-        patch_label = empty((label.shape[0] * num_x_patches * num_y_patches, patch[0], patch[1]))
+        patch_label = torch.empty((label.shape[0] * num_x_patches * num_y_patches, patch[0], patch[1]))
     else:
-        patch_label = empty((label.shape[0] * num_x_patches * num_y_patches, 3, patch[0], patch[1]))
+        patch_label = torch.empty((label.shape[0] * num_x_patches * num_y_patches, 3, patch[0], patch[1]))
 
     for b in range(data.shape[0]):
         for i in range(num_x_patches):
@@ -224,6 +222,31 @@ def generate_patches(data, label=None, eval=False, patch=(64, 64), min_overlap=(
     return patch_data, patch_label
 
 
+# Removes any samples which contain labels without cells
+def remove_empty_label_patches(data, labels):
+    # keep_samples = []
+    # for i in range(labels.shape[0]):
+    #     if not equal(labels[i], zeros((labels.shape[1:]))):
+    #         keep_samples.append(i)
+    # data = data[keep_samples, :]
+    # labels = labels[keep_samples, :]
+    # return data, labels
+    keep_samples = []
+    num_labels = labels.shape[0]
+    for i in range(num_labels):
+        if not torch.equal(labels[i], torch.zeros((labels.shape[1:]))):
+            keep_samples.append(i)
+    num_zeros = num_labels - len(keep_samples)
+    actual_keep_samples = []
+    for i in range(num_labels):
+        if not torch.equal(labels[i], torch.zeros((labels.shape[1:]))):
+            actual_keep_samples.append(i)
+        elif random.random() > 0.75:
+            actual_keep_samples.append(i)
+    data = data[actual_keep_samples, :]
+    labels = labels[actual_keep_samples, :]
+    return data, labels
+
 """
 Creates recombined images after averaging together.
 Note: Cellpose uses a tapered mask rather than simple averaging; this can be applied by simply replacing the mask_patch
@@ -237,10 +260,10 @@ def recombine_patches(labels, im_dims=(500, 500), min_overlap=(32, 32)):
     y_patches = np.linspace(0, im_dims[0] - labels.shape[2], num_y_patches, dtype=int)
 
     # mask_patch = ones((labels.shape[3], labels.shape[2])).to('cuda')
-    mask_patch = tensor(_taper_mask(lx=labels.shape[3], ly=labels.shape[2], sig=7.5)).to('cuda')
+    mask_patch = torch.tensor(_taper_mask(lx=labels.shape[3], ly=labels.shape[2], sig=7.5)).to('cuda')
     num_ims = labels.shape[0] // (num_x_patches * num_y_patches)
-    recombined_labels = zeros((num_ims, 3, im_dims[0], im_dims[1])).to('cuda')
-    recombined_mask = zeros((num_ims, 3, im_dims[0], im_dims[1])).to('cuda')
+    recombined_labels = torch.zeros((num_ims, 3, im_dims[0], im_dims[1])).to('cuda')
+    recombined_mask = torch.zeros((num_ims, 3, im_dims[0], im_dims[1])).to('cuda')
 
     for b in range(num_ims):
         for i in range(num_x_patches):
