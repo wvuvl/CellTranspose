@@ -88,6 +88,7 @@ plt.figure()
 plt.plot(train_steps, train_losses)
 plt.title('Training Loss')
 plt.savefig(os.path.join(args.results_dir, 'Training Loss'))
+plt.show()
 
 # Evaluation
 size_model.eval()

@@ -135,7 +135,6 @@ class UpdatedCellpose(nn.Module):
         fm3 = self.d_block3(fm2)
         fm4 = self.d_block4(fm3)
 
-        # im_style = torch.mean(fm4, dim=(2, 3)).data
         im_style = torch.sum(fm4, dim=(2, 3)).data
         im_style = torch.div(im_style, torch.norm(im_style)).data
 
@@ -161,17 +160,19 @@ class SizeModel(nn.Module):
         return self.linear2(x)
 
 
-if __name__ == '__main__()':
+# if __name__ == '__main__()':
+if __name__ == '__main__':
     from torchsummary import summary
 
     # db = DownBlock(3, 32, down_sample=1)
     # data = torch.zeros((8, 3, 96, 96))
     # zeros = torch.zeros((8, 32, 96, 96))
     # out = db(data)
-    mc = UpdatedCellpose(4).to('cuda')
-    # summary(mc, (4, 32, 32))
-    data = torch.rand((8, 4, 64, 64)).to('cuda')
-    out = mc(data)
+    mc = UpdatedCellpose(3)
+    summary(mc, (3, 168, 168))
+    # data = torch.rand((8, 3, 8, 8))
+    # out = mc(data)
+    print('test')
     # ub = UpBlock(128, 64)
     # data = torch.rand((8, 128, 8, 8))
     # fm = torch.rand((8, 64, 16, 16))

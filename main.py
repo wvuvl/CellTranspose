@@ -25,43 +25,43 @@ parser.add_argument('--patches-per-batch', type=int,
 parser.add_argument('--dataset-name', help='Name of dataset to use for reporting results (omit the word "Dataset").')
 parser.add_argument('--results-dir', help='Folder in which to save experiment results.')
 parser.add_argument('--train-only', help='Only perform training, no evaluation (mutually exclusive with "eval-only").',
-                    action='store_true', default=False)
+                    action='store_true')
 parser.add_argument('--eval-only', help='Only perform evaluation, no training (mutually exclusive with "train-only").',
-                    action='store_true', default=False,)
+                    action='store_true',)
 parser.add_argument('--pretrained-model', help='Pretrained model to load in')
 parser.add_argument('--do-adaptation', help='Whether to perform domain adaptation or standard training.',
-                    action='store_true', default=False)
+                    action='store_true')
 parser.add_argument('--do-3D', help='Whether or not to use 3D-Cellpose (Must use 3D volumes).',
-                    action='store_true', default=False)
+                    action='store_true')
 parser.add_argument('--train-dataset', help='The directory(s) containing (source) data to be used for training.',
                     nargs='+')
 parser.add_argument('--train-from-3D', help='Whether the input training source data is 3D: assumes 2D if set to False.',
-                    action='store_true', default=False)
+                    action='store_true')
 parser.add_argument('--val-dataset', help='The directory(s) containing data to be used for validation.', nargs='+')
 parser.add_argument('--val-from-3D', help='Whether the input validation data is 3D: assumes 2D if set to False.',
-                    action='store_true', default=False)
+                    action='store_true')
 parser.add_argument('--val-use-labels', help='Whether to use labels for resizing validation data.',
-                    action='store_true', default=False)
+                    action='store_true')
 parser.add_argument('--test-dataset', help='The directory(s) containing data to be used for testing.', nargs='+')
 parser.add_argument('--test-from-3D', help='Whether the input test data is 3D: assumes 2D if set to False.',
-                    action='store_true', default=False)
+                    action='store_true')
 parser.add_argument('--test-use-labels', help='Whether to use labels for resizing test data.',
-                    action='store_true', default=False)
+                    action='store_true')
 parser.add_argument('--target-dataset', help='The directory containing target data to be used for domain adaptation.'
                                              'Note: if do-adaptation is set to False, this parameter will be ignored.',
                     nargs='+')
 parser.add_argument('--target-from-3D', help='Whether the input target data is 3D: assumes 2D if set to False.',
-                    action='store_true', default=False)
+                    action='store_true')
 parser.add_argument('--cellpose-model',
                     help='Location of the generalized cellpose model to use for diameter estimation.')
 parser.add_argument('--size-model', help='Location of the generalized size model to use for diameter estimation.')
 parser.add_argument('--resize-from-labels', help='Whether to resize validation/test data from labels. Default is to '
-                                                 'use prediction for resizing.', action='store_true', default=False)
+                                                 'use prediction for resizing.', action='store_true')
 parser.add_argument('--refine-prediction', help='Whether or not to apply refined diameter prediction with diameters of '
                                                 'generalized Cellpose model predictions (better accuracy,'
-                                                'slower evaluation).', action='store_true', default=False)
+                                                'slower evaluation).', action='store_true')
 parser.add_argument('--calculate-ap', help='Whether to perform AP calculation at the end of evaluation.',
-                    action='store_true', default=False)
+                    action='store_true')
 # TODO: Add new command line args for using labels - validation and test
 args = parser.parse_args()
 
@@ -78,9 +78,9 @@ ff = FollowFlows(niter=100, interp=True, use_gpu=True, cellprob_threshold=0.0, f
 
 # Default median diameter to resize cells to
 median_diams = (24, 24)
-gen_cellpose = UpdatedCellpose(channels=1, device=device)
-gen_cellpose = nn.DataParallel(gen_cellpose)
-gen_cellpose.to(device)
+
+gen_cellpose = UpdatedCellpose(channels=1, device='cuda:0')
+gen_cellpose = nn.DataParallel(gen_cellpose, device_ids=[0])
 gen_cellpose.load_state_dict(load(args.cellpose_model))
 
 gen_size_model = SizeModel().to('cuda:0')
@@ -105,6 +105,7 @@ if not args.eval_only:
                                              sz_model=gen_size_model, device=device, follow_flows_function=ff,
                                              patch_per_batch=args.patches_per_batch)
                                )
+    val_dataset.pre_generate_patches()  # TODO: Watch this
     val_dl = DataLoader(val_dataset, batch_size=args.batch_size, shuffle=False)
 
     if args.do_adaptation:
@@ -113,12 +114,10 @@ if not args.eval_only:
                                                     patch_per_batch=args.patches_per_batch))
         target_dl = DataLoader(target_dataset, batch_size=args.batch_size, shuffle=True)
         train_losses, val_losses = adapt_network(model, train_dl, target_dl, val_dl, sas_class_loss, class_loss, flow_loss,
-                                                 median_diams, optimizer=optimizer, device=device, n_epochs=args.epochs,
-                                                 patch_per_batch=args.patches_per_batch)
-    else:  # Train network without adaptation
-        train_losses, val_losses = train_network(model, train_dl, val_dl, class_loss, flow_loss, median_diams,
-                                                 optimizer=optimizer, device=device, n_epochs=args.epochs,
-                                                 patch_per_batch=args.patches_per_batch)
+                                                 optimizer=optimizer, device=device, n_epochs=args.epochs)
+    else:
+        train_losses, val_losses = train_network(model, train_dl, val_dl, class_loss, flow_loss,
+                                                 optimizer=optimizer, device=device, n_epochs=args.epochs)
     save(model.state_dict(), os.path.join(args.results_dir, 'trained_model.pt'))
 
     plt.figure()
@@ -149,9 +148,7 @@ if not args.train_only:
 
     eval_dl = DataLoader(test_dataset, batch_size=1, shuffle=False)
 
-    masks, label_list = eval_network(model, eval_dl, device, patch_per_batch=args.patches_per_batch,
-                                             default_meds=median_diams, gc_model=gen_cellpose, sz_model=gen_size_model,
-                                             refine=args.refine_prediction)
+    masks, label_list = eval_network(model, eval_dl, device, patch_per_batch=args.patches_per_batch)
 
     for i in range(len(masks)):
         masks[i] = masks[i].astype('int16')  # Can change back to int32 if necessary

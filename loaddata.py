@@ -109,7 +109,7 @@ class CellPoseData(Dataset):
     def __len__(self):
         return len(self.data_samples)
 
-    def reprocess_on_epoch(self, default_meds):
+    def reprocess_on_epoch(self):
         self.data_samples = tensor([])
         self.label_samples = tensor([])
         for (data, labels) in zip(self.data, self.labels):

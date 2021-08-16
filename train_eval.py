@@ -13,7 +13,7 @@ import matplotlib.pyplot as plt
 
 
 def train_network(model, train_dl, val_dl, class_loss, flow_loss,
-                  default_meds, optimizer, device, n_epochs, patch_per_batch):
+                  optimizer, device, n_epochs):
     train_losses = []
     val_losses = []
     print('Beginning network training.\n')
@@ -22,7 +22,7 @@ def train_network(model, train_dl, val_dl, class_loss, flow_loss,
         train_epoch_losses = []
         model.train()
         reprocess_train_time = time()
-        train_dl.dataset.reprocess_on_epoch(default_meds)
+        train_dl.dataset.reprocess_on_epoch()
         print('Time to reprocess training data: {}'.format(time() - reprocess_train_time))
         for (sample_data, sample_labels) in tqdm(train_dl, desc='Training - Epoch {}/{}'.format(e, n_epochs)):
             sample_data = sample_data.to(device)
@@ -37,14 +37,16 @@ def train_network(model, train_dl, val_dl, class_loss, flow_loss,
             optimizer.step()
 
         train_losses.append(mean(train_epoch_losses))
-        val_losses.append(validate_network(model, val_dl, flow_loss, class_loss, device, patch_per_batch, default_meds))
+        val_epoch_loss = validate_network(model, val_dl, flow_loss, class_loss, device)
+        val_losses.append(val_epoch_loss)
+        print('Train loss: {:.3f}; Validation loss: {:.3f}'.format(mean(train_epoch_losses), val_epoch_loss))
 
     print('Train time: {}'.format(elapsed_time(time() - start_train)))
     return train_losses, val_losses
 
 
 def adapt_network(model: nn.Module, source_dl, target_dl, val_dl, sas_class_loss, class_loss, flow_loss,
-                  default_meds, optimizer, device, n_epochs, patch_per_batch):
+                  optimizer, device, n_epochs):
     train_losses = []
     val_losses = []
     print('Beginning domain adaptation.\n')
@@ -55,11 +57,11 @@ def adapt_network(model: nn.Module, source_dl, target_dl, val_dl, sas_class_loss
         model.train()
         train_epoch_losses = []
         reprocess_source_time = time()
-        source_dl.dataset.reprocess_on_epoch(default_meds)
+        source_dl.dataset.reprocess_on_epoch()
         print('Time to reprocess source data: {}'.format(time() - reprocess_source_time))
 
         reprocess_target_time = time()
-        target_dl.dataset.reprocess_on_epoch(default_meds)
+        target_dl.dataset.reprocess_on_epoch()
         target_data = target_dl.dataset.data_samples
         target_labels = target_dl.dataset.label_samples
         batched_target_data = target_data
@@ -101,16 +103,18 @@ def adapt_network(model: nn.Module, source_dl, target_dl, val_dl, sas_class_loss
             optimizer.step()
 
         train_losses.append(mean(train_epoch_losses))
-        val_losses.append(validate_network(model, val_dl, flow_loss, class_loss, device, patch_per_batch, default_meds))
+        val_epoch_loss = validate_network(model, val_dl, flow_loss, class_loss, device)
+        val_losses.append(val_epoch_loss)
+        print('Train loss: {:.3f}; Validation loss: {:.3f}'.format(mean(train_epoch_losses), val_epoch_loss))
 
     print('Train time: {}'.format(elapsed_time(time() - start_train)))
     return train_losses, val_losses
 
 
-def validate_network(model, data_loader, flow_loss, class_loss, device, patch_per_batch, default_meds):
+def validate_network(model, data_loader, flow_loss, class_loss, device):
     model.eval()
     val_epoch_losses = []
-    data_loader.dataset.pre_generate_patches()
+    # data_loader.dataset.pre_generate_patches()
     with no_grad():
         for (val_sample_data, val_sample_labels) in tqdm(data_loader, desc='Performing validation'):
             val_sample_data = val_sample_data.to(device)
@@ -124,8 +128,7 @@ def validate_network(model, data_loader, flow_loss, class_loss, device, patch_pe
     return mean(val_epoch_losses)
 
 
-def eval_network(model: nn.Module, data_loader: DataLoader, device, patch_per_batch, default_meds, gc_model, sz_model,
-                 refine):
+def eval_network(model: nn.Module, data_loader: DataLoader, device, patch_per_batch):
 
     model.eval()
     start_eval = time()
