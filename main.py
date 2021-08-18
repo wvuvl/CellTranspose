@@ -55,6 +55,8 @@ parser.add_argument('--target-dataset', help='The directory containing target da
                     nargs='+')
 parser.add_argument('--target-from-3D', help='Whether the input target data is 3D: assumes 2D if set to False.',
                     action='store_true')
+parser.add_argument('--target-flows', help='The directory(s) containing pre-calculated flows. If left empty, '
+                                           'flows will be calculated manually.', nargs='+')
 parser.add_argument('--cellpose-model',
                     help='Location of the generalized cellpose model to use for diameter estimation.')
 parser.add_argument('--size-model', help='Location of the generalized size model to use for diameter estimation.')
@@ -116,11 +118,11 @@ if not args.eval_only:
         val_dl = DataLoader(val_dataset, batch_size=args.batch_size, shuffle=False)
     else:
         val_dl = None
-        print('NO VALIDATION DATA GIVEN --> skipping validation.')
+        print('No validation data given --> skipping validation.')
 
     if args.do_adaptation:
-        target_dataset = CellPoseData('Target', args.target_dataset, do_3D=args.do_3D, from_3D=args.target_from_3D,
-                                      resize=Resize(median_diams, use_labels=True,
+        target_dataset = CellPoseData('Target', args.target_dataset, pf_dirs=args.target_flows, do_3D=args.do_3D,
+                                      from_3D=args.target_from_3D, resize=Resize(median_diams, use_labels=True,
                                                     patch_per_batch=args.patches_per_batch))
         target_dl = DataLoader(target_dataset, batch_size=args.batch_size, shuffle=True)
         train_losses, val_losses = adapt_network(model, train_dl, target_dl, val_dl, sas_class_loss, class_loss,

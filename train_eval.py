@@ -59,35 +59,7 @@ def adapt_network(model: nn.Module, source_dl, target_dl, val_dl, sas_class_loss
                   optimizer, device, n_epochs):
     train_losses = []
     val_losses = []
-
-    print('Preprocessing data:')
-    reprocess_source_time = time.time()
-    source_dl.dataset.reprocess_on_epoch()
-    print('Time to reprocess source data: {}'.format(time.strftime("%H:%M:%S",
-                                                                   time.gmtime(time.time() - reprocess_source_time))))
-    reprocess_target_time = time.time()
-    target_dl.dataset.reprocess_on_epoch()
-    target_data = target_dl.dataset.data_samples
-    target_labels = target_dl.dataset.label_samples
-    batched_target_data = target_data
-    batched_target_labels = target_labels
-    for _ in range(1, math.ceil(len(source_dl.dataset) / len(target_data))):
-        batched_target_data = cat((batched_target_data, target_data))
-        batched_target_labels = cat((batched_target_labels, target_labels))
-
-    # Shuffle the target data
-    t_len = len(source_dl.dataset)
-    shuffled_inds = np.array(range(t_len))
-    np.random.shuffle(shuffled_inds)
-    batched_target_data = batched_target_data[:t_len]
-    batched_target_data[np.array(range(t_len))] = batched_target_data[shuffled_inds]
-    batched_target_data = batched_target_data.float()
-    batched_target_labels = batched_target_labels[:t_len]
-    batched_target_labels[np.array(range(t_len))] = batched_target_labels[shuffled_inds]
-    batched_target_labels = batched_target_labels.float()
-    print('Time to reprocess target data: {}'.format(time.strftime("%H:%M:%S",
-                                                                   time.gmtime(time.time() - reprocess_target_time))))
-
+    batched_target_data, batched_target_labels = process_src_tgt()
     print('Beginning domain adaptation.\n')
 
     # Assume # of target samples << # of source samples
@@ -95,34 +67,7 @@ def adapt_network(model: nn.Module, source_dl, target_dl, val_dl, sas_class_loss
     for e in range(1, n_epochs + 1):
         model.train()
         train_epoch_losses = []
-        # reprocess_source_time = time.time()
-        # source_dl.dataset.reprocess_on_epoch()
-        # print('Time to reprocess source data: {}'.format(time.strftime("%H:%M:%S",
-        #                                                                time.gmtime(time.time() - reprocess_source_time))))
-        #
-        # reprocess_target_time = time.time()
-        # target_dl.dataset.reprocess_on_epoch()
-        # target_data = target_dl.dataset.data_samples
-        # target_labels = target_dl.dataset.label_samples
-        # batched_target_data = target_data
-        # batched_target_labels = target_labels
-        # for _ in range(1, math.ceil(len(source_dl.dataset) / len(target_data))):
-        #     batched_target_data = cat((batched_target_data, target_data))
-        #     batched_target_labels = cat((batched_target_labels, target_labels))
-        #
-        # # Shuffle the target data
-        # t_len = len(source_dl.dataset)
-        # shuffled_inds = np.array(range(t_len))
-        # np.random.shuffle(shuffled_inds)
-        # batched_target_data = batched_target_data[:t_len]
-        # batched_target_data[np.array(range(t_len))] = batched_target_data[shuffled_inds]
-        # batched_target_data = batched_target_data.float()
-        # batched_target_labels = batched_target_labels[:t_len]
-        # batched_target_labels[np.array(range(t_len))] = batched_target_labels[shuffled_inds]
-        # batched_target_labels = batched_target_labels.float()
-        # print('Time to reprocess target data: {}'.format(time.strftime("%H:%M:%S",
-        #                                                                time.gmtime(time.time() - reprocess_target_time))))
-
+        # batched_target_data, batched_target_labels = process_data()
         for i, (source_sample_data, source_sample_labels) in enumerate(tqdm(
                 source_dl, desc='Training - Epoch {}/{}'.format(e, n_epochs))):
             optimizer.zero_grad()
@@ -171,6 +116,7 @@ def validate_network(model, data_loader, flow_loss, class_loss, device):
             val_epoch_losses.append(val_loss)
     return mean(val_epoch_losses)
 
+
 # Evaluation - due to image size mismatches, must currently be run one image at a time
 def eval_network(model: nn.Module, data_loader: DataLoader, device, patch_per_batch):
 
@@ -200,3 +146,34 @@ def eval_network(model: nn.Module, data_loader: DataLoader, device, patch_per_ba
                 label_list.append(label_files[i][label_files[i].rfind('/')+1: label_files[i].rfind('.')])
 
     return masks, label_list
+
+
+def process_src_tgt(dl_src, dl_tgt):
+    print('Processing data:')
+    reprocess_source_time = time.time()
+    dl_src.dataset.reprocess_on_epoch()
+    print('Time to process source data: {}'.format(time.strftime("%H:%M:%S",
+                                                                   time.gmtime(time.time() - reprocess_source_time))))
+    reprocess_target_time = time.time()
+    dl_tgt.dataset.reprocess_on_epoch()
+    target_data = dl_tgt.dataset.data_samples
+    target_labels = dl_tgt.dataset.label_samples
+    batched_target_data = target_data
+    batched_target_labels = target_labels
+    for _ in range(1, math.ceil(len(dl_src.dataset) / len(target_data))):
+        batched_target_data = cat((batched_target_data, target_data))
+        batched_target_labels = cat((batched_target_labels, target_labels))
+
+    # Shuffle the target data
+    t_len = len(dl_src.dataset)
+    shuffled_inds = np.array(range(t_len))
+    np.random.shuffle(shuffled_inds)
+    batched_target_data = batched_target_data[:t_len]
+    batched_target_data[np.array(range(t_len))] = batched_target_data[shuffled_inds]
+    batched_target_data = batched_target_data.float()
+    batched_target_labels = batched_target_labels[:t_len]
+    batched_target_labels[np.array(range(t_len))] = batched_target_labels[shuffled_inds]
+    batched_target_labels = batched_target_labels.float()
+    print('Time to process target data: {}'.format(time.strftime("%H:%M:%S",
+                                                                   time.gmtime(time.time() - reprocess_target_time))))
+    return batched_target_data, batched_target_labels

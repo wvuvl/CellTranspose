@@ -24,22 +24,26 @@ class Reformat(object):
         super().__init__()
         self.do_3D = do_3D
 
-    def __call__(self, x):
-        if not self.do_3D:
-            if x.dim() == 2:
-                x = x.view(1, x.shape[0], x.shape[1])
-            # Currently transforms multi-channel input to greyscale
-            elif x.dim() == 3:
-                # TODO: copying Cellpose implementation, find a cleaner method for solving this
-                if x.shape[2] < 10:
-                    info_chans = [len(torch.unique(x[:, :, i])) > 1 for i in range(x.shape[2])]
-                    x = x[:, :, info_chans]
-                    if x.shape[2] == 1:
-                        x = x.view(1, x.shape[0], x.shape[1])
-                    # else:
-                else:
-                    raise ValueError('Data is not 2D; if intending to use 3D volumes, pass in "--do_3D" argument.')
-        # else:
+    def __call__(self, x, is_pf=False):
+        if is_pf:
+            if x.ndim == 3:  # Likely flows
+                x = x.reshape(1, x.shape[0], x.shape[1], x.shape[2])
+        else:
+            if not self.do_3D:
+                if x.dim() == 2:
+                    x = x.view(1, x.shape[0], x.shape[1])
+                # Currently transforms multi-channel input to greyscale
+                elif x.dim() == 3:
+                    # TODO: copying Cellpose implementation, find a cleaner method for solving this
+                    if x.shape[2] < 10:
+                        info_chans = [len(torch.unique(x[:, :, i])) > 1 for i in range(x.shape[2])]
+                        x = x[:, :, info_chans]
+                        if x.shape[2] == 1:
+                            x = x.view(1, x.shape[0], x.shape[1])
+                        # else:
+                    else:
+                        raise ValueError('Data is not 2D; if intending to use 3D volumes, pass in "--do_3D" argument.')
+            # else:
         return x
 
 
@@ -54,6 +58,108 @@ class Normalize1stTo99th(object):
             sample[chan] = (sample[chan] - np.percentile(sample[chan], 1))\
                            / (np.percentile(sample[chan], 99) - np.percentile(sample[chan], 1))
         return sample
+
+
+class Resize(object):
+    def __init__(self, default_med, use_labels=False, refine=True, gc_model=None, sz_model=None,
+                 device='cpu', patch_per_batch=None, follow_flows_function=None):
+        self.use_labels = use_labels
+        self.default_med = default_med
+        if not self.use_labels:
+            self.gc_model = gc_model
+            self.sz_model = sz_model
+            self.refine = refine
+            if refine:
+                self.device = device
+                self.patch_per_batch = patch_per_batch
+                self.follow_flows_function = follow_flows_function
+
+    def __call__(self, X, y, pf=None):
+        original_dims = y.shape[1], y.shape[2]
+        if self.use_labels:
+            X, y, pf = resize_from_labels(X, y, self.default_med, pf)
+            return X, y, pf, original_dims
+        else:
+            X, y = predict_and_resize(X, y, self.default_med, self.gc_model, self.sz_model)  # Add pf here
+            if self.refine:
+                X, y = refined_predict_and_resize(X, y, self.default_med, self.gc_model, self.device,
+                                                  self.patch_per_batch, self.follow_flows_function)  # Add pf here
+            return X, y, original_dims
+
+
+def resize_from_labels(X, y, default_med, pf=None):
+    # calculate diameters using only full cells in image - remove cut off cells during median diameter calculation
+    y_cf = copy.deepcopy(torch.squeeze(y, dim=0))
+    y_cf = remove_cut_cells(y_cf)
+    med, cts = diameters(y_cf)
+    rescale_w, rescale_h = default_med[0] / med, default_med[1] / med
+    X = np.transpose(X.numpy(), (1, 2, 0))
+    X = cv2.resize(X, (int(X.shape[1] * rescale_w), int(X.shape[0] * rescale_h)),
+                   interpolation=cv2.INTER_LINEAR)[np.newaxis, :]
+    y = np.transpose(y.numpy(), (1, 2, 0))
+    y = cv2.resize(y, (int(y.shape[1] * rescale_w), int(y.shape[0] * rescale_h)),
+                   interpolation=cv2.INTER_NEAREST)[np.newaxis, :]
+    if pf is not None:
+        pf = np.transpose(pf[0], (1, 2, 0))
+        pf = cv2.resize(pf, (int(pf.shape[1] * rescale_w), int(pf.shape[0] * rescale_h)),
+                        interpolation=cv2.INTER_LINEAR)
+        pf = np.transpose(pf, (2, 0, 1))
+    else:
+        pf = []
+    return torch.tensor(X), torch.tensor(y), torch.tensor(pf)
+
+
+def predict_and_resize(X, y, default_med, gc_model, sz_model):
+    X = torch.unsqueeze(X, dim=0).float()
+    with torch.no_grad():
+        style = gc_model(X, style_only=True)
+        med = sz_model(style)
+    X = torch.squeeze(X, dim=0)
+    rescale_w, rescale_h = default_med[0] / med, default_med[1] / med
+    X = np.transpose(X.cpu().numpy(), (1, 2, 0))
+    X = cv2.resize(X, (int(X.shape[1] * rescale_w), int(X.shape[0] * rescale_h)),
+                   interpolation=cv2.INTER_LINEAR)[np.newaxis, :]
+    y = np.transpose(y.cpu().numpy(), (1, 2, 0))
+    y = cv2.resize(y, (int(y.shape[1] * rescale_w), int(y.shape[0] * rescale_h)),
+                   interpolation=cv2.INTER_NEAREST)[np.newaxis, :]
+    return torch.tensor(X), torch.tensor(y)
+
+
+# produce output masks using gc_model, then calculate mean diameter
+def refined_predict_and_resize(X, y, default_med, gc_model, device, patch_per_batch, follow_flows_function):
+        X = torch.unsqueeze(X, dim=0)
+        im_dims = (X.shape[2], X.shape[3])
+        sample_data, _ = generate_patches(X, y, eval=True)
+        with torch.no_grad():
+            predictions = torch.tensor([]).to(device)
+            for patch_ind in range(0, len(sample_data), patch_per_batch):
+                sample_patch_data = sample_data[patch_ind:patch_ind + patch_per_batch].float().to(device)
+                p = gc_model(sample_patch_data)
+                predictions = torch.cat((predictions, p))
+        predictions = recombine_patches(predictions, im_dims)
+        sample_mask = follow_flows_function(predictions)
+        med, cts = diameters(sample_mask.numpy())
+        rescale_w, rescale_h = default_med[0] / med, default_med[1] / med
+        X = torch.squeeze(X, dim=0)
+        X = np.transpose(X.cpu().numpy(), (1, 2, 0))
+        X = cv2.resize(X, (int(X.shape[1] * rescale_w), int(X.shape[0] * rescale_h)),
+                       interpolation=cv2.INTER_LINEAR)[np.newaxis, :]
+        y = np.transpose(y.cpu().numpy(), (1, 2, 0))
+        y = cv2.resize(y, (int(y.shape[1] * rescale_w), int(y.shape[0] * rescale_h)),
+                       interpolation=cv2.INTER_NEAREST)[np.newaxis, :]
+        return torch.tensor(X), torch.tensor(y)
+
+
+def random_horizontal_flip(X, y):
+    if np.random.rand() > .5:
+        X = TF.hflip(X)
+        y = TF.hflip(y)
+    return X, y
+
+
+def random_rotate(X, y):
+    angle = random.random() * 360
+    return TF.rotate(X, angle), TF.rotate(y, angle)
 
 
 class LabelsToFlows(object):
@@ -94,105 +200,6 @@ class FollowFlows(object):
             maski = fill_holes_and_remove_small_masks(maski, min_size=self.min_size)
             masks[i] = torch.tensor(maski)
         return masks
-
-
-class Resize(object):
-    def __init__(self, default_med, use_labels=False, refine=True, gc_model=None, sz_model=None,
-                 device='cpu', patch_per_batch=None, follow_flows_function=None):
-        self.use_labels = use_labels
-        self.default_med = default_med
-        if not self.use_labels:
-            self.gc_model = gc_model
-            self.sz_model = sz_model
-            self.refine = refine
-            if refine:
-                self.device = device
-                self.patch_per_batch = patch_per_batch
-                self.follow_flows_function = follow_flows_function
-
-    def __call__(self, X, y):
-        original_dims = X.shape[1], X.shape[2]  # CHECK HERE DEBUG
-        if self.use_labels:
-            X, y = resize_from_labels(X, y, self.default_med)
-            return X, y, original_dims
-        else:
-            X, y = predict_and_resize(X, y, self.default_med, self.gc_model, self.sz_model)
-            if self.refine:
-                X, y = refined_predict_and_resize(X, y, self.default_med, self.gc_model, self.device,
-                                                  self.patch_per_batch, self.follow_flows_function)
-            return X, y, original_dims
-
-
-def resize_from_labels(X, y, default_med):
-    # calculate diameters using only full cells in image - remove cut off cells during median diameter calculation
-    y_cf = copy.deepcopy(torch.squeeze(y, dim=0))
-    y_cf = remove_cut_cells(y_cf)
-    # cc = sorted(np.unique(np.concatenate((np.unique(y_cf[0]), np.unique(y_cf[:, 0]),
-    #                                       np.unique(y_cf[-1]), np.unique(y_cf[:, -1])))))
-    # for i in range(1, len(cc)):
-    #     y_cf[y_cf == cc[i]] = 0
-    med, cts = diameters(y_cf)
-    rescale_x, rescale_y = default_med[0] / med, default_med[1] / med
-    X = np.transpose(X.numpy(), (1, 2, 0))
-    X = cv2.resize(X, (int(X.shape[1] * rescale_x), int(X.shape[0] * rescale_y)),
-                   interpolation=cv2.INTER_LINEAR)[np.newaxis, :]
-    y = np.transpose(y.numpy(), (1, 2, 0))
-    y = cv2.resize(y, (int(y.shape[1] * rescale_x), int(y.shape[0] * rescale_y)),
-                   interpolation=cv2.INTER_NEAREST)[np.newaxis, :]
-    return torch.tensor(X), torch.tensor(y)
-
-
-def predict_and_resize(X, y, default_med, gc_model, sz_model):
-    X = torch.unsqueeze(X, dim=0).float()
-    with torch.no_grad():
-        style = gc_model(X, style_only=True)
-        med = sz_model(style)
-    X = torch.squeeze(X, dim=0)
-    rescale_x, rescale_y = default_med[0] / med, default_med[1] / med
-    X = np.transpose(X.cpu().numpy(), (1, 2, 0))
-    X = cv2.resize(X, (int(X.shape[1] * rescale_x), int(X.shape[0] * rescale_y)),
-                   interpolation=cv2.INTER_LINEAR)[np.newaxis, :]
-    y = np.transpose(y.cpu().numpy(), (1, 2, 0))
-    y = cv2.resize(y, (int(y.shape[1] * rescale_x), int(y.shape[0] * rescale_y)),
-                   interpolation=cv2.INTER_NEAREST)[np.newaxis, :]
-    return torch.tensor(X), torch.tensor(y)
-
-
-# produce output masks using gc_model, then calculate mean diameter
-def refined_predict_and_resize(X, y, default_med, gc_model, device, patch_per_batch, follow_flows_function):
-        X = torch.unsqueeze(X, dim=0)
-        im_dims = (X.shape[2], X.shape[3])
-        sample_data, _ = generate_patches(X, y, eval=True)
-        with torch.no_grad():
-            predictions = torch.tensor([]).to(device)
-            for patch_ind in range(0, len(sample_data), patch_per_batch):
-                sample_patch_data = sample_data[patch_ind:patch_ind + patch_per_batch].float().to(device)
-                p = gc_model(sample_patch_data)
-                predictions = torch.cat((predictions, p))
-        predictions = recombine_patches(predictions, im_dims)
-        sample_mask = follow_flows_function(predictions)
-        med, cts = diameters(sample_mask.numpy())
-        rescale_x, rescale_y = default_med[0] / med, default_med[1] / med
-        X = torch.squeeze(X, dim=0)
-        X = np.transpose(X.cpu().numpy(), (1, 2, 0))
-        X = cv2.resize(X, (int(X.shape[1] * rescale_x), int(X.shape[0] * rescale_y)),
-                       interpolation=cv2.INTER_LINEAR)[np.newaxis, :]
-        y = np.transpose(y.cpu().numpy(), (1, 2, 0))
-        y = cv2.resize(y, (int(y.shape[1] * rescale_x), int(y.shape[0] * rescale_y)),
-                       interpolation=cv2.INTER_NEAREST)[np.newaxis, :]
-        return torch.tensor(X), torch.tensor(y)
-
-
-def random_horizontal_flip(X, y):
-    if np.random.rand() > .5:
-        X = TF.hflip(X)
-        y = TF.hflip(y)
-    return X, y
-
-
-def random_rotate(X, y):
-    angle = random.random() * 360
-    return TF.rotate(X, angle), TF.rotate(y, angle)
 
 
 # Generate patches of input to be passed into model. Currently set to 64x64 patches with at least 32x32 overlap
@@ -248,15 +255,9 @@ def remove_cut_cells(labels, flows=False):
             labels[labels == cc[i]] = 0
     return labels
 
+
 # Removes any samples which contain labels without cells
 def remove_empty_label_patches(data, labels):
-    # keep_samples = []
-    # for i in range(labels.shape[0]):
-    #     if not equal(labels[i], zeros((labels.shape[1:]))):
-    #         keep_samples.append(i)
-    # data = data[keep_samples, :]
-    # labels = labels[keep_samples, :]
-    # return data, labels
     keep_samples = []
     num_labels = labels.shape[0]
     for i in range(num_labels):
@@ -273,12 +274,12 @@ def remove_empty_label_patches(data, labels):
     labels = labels[actual_keep_samples, :]
     return data, labels
 
+
 """
 Creates recombined images after averaging together.
 Note: Cellpose uses a tapered mask rather than simple averaging; this can be applied by simply replacing the mask_patch
 with a tapered mask
 """
-# TODO: Update _taper_mask to have more optimal parameters (some not included in function parameters)
 def recombine_patches(labels, im_dims=(500, 500), min_overlap=(32, 32)):
     num_x_patches = math.ceil((im_dims[1] - min_overlap[0]) / (labels.shape[3] - min_overlap[0]))
     x_patches = np.linspace(0, im_dims[1] - labels.shape[3], num_x_patches, dtype=int)
