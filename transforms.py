@@ -126,10 +126,11 @@ class Resize(object):
 def resize_from_labels(X, y, default_med):
     # calculate diameters using only full cells in image - remove cut off cells during median diameter calculation
     y_cf = copy.deepcopy(torch.squeeze(y, dim=0))
-    cc = sorted(np.unique(np.concatenate((np.unique(y_cf[0]), np.unique(y_cf[:, 0]),
-                                          np.unique(y_cf[-1]), np.unique(y_cf[:, -1])))))
-    for i in range(1, len(cc)):
-        y_cf[y_cf == cc[i]] = 0
+    y_cf = remove_cut_cells(y_cf)
+    # cc = sorted(np.unique(np.concatenate((np.unique(y_cf[0]), np.unique(y_cf[:, 0]),
+    #                                       np.unique(y_cf[-1]), np.unique(y_cf[:, -1])))))
+    # for i in range(1, len(cc)):
+    #     y_cf[y_cf == cc[i]] = 0
     med, cts = diameters(y_cf)
     rescale_x, rescale_y = default_med[0] / med, default_med[1] / med
     X = np.transpose(X.numpy(), (1, 2, 0))
@@ -221,6 +222,31 @@ def generate_patches(data, label=None, eval=False, patch=(64, 64), min_overlap=(
 
     return patch_data, patch_label
 
+
+# Removes all cell labels on the edges of the given samples
+def remove_cut_cells(labels, flows=False):
+    if flows:
+        for i in range(len(labels)):
+            label_mask = labels[i, 0]
+            label_flows1 = labels[i, 1]
+            label_flows2 = labels[i, 2]
+            cc = sorted(np.unique(np.concatenate((np.unique(label_mask[0]), np.unique(label_mask[:, 0]),
+                                                  np.unique(label_mask[-1]), np.unique(label_mask[:, -1])))))
+            for j in range(1, len(cc)):
+                b = (label_mask == cc[j]).nonzero(as_tuple=True)
+                label_mask[b] = 0  # Shallow copy means this is reflected in labels
+                label_flows1[b] = 0  # Shallow copy means this is reflected in labels
+                label_flows2[b] = 0  # Shallow copy means this is reflected in labels
+
+            labels[i, 0] = label_mask  # More explicit
+            labels[i, 1] = label_flows1  # More explicit
+            labels[i, 2] = label_flows2  # More explicit
+    else:
+        cc = sorted(np.unique(np.concatenate((np.unique(labels[0]), np.unique(labels[:, 0]),
+                                              np.unique(labels[-1]), np.unique(labels[:, -1])))))
+        for i in range(1, len(cc)):
+            labels[labels == cc[i]] = 0
+    return labels
 
 # Removes any samples which contain labels without cells
 def remove_empty_label_patches(data, labels):

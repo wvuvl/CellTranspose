@@ -80,12 +80,16 @@ ff = FollowFlows(niter=100, interp=True, use_gpu=True, cellprob_threshold=0.0, f
 # Default median diameter to resize cells to
 median_diams = (24, 24)
 
-gen_cellpose = UpdatedCellpose(channels=1, device='cuda:0')
-gen_cellpose = nn.DataParallel(gen_cellpose, device_ids=[0])
-gen_cellpose.load_state_dict(load(args.cellpose_model))
+if not (args.val_use_labels and args.test_use_labels):
+    gen_cellpose = UpdatedCellpose(channels=1, device='cuda:0')
+    gen_cellpose = nn.DataParallel(gen_cellpose, device_ids=[0])
+    gen_cellpose.load_state_dict(load(args.cellpose_model))
 
-gen_size_model = SizeModel().to('cuda:0')
-gen_size_model.load_state_dict(load(args.size_model))
+    gen_size_model = SizeModel().to('cuda:0')
+    gen_size_model.load_state_dict(load(args.size_model))
+else:
+    gen_cellpose = None
+    gen_size_model = None
 
 model = UpdatedCellpose(channels=1, device=device)
 model = nn.DataParallel(model)
@@ -101,14 +105,18 @@ if not args.eval_only:
                                                patch_per_batch=args.patches_per_batch))
     train_dl = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True)
 
-    val_dataset = CellPoseData('Validation', args.val_dataset, evaluate=False, do_3D=args.do_3D,
-                               from_3D=args.val_from_3D,
-                               resize=Resize(median_diams, use_labels=args.val_use_labels, refine=True,
-                                             gc_model=gen_cellpose, sz_model=gen_size_model, device=device,
-                                             follow_flows_function=ff, patch_per_batch=args.patches_per_batch)
-                               )
-    val_dataset.pre_generate_patches()
-    val_dl = DataLoader(val_dataset, batch_size=args.batch_size, shuffle=False)
+    if args.val_dataset is not None:
+        val_dataset = CellPoseData('Validation', args.val_dataset, evaluate=False, do_3D=args.do_3D,
+                                   from_3D=args.val_from_3D,
+                                   resize=Resize(median_diams, use_labels=args.val_use_labels, refine=True,
+                                                 gc_model=gen_cellpose, sz_model=gen_size_model, device=device,
+                                                 follow_flows_function=ff, patch_per_batch=args.patches_per_batch)
+                                   )
+        val_dataset.pre_generate_patches()
+        val_dl = DataLoader(val_dataset, batch_size=args.batch_size, shuffle=False)
+    else:
+        val_dl = None
+        print('NO VALIDATION DATA GIVEN --> skipping validation.')
 
     if args.do_adaptation:
         target_dataset = CellPoseData('Target', args.target_dataset, do_3D=args.do_3D, from_3D=args.target_from_3D,
@@ -127,11 +135,14 @@ if not args.eval_only:
     plt.figure()
     x_range = np.arange(1, len(train_losses)+1)
     plt.plot(x_range, train_losses)
-    plt.plot(x_range, val_losses)
+    if val_dl is not None:
+        plt.plot(x_range, val_losses)
+        plt.legend(['Training Losses', 'Validation Losses'])
+        plt.title('Training and Validation Losses')
+    else:
+        plt.title('Training Loss')
     plt.xlabel('Epoch')
     plt.ylabel('Combined Losses')
-    plt.title('Training and Validation Losses')
-    plt.legend(['Training Losses', 'Validation Losses'])
     plt.savefig(os.path.join(args.results_dir, 'Training-Validation Losses'))
     plt.show()
 

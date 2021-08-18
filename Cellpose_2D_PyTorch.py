@@ -152,14 +152,14 @@ class UpdatedCellpose(nn.Module):
 class SizeModel(nn.Module):
     def __init__(self):
         super().__init__()
-        # self.linear1 = nn.Linear(256, 128)
-        # self.linear2 = nn.Linear(128, 1)
-        self.linear = nn.Linear(256, 1)
+        self.linear1 = nn.Linear(256, 512)
+        self.linear2 = nn.Linear(512, 1)
+        # self.linear = nn.Linear(256, 1)
 
     def forward(self, x):
-        # x = self.linear1(x)
-        # return self.linear2(x)
-        return self.linear(x)
+        x = self.linear1(x)
+        return self.linear2(x)
+        # return self.linear(x)
 
 
 # if __name__ == '__main__()':
