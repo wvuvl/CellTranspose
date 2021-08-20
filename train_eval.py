@@ -59,7 +59,7 @@ def adapt_network(model: nn.Module, source_dl, target_dl, val_dl, sas_class_loss
                   optimizer, device, n_epochs):
     train_losses = []
     val_losses = []
-    batched_target_data, batched_target_labels = process_src_tgt()
+    batched_target_data, batched_target_labels = process_src_tgt(source_dl, target_dl)
     print('Beginning domain adaptation.\n')
 
     # Assume # of target samples << # of source samples
@@ -80,11 +80,12 @@ def adapt_network(model: nn.Module, source_dl, target_dl, val_dl, sas_class_loss
             target_sample_labels = batched_target_labels[i*target_dl.batch_size:(i+1)*target_dl.batch_size].to(device)
             target_output = model(target_sample_data)
             source_grad_loss = flow_loss(source_output, source_sample_labels)
+            target_grad_loss = flow_loss(target_output, target_sample_labels)
             adaptation_class_loss = sas_class_loss(source_output[:, 0], source_sample_labels[:, 0],
                                                    target_output[:, 0], target_sample_labels[:, 0],
                                                    margin=1, gamma=0.1)
 
-            train_loss = source_grad_loss + adaptation_class_loss
+            train_loss = source_grad_loss + target_grad_loss + adaptation_class_loss
             train_epoch_losses.append(train_loss.item())
             train_loss.backward()
             optimizer.step()

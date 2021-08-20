@@ -68,6 +68,8 @@ parser.add_argument('--calculate-ap', help='Whether to perform AP calculation at
 # TODO: Add new command line args for using labels - validation and test
 args = parser.parse_args()
 
+print(args.results_dir)
+
 assert not os.path.exists(args.results_dir),\
     'Results folder {} currently exists; please specify new location to save results.'.format(args.results_dir)
 os.mkdir(args.results_dir)

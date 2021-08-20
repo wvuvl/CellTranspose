@@ -204,7 +204,7 @@ class FollowFlows(object):
 
 # Generate patches of input to be passed into model. Currently set to 64x64 patches with at least 32x32 overlap
 # - image should also already be resized such that median cell diameter is 32
-def generate_patches(data, label=None, eval=False, patch=(64, 64), min_overlap=(32, 32)):
+def generate_patches(data, label=None, eval=False, patch=(96, 96), min_overlap=(64, 64)):
     num_x_patches = math.ceil((data.shape[3] - min_overlap[0]) / (patch[0] - min_overlap[0]))
     x_patches = np.linspace(0, data.shape[3] - patch[0], num_x_patches, dtype=int)
     num_y_patches = math.ceil((data.shape[2] - min_overlap[1]) / (patch[1] - min_overlap[1]))
@@ -280,13 +280,13 @@ Creates recombined images after averaging together.
 Note: Cellpose uses a tapered mask rather than simple averaging; this can be applied by simply replacing the mask_patch
 with a tapered mask
 """
-def recombine_patches(labels, im_dims=(500, 500), min_overlap=(32, 32)):
+def recombine_patches(labels, im_dims=(500, 500), min_overlap=(64, 64)):
     num_x_patches = math.ceil((im_dims[1] - min_overlap[0]) / (labels.shape[3] - min_overlap[0]))
     x_patches = np.linspace(0, im_dims[1] - labels.shape[3], num_x_patches, dtype=int)
     num_y_patches = math.ceil((im_dims[0] - min_overlap[1]) / (labels.shape[2] - min_overlap[1]))
     y_patches = np.linspace(0, im_dims[0] - labels.shape[2], num_y_patches, dtype=int)
 
-    # mask_patch = ones((labels.shape[3], labels.shape[2])).to('cuda')
+    # mask_patch = torch.ones((labels.shape[3], labels.shape[2])).to('cuda')
     mask_patch = torch.tensor(_taper_mask(lx=labels.shape[3], ly=labels.shape[2], sig=7.5)).to('cuda')
     num_ims = labels.shape[0] // (num_x_patches * num_y_patches)
     recombined_labels = torch.zeros((num_ims, 3, im_dims[0], im_dims[1])).to('cuda')

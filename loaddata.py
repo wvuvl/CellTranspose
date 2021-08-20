@@ -157,7 +157,6 @@ class CellPoseData(Dataset):
             # data, labels = remove_empty_label_patches(data, labels)
             self.data_samples = cat((self.data_samples, data))
             self.label_samples = cat((self.label_samples, labels))
-        print('test')
 
     def pre_generate_patches(self):
         self.data_samples = tensor([])

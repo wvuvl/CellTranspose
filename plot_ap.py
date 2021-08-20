@@ -34,5 +34,3 @@ plt.title('Average Precision')  # Could add further arguments here
 plt.xlabel(r'IoU Matching Threshold $\tau$')
 plt.ylabel('Average Precision')
 plt.savefig(os.path.join(prediction_dir, 'Average_Precision.pdf'))
-
-print('test')

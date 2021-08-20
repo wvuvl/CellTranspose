@@ -41,5 +41,3 @@ plt.title('Average Precision for Cellpose on Given Dataset')
 plt.xlabel(r'IoU Matching Threshold $\tau$')
 plt.ylabel('Average Precision')
 plt.show()
-
-print('test')
