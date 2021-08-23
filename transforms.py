@@ -260,22 +260,25 @@ def remove_cut_cells(labels, flows=False):
     return labels
 
 
-# Removes any samples which contain labels without cells
+# Removes a fraction of labeled samples without cells, such that the ratio of zero to non-zero is approximately 0.1
 def remove_empty_label_patches(data, labels):
-    keep_samples = []
     num_labels = labels.shape[0]
+    nonzero_samples = 0
     for i in range(num_labels):
         if not torch.equal(labels[i], torch.zeros((labels.shape[1:]))):
-            keep_samples.append(i)
-    num_zeros = num_labels - len(keep_samples)
-    actual_keep_samples = []
-    for i in range(num_labels):
-        if not torch.equal(labels[i], torch.zeros((labels.shape[1:]))):
-            actual_keep_samples.append(i)
-        elif random.random() > 0.75:
-            actual_keep_samples.append(i)
-    data = data[actual_keep_samples, :]
-    labels = labels[actual_keep_samples, :]
+            nonzero_samples += 1
+    num_zeros = num_labels - nonzero_samples
+    ratio_zeros = 0.1  # Maximum ratio of zero-label samples to non-zero-label samples
+    keep_zeros_percentage = ratio_zeros / (num_zeros / num_labels)  # If > 1, retain all zero-label samples
+    if keep_zeros_percentage < 1:
+        keep_samples = []
+        for i in range(num_labels):
+            if not torch.equal(labels[i], torch.zeros((labels.shape[1:]))):
+                keep_samples.append(i)
+            elif random.random() < keep_zeros_percentage:
+                keep_samples.append(i)
+        data = data[keep_samples, :]
+        labels = labels[keep_samples, :]
     return data, labels
 
 

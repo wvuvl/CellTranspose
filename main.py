@@ -215,6 +215,7 @@ if not args.train_only:
         plt.title('Average Precision for Cellpose on {} Dataset'.format(args.dataset_name))
         plt.xlabel(r'IoU Matching Threshold $\tau$')
         plt.ylabel('Average Precision')
+        plt.yticks(np.arange(0, 1.2, step=0.2))
         plt.savefig(os.path.join(args.results_dir, 'AP Results'))
         plt.show()
         with open(os.path.join(args.results_dir, '{}_AP_Results.pkl'.format(args.dataset_name)), 'wb') as apr:

@@ -154,9 +154,9 @@ class CellPoseData(Dataset):
                 labels = labels[np.newaxis, :]
             data, labels = generate_patches(unsqueeze(data, 0), labels, patch=patch_size, min_overlap=min_overlap)
             # labels = remove_cut_cells(labels, flows=True)
-            # data, labels = remove_empty_label_patches(data, labels)
             self.data_samples = cat((self.data_samples, data))
             self.label_samples = cat((self.label_samples, labels))
+        self.data_samples, self.label_samples = remove_empty_label_patches(self.data_samples, self.label_samples)
 
     def pre_generate_patches(self, patch_size, min_overlap):
         self.data_samples = tensor([])
