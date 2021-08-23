@@ -268,7 +268,7 @@ def remove_empty_label_patches(data, labels):
         if not torch.equal(labels[i], torch.zeros((labels.shape[1:]))):
             nonzero_samples += 1
     num_zeros = num_labels - nonzero_samples
-    ratio_zeros = 0.1  # Maximum ratio of zero-label samples to non-zero-label samples
+    ratio_zeros = 0  # Maximum ratio of zero-label samples to non-zero-label samples
     keep_zeros_percentage = ratio_zeros / (num_zeros / num_labels)  # If > 1, retain all zero-label samples
     if keep_zeros_percentage < 1:
         keep_samples = []

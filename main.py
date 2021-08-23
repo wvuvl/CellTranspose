@@ -246,6 +246,8 @@ with open(os.path.join(args.results_dir, 'logfile.txt'), 'w') as txt:
         txt.write('Patch size: {}\n'.format(args.patch_size))
         txt.write('Minimum patch overlap: {}\n'.format(args.min_overlap))
         txt.write('\n')
+        txt.write('Zeros removed: all')
+        txt.write('\n')
         if args.do_adaptation:
             txt.write('Source dataset(s): {}\n'.format(args.train_dataset))
             txt.write('Target Dataset(s): {}\n'.format(args.target_dataset))

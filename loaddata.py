@@ -156,7 +156,7 @@ class CellPoseData(Dataset):
             # labels = remove_cut_cells(labels, flows=True)
             self.data_samples = cat((self.data_samples, data))
             self.label_samples = cat((self.label_samples, labels))
-        self.data_samples, self.label_samples = remove_empty_label_patches(self.data_samples, self.label_samples)
+        # self.data_samples, self.label_samples = remove_empty_label_patches(self.data_samples, self.label_samples)
 
     def pre_generate_patches(self, patch_size, min_overlap):
         self.data_samples = tensor([])
