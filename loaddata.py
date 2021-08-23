@@ -142,7 +142,7 @@ class CellPoseData(Dataset):
     def __len__(self):
         return len(self.data_samples)
 
-    def reprocess_on_epoch(self):
+    def reprocess_on_epoch(self, patch_size, min_overlap):
         self.data_samples = tensor([])
         self.label_samples = tensor([])
         for (data, labels) in zip(self.data, self.labels):
@@ -152,19 +152,20 @@ class CellPoseData(Dataset):
                 labels = as_tensor([LabelsToFlows()(labels[i].numpy()) for i in range(len(labels))])
             else:
                 labels = labels[np.newaxis, :]
-            data, labels = generate_patches(unsqueeze(data, 0), labels)
+            data, labels = generate_patches(unsqueeze(data, 0), labels, patch=patch_size, min_overlap=min_overlap)
             # labels = remove_cut_cells(labels, flows=True)
             # data, labels = remove_empty_label_patches(data, labels)
             self.data_samples = cat((self.data_samples, data))
             self.label_samples = cat((self.label_samples, labels))
 
-    def pre_generate_patches(self):
+    def pre_generate_patches(self, patch_size, min_overlap):
         self.data_samples = tensor([])
         self.label_samples = tensor([])
         new_l_list = []
         new_original_dims = []
         for (data, labels, label_fname, original_dim) in zip(self.data, self.labels, self.l_list, self.original_dims):
-            data, labels = generate_patches(unsqueeze(data, 0), labels, eval=True)
+            data, labels = generate_patches(unsqueeze(data, 0), labels, eval=True,
+                                            patch=patch_size, min_overlap=min_overlap)
             # data, labels = remove_empty_label_patches(data, labels)
             self.data_samples = cat((self.data_samples, data))
             self.label_samples = cat((self.label_samples, labels))

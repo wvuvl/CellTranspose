@@ -61,8 +61,8 @@ class Normalize1stTo99th(object):
 
 
 class Resize(object):
-    def __init__(self, default_med, use_labels=False, refine=True, gc_model=None, sz_model=None,
-                 device='cpu', patch_per_batch=None, follow_flows_function=None):
+    def __init__(self, default_med, use_labels=False, refine=True, gc_model=None, sz_model=None, patch_size=(96, 96),
+                 min_overlap=(64, 64), device='cpu', patch_per_batch=None, follow_flows_function=None):
         self.use_labels = use_labels
         self.default_med = default_med
         if not self.use_labels:
@@ -73,6 +73,8 @@ class Resize(object):
                 self.device = device
                 self.patch_per_batch = patch_per_batch
                 self.follow_flows_function = follow_flows_function
+                self.min_overlap = min_overlap
+                self.patch_size = patch_size
 
     def __call__(self, X, y, pf=None):
         original_dims = y.shape[1], y.shape[2]
@@ -83,7 +85,8 @@ class Resize(object):
             X, y = predict_and_resize(X, y, self.default_med, self.gc_model, self.sz_model)  # Add pf here
             if self.refine:
                 X, y = refined_predict_and_resize(X, y, self.default_med, self.gc_model, self.device,
-                                                  self.patch_per_batch, self.follow_flows_function)  # Add pf here
+                                                  self.patch_per_batch, self.follow_flows_function,
+                                                  self.patch_size, self.min_overlap)  # Add pf here
             return X, y, original_dims
 
 
@@ -126,17 +129,18 @@ def predict_and_resize(X, y, default_med, gc_model, sz_model):
 
 
 # produce output masks using gc_model, then calculate mean diameter
-def refined_predict_and_resize(X, y, default_med, gc_model, device, patch_per_batch, follow_flows_function):
+def refined_predict_and_resize(X, y, default_med, gc_model, device, patch_per_batch,
+                               follow_flows_function, patch_size, min_overlap):
         X = torch.unsqueeze(X, dim=0)
         im_dims = (X.shape[2], X.shape[3])
-        sample_data, _ = generate_patches(X, y, eval=True)
+        sample_data, _ = generate_patches(X, y, patch=patch_size, min_overlap=min_overlap, eval=True)
         with torch.no_grad():
             predictions = torch.tensor([]).to(device)
             for patch_ind in range(0, len(sample_data), patch_per_batch):
                 sample_patch_data = sample_data[patch_ind:patch_ind + patch_per_batch].float().to(device)
                 p = gc_model(sample_patch_data)
                 predictions = torch.cat((predictions, p))
-        predictions = recombine_patches(predictions, im_dims)
+        predictions = recombine_patches(predictions, im_dims, min_overlap)
         sample_mask = follow_flows_function(predictions)
         med, cts = diameters(sample_mask.numpy())
         rescale_w, rescale_h = default_med[0] / med, default_med[1] / med

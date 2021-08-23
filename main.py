@@ -25,6 +25,13 @@ parser.add_argument('--batch-size', type=int)
 parser.add_argument('--epochs', type=int)
 parser.add_argument('--patches-per-batch', type=int,
                     help='Number of patches to pass into GPU at once - effectively batch size.')
+parser.add_argument('--median-diams', type=int,
+                    help='Median diameter size with which to resize images to. Note: If using pretrained model, ensure '
+                         'that this variable remains the same as the given model.')
+parser.add_argument('--patch-size', type=int,
+                    help='Size of image patches with which to tile.')
+parser.add_argument('--min-overlap', type=int,
+                    help='Amount of overlap to use for tiling - currently the same for train, validation, and test.')
 parser.add_argument('--dataset-name', help='Name of dataset to use for reporting results (omit the word "Dataset").')
 parser.add_argument('--results-dir', help='Folder in which to save experiment results.')
 parser.add_argument('--train-only', help='Only perform training, no evaluation (mutually exclusive with "eval-only").',
@@ -74,6 +81,7 @@ assert not os.path.exists(args.results_dir),\
     'Results folder {} currently exists; please specify new location to save results.'.format(args.results_dir)
 os.mkdir(args.results_dir)
 os.mkdir(os.path.join(args.results_dir, 'tiff_results'))
+os.mkdir(os.path.join(args.results_dir, 'raw_predictions_tiffs'))
 assert not (args.train_only and args.eval_only), 'Cannot pass in "train-only" and "eval-only" arguments simultaneously.'
 num_workers = device_count()
 device = device('cuda' if is_available() else 'cpu')
@@ -82,7 +90,9 @@ empty_cache()
 ff = FollowFlows(niter=100, interp=True, use_gpu=True, cellprob_threshold=0.0, flow_threshold=1.0)
 
 # Default median diameter to resize cells to
-median_diams = (24, 24)
+median_diams = (args.median_diams, args.median_diams)
+patch_size = (args.patch_size, args.patch_size)
+min_overlap = (args.min_overlap, args.min_overlap)
 
 if not (args.val_use_labels and args.test_use_labels):
     gen_cellpose = UpdatedCellpose(channels=1, device='cuda:0')
@@ -113,10 +123,11 @@ if not args.eval_only:
         val_dataset = CellPoseData('Validation', args.val_dataset, evaluate=False, do_3D=args.do_3D,
                                    from_3D=args.val_from_3D,
                                    resize=Resize(median_diams, use_labels=args.val_use_labels, refine=True,
-                                                 gc_model=gen_cellpose, sz_model=gen_size_model, device=device,
+                                                 gc_model=gen_cellpose, sz_model=gen_size_model,
+                                                 min_overlap=min_overlap, device=device,
                                                  follow_flows_function=ff, patch_per_batch=args.patches_per_batch)
                                    )
-        val_dataset.pre_generate_patches()
+        val_dataset.pre_generate_patches(patch_size=patch_size, min_overlap=min_overlap)
         val_dl = DataLoader(val_dataset, batch_size=args.batch_size, shuffle=False)
     else:
         val_dl = None
@@ -125,12 +136,14 @@ if not args.eval_only:
     if args.do_adaptation:
         target_dataset = CellPoseData('Target', args.target_dataset, pf_dirs=args.target_flows, do_3D=args.do_3D,
                                       from_3D=args.target_from_3D, resize=Resize(median_diams, use_labels=True,
-                                                    patch_per_batch=args.patches_per_batch))
+                                                                                 patch_per_batch=args.patches_per_batch))  # TODO: Replace with batch_size?
         target_dl = DataLoader(target_dataset, batch_size=args.batch_size, shuffle=True)
         train_losses, val_losses = adapt_network(model, train_dl, target_dl, val_dl, sas_class_loss, class_loss,
-                                                 flow_loss, optimizer=optimizer, device=device, n_epochs=args.epochs)
+                                                 flow_loss, patch_size=patch_size, min_overlap=min_overlap,
+                                                 optimizer=optimizer, device=device, n_epochs=args.epochs)
     else:
         train_losses, val_losses = train_network(model, train_dl, val_dl, class_loss, flow_loss,
+                                                 patch_size, min_overlap,
                                                  optimizer=optimizer, device=device, n_epochs=args.epochs)
     save(model.state_dict(), os.path.join(args.results_dir, 'trained_model.pt'))
     end_train = time.time()
@@ -155,19 +168,25 @@ if not args.train_only:
     start_eval = time.time()
     test_dataset = CellPoseData('Test', args.test_dataset, evaluate=True, do_3D=args.do_3D, from_3D=args.test_from_3D,
                                 resize=Resize(median_diams, use_labels=args.test_use_labels, refine=True,
-                                              gc_model=gen_cellpose, sz_model=gen_size_model, device=device,
+                                              gc_model=gen_cellpose, sz_model=gen_size_model,
+                                              min_overlap=min_overlap, device=device,
                                               patch_per_batch=args.patches_per_batch, follow_flows_function=ff))
 
     eval_dl = DataLoader(test_dataset, batch_size=1, shuffle=False)
 
-    masks, label_list = eval_network(model, eval_dl, device, patch_per_batch=args.patches_per_batch)
+    masks, prediction_list, label_list = eval_network(model, eval_dl, device, patch_per_batch=args.patches_per_batch,
+                                                      patch_size=patch_size, min_overlap=min_overlap)
 
     for i in range(len(masks)):
-        masks[i] = masks[i].astype('int16')  # Can change back to int32 if necessary
-        with open(os.path.join(args.results_dir, label_list[i] + '_predicted_labels.pkl'), 'wb') as pl:
-            pickle.dump(masks[i], pl)
+        masks[i] = masks[i].astype('int32')  # Can change back to int32 if necessary
+        with open(os.path.join(args.results_dir, label_list[i] + '_predicted_labels.pkl'), 'wb') as m_pkl:
+            pickle.dump(masks[i], m_pkl)
         tifffile.imwrite(os.path.join(args.results_dir, 'tiff_results', label_list[i] + '.tif'),
-                         masks[i].astype('int32'))
+                         masks[i])
+        with open(os.path.join(args.results_dir, label_list[i] + '_raw_masks_flows.pkl'), 'wb') as rmf_pkl:
+            pickle.dump(prediction_list[i], rmf_pkl)
+        tifffile.imwrite(os.path.join(args.results_dir, 'raw_predictions_tiffs', label_list[i] + '.tif'),
+                         prediction_list[i])
     end_eval = time.time()
     print('Time to evaluate: {}'.format(time.strftime("%H:%M:%S", time.gmtime(end_eval - start_eval))))
 
@@ -221,6 +240,10 @@ with open(os.path.join(args.results_dir, 'logfile.txt'), 'w') as txt:
                   .format(args.patches_per_batch))
         txt.write('GPUs: {}\n'.format(num_workers))
         txt.write('Pretrained model: {}\n'.format(args.pretrained_model))
+        txt.write('\n')
+        txt.write('Cells resized to possess median diameter of {}.\n'.format(args.median_diams))
+        txt.write('Patch size: {}\n'.format(args.patch_size))
+        txt.write('Minimum patch overlap: {}\n'.format(args.min_overlap))
         txt.write('\n')
         if args.do_adaptation:
             txt.write('Source dataset(s): {}\n'.format(args.train_dataset))

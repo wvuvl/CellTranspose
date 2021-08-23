@@ -10,8 +10,8 @@ from transforms import LabelsToFlows, FollowFlows, generate_patches, recombine_p
 
 import matplotlib.pyplot as plt
 
-def train_network(model, train_dl, val_dl, class_loss, flow_loss,
-                  optimizer, device, n_epochs):
+
+def train_network(model, train_dl, val_dl, class_loss, flow_loss, patch_size, min_overlap, optimizer, device, n_epochs):
     train_losses = []
     val_losses = []
     start_train = time.time()
@@ -19,7 +19,7 @@ def train_network(model, train_dl, val_dl, class_loss, flow_loss,
     print('Preprocessing data:')
     # Test reprocessing once
     reprocess_train_time = time.time()
-    train_dl.dataset.reprocess_on_epoch()
+    train_dl.dataset.reprocess_on_epoch(patch_size, min_overlap)
     print('Time to reprocess training data: {}'.format(time.strftime("%H:%M:%S",
                                                                      time.gmtime(time.time() - reprocess_train_time))))
     print('Beginning network training.\n')
@@ -27,6 +27,8 @@ def train_network(model, train_dl, val_dl, class_loss, flow_loss,
     for e in range(1, n_epochs + 1):
         train_epoch_losses = []
         model.train()
+        if e == 45:
+            print('debug here')
         # reprocess_train_time = time.time()
         # train_dl.dataset.reprocess_on_epoch()
         # print('Time to reprocess training data: {}'.format(time.strftime("%H:%M:%S",
@@ -36,9 +38,10 @@ def train_network(model, train_dl, val_dl, class_loss, flow_loss,
             sample_labels = sample_labels.to(device)
             optimizer.zero_grad()
             output = model(sample_data)
-            grad_loss = flow_loss(output, sample_labels)
             mask_loss = class_loss(output, sample_labels)
-            train_loss = grad_loss + mask_loss
+            grad_loss = flow_loss(output, sample_labels)
+            train_loss = mask_loss + grad_loss
+            # train_loss = grad_loss
             train_epoch_losses.append(train_loss.item())
             train_loss.backward()
             optimizer.step()
@@ -56,10 +59,10 @@ def train_network(model, train_dl, val_dl, class_loss, flow_loss,
 
 
 def adapt_network(model: nn.Module, source_dl, target_dl, val_dl, sas_class_loss, class_loss, flow_loss,
-                  optimizer, device, n_epochs):
+                  patch_size, min_overlap, optimizer, device, n_epochs):
     train_losses = []
     val_losses = []
-    batched_target_data, batched_target_labels = process_src_tgt(source_dl, target_dl)
+    batched_target_data, batched_target_labels = process_src_tgt(source_dl, target_dl, patch_size, min_overlap)
     print('Beginning domain adaptation.\n')
 
     # Assume # of target samples << # of source samples
@@ -119,7 +122,7 @@ def validate_network(model, data_loader, flow_loss, class_loss, device):
 
 
 # Evaluation - due to image size mismatches, must currently be run one image at a time
-def eval_network(model: nn.Module, data_loader: DataLoader, device, patch_per_batch):
+def eval_network(model: nn.Module, data_loader: DataLoader, device, patch_per_batch, patch_size, min_overlap):
 
     model.eval()
     print('Beginning evaluation.')
@@ -127,9 +130,11 @@ def eval_network(model: nn.Module, data_loader: DataLoader, device, patch_per_ba
     with no_grad():
         masks = []
         label_list = []
+        pred_list = []
         for (sample_data, sample_labels, label_files, original_dims) in data_loader:
             resized_dims = (sample_data.shape[2], sample_data.shape[3])
-            sample_data, _ = generate_patches(sample_data, squeeze(sample_labels, dim=0), eval=True)
+            sample_data, _ = generate_patches(sample_data, squeeze(sample_labels, dim=0), eval=True,
+                                              patch=patch_size, min_overlap=min_overlap)
             predictions = tensor([]).to(device)
 
             for patch_ind in range(0, len(sample_data), patch_per_batch):
@@ -137,26 +142,27 @@ def eval_network(model: nn.Module, data_loader: DataLoader, device, patch_per_ba
                 p = model(sample_patch_data)
                 predictions = cat((predictions, p))
 
-            predictions = recombine_patches(predictions, resized_dims)
+            predictions = recombine_patches(predictions, resized_dims, min_overlap)
             sample_mask = ff(predictions)
             sample_mask = np.transpose(sample_mask.numpy(), (1, 2, 0))
             sample_mask = cv2.resize(sample_mask, (original_dims[1].item(), original_dims[0].item()),
                                      interpolation=cv2.INTER_NEAREST)
+            pred_list.append(predictions.cpu().numpy()[0])
             masks.append(sample_mask)
             for i in range(len(label_files)):
                 label_list.append(label_files[i][label_files[i].rfind('/')+1: label_files[i].rfind('.')])
 
-    return masks, label_list
+    return masks, pred_list, label_list
 
 
-def process_src_tgt(dl_src, dl_tgt):
+def process_src_tgt(dl_src, dl_tgt, patch_size, min_overlap):
     print('Processing data:')
     reprocess_source_time = time.time()
-    dl_src.dataset.reprocess_on_epoch()
+    dl_src.dataset.reprocess_on_epoch(patch_size, min_overlap)
     print('Time to process source data: {}'.format(time.strftime("%H:%M:%S",
                                                                    time.gmtime(time.time() - reprocess_source_time))))
     reprocess_target_time = time.time()
-    dl_tgt.dataset.reprocess_on_epoch()
+    dl_tgt.dataset.reprocess_on_epoch(patch_size, min_overlap)
     target_data = dl_tgt.dataset.data_samples
     target_labels = dl_tgt.dataset.label_samples
     batched_target_data = target_data

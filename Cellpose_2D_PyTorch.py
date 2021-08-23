@@ -12,9 +12,9 @@ from torch import nn
 
 # Standard Cellpose class loss
 def class_loss(lbl, y):
-    class_pred = (lbl[:, 0] > 0.5).float()
+    class_pred = lbl[:, 0]
     class_y = y[:, 0]
-    class_loss = nn.BCEWithLogitsLoss(reduction='mean')(class_y, class_pred)
+    class_loss = nn.BCEWithLogitsLoss(reduction='mean')(class_y, class_pred)  #TODO: INITIALIZE LOSS TO MAKE MORE EFFICIENT
     return class_loss
 
 
@@ -22,7 +22,7 @@ def class_loss(lbl, y):
 def flow_loss(lbl, y):
     flow_pred = 5. * lbl[:, 1:]
     flow_y = 5. * y[:, 1:]
-    flow_loss = nn.MSELoss(reduction='mean')(flow_y, flow_pred)
+    flow_loss = nn.MSELoss(reduction='mean')(flow_y, flow_pred)  # TODO: INITIALIZE LOSS TO MAKE MORE EFFICIENT
     return flow_loss
 
 
