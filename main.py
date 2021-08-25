@@ -1,6 +1,6 @@
 import argparse
 from torch.utils.data import DataLoader
-from torch import nn, device, load, save, squeeze
+from torch import nn, device, load, save, squeeze, as_tensor
 from torch.cuda import is_available, device_count, empty_cache
 from torch.optim import SGD
 import os
@@ -10,7 +10,7 @@ import matplotlib.pyplot as plt
 import tifffile
 import time
 
-from transforms import FollowFlows, Resize
+from transforms import FollowFlows, Resize, Reformat
 from loaddata import CellPoseData
 from Cellpose_2D_PyTorch import UpdatedCellpose, SizeModel, class_loss, flow_loss, sas_class_loss
 from train_eval import train_network, adapt_network, eval_network
@@ -190,75 +190,78 @@ if not args.train_only:
     end_eval = time.time()
     print('Time to evaluate: {}'.format(time.strftime("%H:%M:%S", time.gmtime(end_eval - start_eval))))
 
+    with open(os.path.join(args.results_dir, 'counted_cells.txt'), 'w') as cc:
+        predicted_count = 0
+        true_count = 0
+        for i in range(len(test_dataset)):
+            cc.write('{}:\nPredicted: {}; True: {}\n'.format(test_dataset.d_list[i], len(np.unique(masks[i])),
+                                                             len(np.unique(test_dataset.labels[i]))))
+            predicted_count += len(np.unique(masks[i]))
+            true_count += len(np.unique(test_dataset.labels[i]))
+        cc.write('\nTotal cell count:\nPredicted: {}; True: {}'.format(predicted_count, true_count))
+    print('Total cell count:\nPredicted: {}; True: {}'.format(predicted_count, true_count))
+
     # AP Calculation
     if args.calculate_ap:
-
         labels = []
-        # Temporary - TODO: solve this in next update
-        from transforms import Reformat
-        from torch import as_tensor
-        from tifffile import imread
         reformat = Reformat()
-        # for label in label_list:
         for l in test_dataset.l_list:
-            label = as_tensor(imread(l).astype('int16'))
+            label = as_tensor(tifffile.imread(l).astype('int16'))
             label = squeeze(reformat(label), dim=0).numpy()
             labels.append(label)
-
         tau = np.arange(0.01, 1.01, 0.01)
         ap_info = average_precision(labels, masks, threshold=tau)
         ap_per_im = ap_info[0]
         ap_overall = np.average(ap_per_im, axis=0)
-
         plt.figure()
         plt.plot(tau, ap_overall)
         plt.title('Average Precision for Cellpose on {} Dataset'.format(args.dataset_name))
         plt.xlabel(r'IoU Matching Threshold $\tau$')
         plt.ylabel('Average Precision')
-        plt.yticks(np.arange(0, 1.2, step=0.2))
+        plt.yticks(np.arange(0, 1.01, step=0.2))
         plt.savefig(os.path.join(args.results_dir, 'AP Results'))
         plt.show()
         with open(os.path.join(args.results_dir, '{}_AP_Results.pkl'.format(args.dataset_name)), 'wb') as apr:
             pickle.dump((tau, ap_overall), apr)
 
-with open(os.path.join(args.results_dir, 'logfile.txt'), 'w') as txt:
+with open(os.path.join(args.results_dir, 'logfile.txt'), 'w') as log:
     if args.train_only:
-        txt.write('train-only\n')
+        log.write('train-only\n')
     if not args.eval_only:
-        txt.write('Time to train: {}\n'.format(time.strftime("%H:%M:%S", time.gmtime(end_train - start_train))))
+        log.write('Time to train: {}\n'.format(time.strftime("%H:%M:%S", time.gmtime(end_train - start_train))))
     else:
-        txt.write('eval-only\n')
+        log.write('eval-only\n')
     if not args.train_only:
-        txt.write('Time to evaluate: {}\n'.format(time.strftime("%H:%M:%S", time.gmtime(end_eval - start_eval))))
-    txt.write('\n')
+        log.write('Time to evaluate: {}\n'.format(time.strftime("%H:%M:%S", time.gmtime(end_eval - start_eval))))
+    log.write('\n')
+    log.write('Cells resized to possess median diameter of {}.\n'.format(args.median_diams))
+    log.write('Patch size: {}\n'.format(args.patch_size))
+    log.write('Minimum patch overlap: {}\n'.format(args.min_overlap))
+    log.write('\n')
+    log.write('Zeros removed: all\n')
+    log.write('\n')
     if not args.eval_only:
-        txt.write('Adaptation: {}\n'.format(args.do_adaptation))
+        log.write('Adaptation: {}\n'.format(args.do_adaptation))
         # if do_adaptation:
         #     txt.write('Gamma: {}; Margin: {}'.format())
-        txt.write('Learning rate: {}; Momentum: {}\n'.format(args.learning_rate, args.momentum))
-        txt.write('Epochs: {}; Batch size: {}\n'.format(args.epochs, args.batch_size))
-        txt.write('Patches per batch (for evaluation, or if refining size prediction): {}\n'
+        log.write('Learning rate: {}; Momentum: {}\n'.format(args.learning_rate, args.momentum))
+        log.write('Epochs: {}; Batch size: {}\n'.format(args.epochs, args.batch_size))
+        log.write('Patches per batch (for evaluation, or if refining size prediction): {}\n'
                   .format(args.patches_per_batch))
-        txt.write('GPUs: {}\n'.format(num_workers))
-        txt.write('Pretrained model: {}\n'.format(args.pretrained_model))
-        txt.write('\n')
-        txt.write('Cells resized to possess median diameter of {}.\n'.format(args.median_diams))
-        txt.write('Patch size: {}\n'.format(args.patch_size))
-        txt.write('Minimum patch overlap: {}\n'.format(args.min_overlap))
-        txt.write('\n')
-        txt.write('Zeros removed: all')
-        txt.write('\n')
+        log.write('GPUs: {}\n'.format(num_workers))
+        log.write('Pretrained model: {}\n'.format(args.pretrained_model))
+        log.write('\n')
         if args.do_adaptation:
-            txt.write('Source dataset(s): {}\n'.format(args.train_dataset))
-            txt.write('Target Dataset(s): {}\n'.format(args.target_dataset))
+            log.write('Source dataset(s): {}\n'.format(args.train_dataset))
+            log.write('Target Dataset(s): {}\n'.format(args.target_dataset))
         else:
-            txt.write('Training dataset(s): {}\n'.format(args.train_dataset))
-        txt.write('Validation dataset(s): {}\n'.format(args.val_dataset))
-        txt.write('Labels used for validation: {}\n'.format(args.val_use_labels))
+            log.write('Training dataset(s): {}\n'.format(args.train_dataset))
+        log.write('Validation dataset(s): {}\n'.format(args.val_dataset))
+        log.write('Labels used for validation: {}\n'.format(args.val_use_labels))
     if not args.train_only:
-        txt.write('Test dataset(s): {}\n'.format(args.test_dataset))
-        txt.write('Labels used for testing: {}\n'.format(args.test_use_labels))
-    txt.write('Refined size predictions: {}\n'.format(args.refine_prediction))
-    txt.write('\n')
-    txt.write('Cellpose model for size prediction: {}\n'.format(args.cellpose_model))
-    txt.write('Size model: {}'.format(args.size_model))
+        log.write('Test dataset(s): {}\n'.format(args.test_dataset))
+        log.write('Labels used for testing: {}\n'.format(args.test_use_labels))
+    log.write('Refined size predictions: {}\n'.format(args.refine_prediction))
+    log.write('\n')
+    log.write('Cellpose model for size prediction: {}\n'.format(args.cellpose_model))
+    log.write('Size model: {}'.format(args.size_model))
