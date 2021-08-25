@@ -1,10 +1,8 @@
 import argparse
 import os
 from loaddata import CellPoseData
-from transforms import Reformat, Normalize1stTo99th
 from Cellpose_2D_PyTorch import UpdatedCellpose, SizeModel
 import torch
-import torchvision
 import numpy as np
 import time
 import matplotlib.pyplot as plt
@@ -43,13 +41,6 @@ optimizer = torch.optim.SGD(size_model.parameters(), lr=args.learning_rate, mome
 loss_fn = torch.nn.MSELoss()
 # loss_fn = torch.nn.L1Loss()
 
-data_transform = torchvision.transforms.Compose([
-    Reformat(),
-    Normalize1stTo99th()
-])
-label_transform = torchvision.transforms.Compose([
-    Reformat()
-])
 train_dataset = CellPoseData('Training', args.train_dataset, do_3D=args.do_3D, from_3D=args.from_3D)
 train_dl = torch.utils.data.DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True)  # num_workers=num_workers
 

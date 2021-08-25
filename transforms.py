@@ -13,56 +13,50 @@ import torchvision.transforms.functional as TF
 import matplotlib.pyplot as plt
 
 
-# TODO: Need to update to work for all situations (currently only for when 1-channel 2D image doesn't include channel dim)
-"""
-Reformats raw input data with the following expected output:
-If 2-D -> torch.tensor with shape [1, x_dim, y_dim]
-If 3-D -> torch.tensor with shape [1, x_dim, y_dim, z_dim]
-"""
-class Reformat(object):
-    def __init__(self, do_3D=False):
-        super().__init__()
-        self.do_3D = do_3D
-
-    def __call__(self, x, is_pf=False):
-        if is_pf:
-            if x.ndim == 3:  # Likely flows
-                x = x.reshape(1, x.shape[0], x.shape[1], x.shape[2])
-        else:
-            if not self.do_3D:
-                if x.dim() == 2:
-                    x = x.view(1, x.shape[0], x.shape[1])
-                # Currently transforms multi-channel input to greyscale
-                elif x.dim() == 3:
-                    # TODO: copying Cellpose implementation, find a cleaner method for solving this
-                    if x.shape[2] < 10:
-                        info_chans = [len(torch.unique(x[:, :, i])) > 1 for i in range(x.shape[2])]
-                        x = x[:, :, info_chans]
-                        if x.shape[2] == 1:
-                            x = x.view(1, x.shape[0], x.shape[1])
-                        # else:
-                    else:
-                        raise ValueError('Data is not 2D; if intending to use 3D volumes, pass in "--do_3D" argument.')
-            # else:
-        return x
+def reformat(x, is_pf=False, do_3D=False):
+    # TODO: Need to update to work for all situations (currently only for when 1-channel 2D image doesn't include channel dim)
+    """
+    Reformats raw input data with the following expected output:
+    If 2-D -> torch.tensor with shape [1, x_dim, y_dim]
+    If 3-D -> torch.tensor with shape [1, x_dim, y_dim, z_dim]
+    """
+    if is_pf:
+        if x.ndim == 3:  # Likely flows
+            x = x.reshape(1, x.shape[0], x.shape[1], x.shape[2])
+    else:
+        if not do_3D:
+            if x.dim() == 2:
+                x = x.view(1, x.shape[0], x.shape[1])
+            # Currently transforms multi-channel input to greyscale
+            elif x.dim() == 3:
+                # TODO: copying Cellpose implementation, find a cleaner method for solving this
+                if x.shape[2] < 10:
+                    info_chans = [len(torch.unique(x[:, :, i])) > 1 for i in range(x.shape[2])]
+                    x = x[:, :, info_chans]
+                    if x.shape[2] == 1:
+                        x = x.view(1, x.shape[0], x.shape[1])
+                    # else:
+                else:
+                    raise ValueError('Data is not 2D; if intending to use 3D volumes, pass in "--do_3D" argument.')
+        # else:
+    return x
 
 
-class Normalize1stTo99th(object):
+def normalize1stto99th(x):
     """
     Normalize each channel of input image so that 0.0 corresponds to 1st percentile and 1.0 corresponds to 99th -
     Made to mimic Cellpose's normalization implementation
     """
-    def __call__(self, x):
-        sample = x.clone()
-        for chan in range(len(sample)):
-            sample[chan] = (sample[chan] - np.percentile(sample[chan], 1))\
-                           / (np.percentile(sample[chan], 99) - np.percentile(sample[chan], 1))
-        return sample
+    sample = x.clone()
+    for chan in range(len(sample)):
+        sample[chan] = (sample[chan] - np.percentile(sample[chan], 1))\
+                       / (np.percentile(sample[chan], 99) - np.percentile(sample[chan], 1))
+    return sample
 
 
 class Resize(object):
     def __init__(self, default_med, use_labels=False, refine=True, gc_model=None, sz_model=None, patch_size=(96, 96),
-                 min_overlap=(64, 64), device='cpu', patch_per_batch=None, follow_flows_function=None):
+                 min_overlap=(64, 64), device='cpu', patch_per_batch=None):
         self.use_labels = use_labels
         self.default_med = default_med
         if not self.use_labels:
@@ -72,7 +66,6 @@ class Resize(object):
             if refine:
                 self.device = device
                 self.patch_per_batch = patch_per_batch
-                self.follow_flows_function = follow_flows_function
                 self.min_overlap = min_overlap
                 self.patch_size = patch_size
 
@@ -85,8 +78,7 @@ class Resize(object):
             X, y = predict_and_resize(X, y, self.default_med, self.gc_model, self.sz_model)  # Add pf here
             if self.refine:
                 X, y = refined_predict_and_resize(X, y, self.default_med, self.gc_model, self.device,
-                                                  self.patch_per_batch, self.follow_flows_function,
-                                                  self.patch_size, self.min_overlap)  # Add pf here
+                                                  self.patch_per_batch, self.patch_size, self.min_overlap)  # Add pf here
             return X, y, original_dims
 
 
@@ -129,8 +121,7 @@ def predict_and_resize(X, y, default_med, gc_model, sz_model):
 
 
 # produce output masks using gc_model, then calculate mean diameter
-def refined_predict_and_resize(X, y, default_med, gc_model, device, patch_per_batch,
-                               follow_flows_function, patch_size, min_overlap):
+def refined_predict_and_resize(X, y, default_med, gc_model, device, patch_per_batch, patch_size, min_overlap):
         X = torch.unsqueeze(X, dim=0)
         im_dims = (X.shape[2], X.shape[3])
         sample_data, _ = generate_patches(X, y, patch=patch_size, min_overlap=min_overlap, eval=True)
@@ -141,7 +132,7 @@ def refined_predict_and_resize(X, y, default_med, gc_model, device, patch_per_ba
                 p = gc_model(sample_patch_data)
                 predictions = torch.cat((predictions, p))
         predictions = recombine_patches(predictions, im_dims, min_overlap)
-        sample_mask = follow_flows_function(predictions)
+        sample_mask = followflows(predictions)
         med, cts = diameters(sample_mask.numpy())
         rescale_w, rescale_h = default_med[0] / med, default_med[1] / med
         X = torch.squeeze(X, dim=0)
@@ -166,44 +157,33 @@ def random_rotate(X, y):
     return TF.rotate(X, angle), TF.rotate(y, angle)
 
 
-class LabelsToFlows(object):
+def labels_to_flows(label):
     """
     Converts labels to flows for training and validation - Interfaces with Cellpose's masks_to_flows dynamics
     Returns:
         flows: list of [4 x Ly x Lx] arrays
         flows[k][0] is labels[k], flows[k][1] is cell probability, flows[k][2] is Y flow, and flows[k][3] is X flow
     """
-    def __call__(self, label):
-        flows = masks_to_flows(label.astype(int))[0]
-        label = (label[np.newaxis, :] > 0.5).astype(np.float32)
-        return np.concatenate((label, flows))
+    flows = masks_to_flows(label.astype(int))[0]
+    label = (label[np.newaxis, :] > 0.5).astype(np.float32)
+    return np.concatenate((label, flows))
 
 
-class FollowFlows(object):
+def followflows(flows):
     """
     Combines follow_flows, get_masks, and fill_holes_and_remove_small_masks from Cellpose implementation
     """
-    def __init__(self, niter, interp, use_gpu, cellprob_threshold=0.0, flow_threshold=0.4, min_size=30):  # min_size=15
-        super().__init__()
-        self.niter = niter
-        self.interp = interp
-        self.use_gpu = use_gpu
-        self.cellprob_threshold = cellprob_threshold
-        self.flow_threshold = flow_threshold
-        self.min_size = min_size
+    niter = 100; interp = True; use_gpu = True; cellprob_threshold = 0.0; flow_threshold = 1.0; min_size=30  # min_size=15
+    masks = torch.zeros((flows.shape[0], flows.shape[-2], flows.shape[-1]))
+    for i, flow in enumerate(flows):
+        cellprob = flow[0].cpu().numpy()
+        dP = flow[1:].cpu().numpy()
+        p = follow_flows(-1 * dP * (cellprob > cellprob_threshold) / 5., niter, interp, use_gpu)
 
-    def __call__(self, flows):
-        masks = torch.zeros((flows.shape[0], flows.shape[-2], flows.shape[-1]))
-        for i, flow in enumerate(flows):
-            cellprob = flow[0].cpu().numpy()
-            dP = flow[1:].cpu().numpy()
-            p = follow_flows(-1 * dP * (cellprob > self.cellprob_threshold) / 5., self.niter, self.interp, self.use_gpu)
-            # p = follow_flows(dP * (cellprob > self.cellprob_threshold) / 5., self.niter, self.interp, self.use_gpu)
-
-            maski = get_masks(p, iscell=(cellprob > self.cellprob_threshold), flows=dP, threshold=self.flow_threshold)
-            maski = fill_holes_and_remove_small_masks(maski, min_size=self.min_size)
-            masks[i] = torch.tensor(maski)
-        return masks
+        maski = get_masks(p, iscell=(cellprob > cellprob_threshold), flows=dP, threshold=flow_threshold)
+        maski = fill_holes_and_remove_small_masks(maski, min_size=min_size)
+        masks[i] = torch.tensor(maski)
+    return masks
 
 
 # Generate patches of input to be passed into model. Currently set to 64x64 patches with at least 32x32 overlap
@@ -268,7 +248,7 @@ def remove_empty_label_patches(data, labels):
         if not torch.equal(labels[i], torch.zeros((labels.shape[1:]))):
             nonzero_samples += 1
     num_zeros = num_labels - nonzero_samples
-    ratio_zeros = 0  # Maximum ratio of zero-label samples to non-zero-label samples
+    ratio_zeros = 0.1  # Maximum ratio of zero-label samples to non-zero-label samples
     keep_zeros_percentage = ratio_zeros / (num_zeros / num_labels)  # If > 1, retain all zero-label samples
     if keep_zeros_percentage < 1:
         keep_samples = []
@@ -282,12 +262,9 @@ def remove_empty_label_patches(data, labels):
     return data, labels
 
 
-"""
-Creates recombined images after averaging together.
-Note: Cellpose uses a tapered mask rather than simple averaging; this can be applied by simply replacing the mask_patch
-with a tapered mask
-"""
 def recombine_patches(labels, im_dims=(500, 500), min_overlap=(64, 64)):
+    # Creates recombined images after averaging together
+
     num_x_patches = math.ceil((im_dims[1] - min_overlap[0]) / (labels.shape[3] - min_overlap[0]))
     x_patches = np.linspace(0, im_dims[1] - labels.shape[3], num_x_patches, dtype=int)
     num_y_patches = math.ceil((im_dims[0] - min_overlap[1]) / (labels.shape[2] - min_overlap[1]))

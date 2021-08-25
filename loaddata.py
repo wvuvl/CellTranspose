@@ -12,8 +12,8 @@ from tifffile import imread
 from tqdm.contrib import tzip
 from tqdm import tqdm
 
-from transforms import Reformat, Normalize1stTo99th, Resize, random_horizontal_flip,\
-    random_rotate, LabelsToFlows, generate_patches, remove_empty_label_patches, remove_cut_cells
+from transforms import reformat, normalize1stto99th, Resize, random_horizontal_flip,\
+    random_rotate, labels_to_flows, generate_patches, remove_empty_label_patches, remove_cut_cells
 
 import matplotlib.pyplot as plt
 
@@ -47,8 +47,6 @@ class CellPoseData(Dataset):
             l_transform: composed transformation to be applied to input labels
             size_model: input size_model to be used for diameter prediction/resizing
         """
-        reformat = Reformat()
-        normalize = Normalize1stTo99th()
         self.evaluate = evaluate
         if isinstance(data_dirs, list):  # TODO: Determine how to not treat input as list (if necessary)
             self.d_list = []
@@ -80,10 +78,9 @@ class CellPoseData(Dataset):
         self.original_dims = []
         if do_3D:  # and from_3D
             for ind in tqdm(range(len(self.d_list)), desc='Loading {} Dataset...'.format(split_name)):
-            # for d_file, l_file in tzip(self.d_list, self.l_list, desc='Loading {} Dataset...'.format(split_name)):  # TODO: REMOVE COMMENTS
                 new_data = as_tensor(list(imread(self.d_list[ind])).astype('float'))
                 new_data = reformat(new_data)
-                new_data = normalize(new_data)
+                new_data = normalize1stto99th(new_data)
                 new_label = as_tensor(list(imread(self.l_list[ind])).astype('int16'))
                 new_label = reformat(new_label)
                 if pf_dirs is not None:
@@ -103,7 +100,7 @@ class CellPoseData(Dataset):
                 for d_file, l_file in tzip(self.d_list, self.l_list, desc='Loading {} Dataset...'.format(split_name)):
                     raw_vol = imread(d_file).astype('float')
                     new_data = reformat(as_tensor(raw_vol[len(raw_vol)//2]))
-                    new_data = normalize(new_data)
+                    new_data = normalize1stto99th(new_data)
                     raw_vol = imread(l_file).astype('int16')
                     new_label = reformat(as_tensor(raw_vol[len(raw_vol) // 2]))
                     if resize is not None:
@@ -119,10 +116,9 @@ class CellPoseData(Dataset):
 
             else:
                 for ind in tqdm(range(len(self.d_list)), desc='Loading {} Dataset...'.format(split_name)):
-                # for d_file, l_file in tzip(self.d_list, self.l_list, desc='Loading {} Dataset...'.format(split_name)):
                     new_data = as_tensor(imread(self.d_list[ind]).astype('float'))
                     new_data = reformat(new_data)
-                    new_data = normalize(new_data)
+                    new_data = normalize1stto99th(new_data)
                     new_label = as_tensor(imread(self.l_list[ind]).astype('int16'))
                     new_label = reformat(new_label)
                     if pf_dirs is not None:
@@ -149,7 +145,7 @@ class CellPoseData(Dataset):
             data, labels = random_horizontal_flip(data, labels)
             data, labels = random_rotate(data, labels)
             if labels.shape[0] == 1:
-                labels = as_tensor([LabelsToFlows()(labels[i].numpy()) for i in range(len(labels))])
+                labels = as_tensor([labels_to_flows(labels[i].numpy()) for i in range(len(labels))])
             else:
                 labels = labels[np.newaxis, :]
             data, labels = generate_patches(unsqueeze(data, 0), labels, patch=patch_size, min_overlap=min_overlap)

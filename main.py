@@ -10,7 +10,7 @@ import matplotlib.pyplot as plt
 import tifffile
 import time
 
-from transforms import FollowFlows, Resize, Reformat
+from transforms import Resize, reformat
 from loaddata import CellPoseData
 from Cellpose_2D_PyTorch import UpdatedCellpose, SizeModel, class_loss, flow_loss, sas_class_loss
 from train_eval import train_network, adapt_network, eval_network
@@ -23,8 +23,6 @@ parser.add_argument('--learning-rate', type=float)
 parser.add_argument('--momentum', type=float)
 parser.add_argument('--batch-size', type=int)
 parser.add_argument('--epochs', type=int)
-parser.add_argument('--patches-per-batch', type=int,
-                    help='Number of patches to pass into GPU at once - effectively batch size.')
 parser.add_argument('--median-diams', type=int,
                     help='Median diameter size with which to resize images to. Note: If using pretrained model, ensure '
                          'that this variable remains the same as the given model.')
@@ -72,7 +70,6 @@ parser.add_argument('--refine-prediction', help='Whether or not to apply refined
                                                 'slower evaluation).', action='store_true')
 parser.add_argument('--calculate-ap', help='Whether to perform AP calculation at the end of evaluation.',
                     action='store_true')
-# TODO: Add new command line args for using labels - validation and test
 args = parser.parse_args()
 
 print(args.results_dir)
@@ -87,9 +84,6 @@ num_workers = device_count()
 device = device('cuda' if is_available() else 'cpu')
 empty_cache()
 
-ff = FollowFlows(niter=100, interp=True, use_gpu=True, cellprob_threshold=0.0, flow_threshold=1.0)
-
-# Default median diameter to resize cells to
 median_diams = (args.median_diams, args.median_diams)
 patch_size = (args.patch_size, args.patch_size)
 min_overlap = (args.min_overlap, args.min_overlap)
@@ -116,16 +110,15 @@ if not args.eval_only:
     optimizer = SGD(model.parameters(), lr=args.learning_rate, momentum=args.momentum)
     train_dataset = CellPoseData('Training', args.train_dataset, do_3D=args.do_3D, from_3D=args.train_from_3D,
                                  resize=Resize(median_diams, use_labels=True,
-                                               patch_per_batch=args.patches_per_batch))
+                                               patch_per_batch=args.batch_size))
     train_dl = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True)
 
     if args.val_dataset is not None:
-        val_dataset = CellPoseData('Validation', args.val_dataset, evaluate=False, do_3D=args.do_3D,
-                                   from_3D=args.val_from_3D,
+        val_dataset = CellPoseData('Validation', args.val_dataset, do_3D=args.do_3D, from_3D=args.val_from_3D,
                                    resize=Resize(median_diams, use_labels=args.val_use_labels, refine=True,
                                                  gc_model=gen_cellpose, sz_model=gen_size_model,
                                                  min_overlap=min_overlap, device=device,
-                                                 follow_flows_function=ff, patch_per_batch=args.patches_per_batch)
+                                                 patch_per_batch=args.batch_size)
                                    )
         val_dataset.pre_generate_patches(patch_size=patch_size, min_overlap=min_overlap)
         val_dl = DataLoader(val_dataset, batch_size=args.batch_size, shuffle=False)
@@ -136,7 +129,7 @@ if not args.eval_only:
     if args.do_adaptation:
         target_dataset = CellPoseData('Target', args.target_dataset, pf_dirs=args.target_flows, do_3D=args.do_3D,
                                       from_3D=args.target_from_3D, resize=Resize(median_diams, use_labels=True,
-                                                                                 patch_per_batch=args.patches_per_batch))  # TODO: Replace with batch_size?
+                                                                                 patch_per_batch=args.batch_size))
         target_dl = DataLoader(target_dataset, batch_size=args.batch_size, shuffle=True)
         train_losses, val_losses = adapt_network(model, train_dl, target_dl, val_dl, sas_class_loss, class_loss,
                                                  flow_loss, patch_size=patch_size, min_overlap=min_overlap,
@@ -166,19 +159,19 @@ if not args.eval_only:
 
 if not args.train_only:
     start_eval = time.time()
-    test_dataset = CellPoseData('Test', args.test_dataset, evaluate=True, do_3D=args.do_3D, from_3D=args.test_from_3D,
+    test_dataset = CellPoseData('Test', args.test_dataset, do_3D=args.do_3D, from_3D=args.test_from_3D, evaluate=True,
                                 resize=Resize(median_diams, use_labels=args.test_use_labels, refine=True,
                                               gc_model=gen_cellpose, sz_model=gen_size_model,
                                               min_overlap=min_overlap, device=device,
-                                              patch_per_batch=args.patches_per_batch, follow_flows_function=ff))
+                                              patch_per_batch=args.batch_size))
 
     eval_dl = DataLoader(test_dataset, batch_size=1, shuffle=False)
 
-    masks, prediction_list, label_list = eval_network(model, eval_dl, device, patch_per_batch=args.patches_per_batch,
+    masks, prediction_list, label_list = eval_network(model, eval_dl, device, patch_per_batch=args.batch_size,
                                                       patch_size=patch_size, min_overlap=min_overlap)
 
     for i in range(len(masks)):
-        masks[i] = masks[i].astype('int32')  # Can change back to int32 if necessary
+        masks[i] = masks[i].astype('int32')
         with open(os.path.join(args.results_dir, label_list[i] + '_predicted_labels.pkl'), 'wb') as m_pkl:
             pickle.dump(masks[i], m_pkl)
         tifffile.imwrite(os.path.join(args.results_dir, 'tiff_results', label_list[i] + '.tif'),
@@ -204,7 +197,6 @@ if not args.train_only:
     # AP Calculation
     if args.calculate_ap:
         labels = []
-        reformat = Reformat()
         for l in test_dataset.l_list:
             label = as_tensor(tifffile.imread(l).astype('int16'))
             label = squeeze(reformat(label), dim=0).numpy()
@@ -242,20 +234,17 @@ with open(os.path.join(args.results_dir, 'logfile.txt'), 'w') as log:
     log.write('\n')
     if not args.eval_only:
         log.write('Adaptation: {}\n'.format(args.do_adaptation))
-        # if do_adaptation:
-        #     txt.write('Gamma: {}; Margin: {}'.format())
+        if args.do_adaptation:
+            log.write('Source dataset(s): {}\n'.format(args.train_dataset))
+            log.write('Target dataset(s): {}\n'.format(args.target_dataset))
+        else:
+            log.write('Training dataset(s): {}\n'.format(args.train_dataset))
+            # txt.write('Gamma: {}; Margin: {}\n'.format())
         log.write('Learning rate: {}; Momentum: {}\n'.format(args.learning_rate, args.momentum))
         log.write('Epochs: {}; Batch size: {}\n'.format(args.epochs, args.batch_size))
-        log.write('Patches per batch (for evaluation, or if refining size prediction): {}\n'
-                  .format(args.patches_per_batch))
         log.write('GPUs: {}\n'.format(num_workers))
         log.write('Pretrained model: {}\n'.format(args.pretrained_model))
         log.write('\n')
-        if args.do_adaptation:
-            log.write('Source dataset(s): {}\n'.format(args.train_dataset))
-            log.write('Target Dataset(s): {}\n'.format(args.target_dataset))
-        else:
-            log.write('Training dataset(s): {}\n'.format(args.train_dataset))
         log.write('Validation dataset(s): {}\n'.format(args.val_dataset))
         log.write('Labels used for validation: {}\n'.format(args.val_use_labels))
     if not args.train_only:

@@ -6,7 +6,7 @@ import cv2
 import numpy as np
 from statistics import mean
 import math
-from transforms import LabelsToFlows, FollowFlows, generate_patches, recombine_patches
+from transforms import labels_to_flows, followflows, generate_patches, recombine_patches
 
 import matplotlib.pyplot as plt
 
@@ -27,12 +27,6 @@ def train_network(model, train_dl, val_dl, class_loss, flow_loss, patch_size, mi
     for e in range(1, n_epochs + 1):
         train_epoch_losses = []
         model.train()
-        if e == 45:
-            print('debug here')
-        # reprocess_train_time = time.time()
-        # train_dl.dataset.reprocess_on_epoch()
-        # print('Time to reprocess training data: {}'.format(time.strftime("%H:%M:%S",
-        #                                                                  time.gmtime(time.time() - reprocess_train_time))))
         for (sample_data, sample_labels) in tqdm(train_dl, desc='Training - Epoch {}/{}'.format(e, n_epochs)):
             sample_data = sample_data.to(device)
             sample_labels = sample_labels.to(device)
@@ -41,7 +35,6 @@ def train_network(model, train_dl, val_dl, class_loss, flow_loss, patch_size, mi
             mask_loss = class_loss(output, sample_labels)
             grad_loss = flow_loss(output, sample_labels)
             train_loss = mask_loss + grad_loss
-            # train_loss = grad_loss
             train_epoch_losses.append(train_loss.item())
             train_loss.backward()
             optimizer.step()
@@ -105,6 +98,7 @@ def adapt_network(model: nn.Module, source_dl, target_dl, val_dl, sas_class_loss
     return train_losses, val_losses
 
 
+# TODO: Fix this
 def validate_network(model, data_loader, flow_loss, class_loss, device):
     model.eval()
     val_epoch_losses = []
@@ -112,7 +106,7 @@ def validate_network(model, data_loader, flow_loss, class_loss, device):
         for (val_sample_data, val_sample_labels) in tqdm(data_loader, desc='Performing validation'):
             val_sample_data = val_sample_data.to(device)
             val_sample_labels = as_tensor(
-                [LabelsToFlows()(val_sample_labels[i].numpy()) for i in range(len(val_sample_labels))]).to(device)
+                [labels_to_flows(val_sample_labels[i].numpy()) for i in range(len(val_sample_labels))]).to(device)
             output = model(val_sample_data)
             grad_loss = flow_loss(output, val_sample_labels).item()
             mask_loss = class_loss(output, val_sample_labels).item()
@@ -126,7 +120,6 @@ def eval_network(model: nn.Module, data_loader: DataLoader, device, patch_per_ba
 
     model.eval()
     print('Beginning evaluation.')
-    ff = FollowFlows(niter=100, interp=True, use_gpu=True, cellprob_threshold=0.0, flow_threshold=1.0)
     with no_grad():
         masks = []
         label_list = []
@@ -143,7 +136,7 @@ def eval_network(model: nn.Module, data_loader: DataLoader, device, patch_per_ba
                 predictions = cat((predictions, p))
 
             predictions = recombine_patches(predictions, resized_dims, min_overlap)
-            sample_mask = ff(predictions)
+            sample_mask = followflows(predictions)
             sample_mask = np.transpose(sample_mask.numpy(), (1, 2, 0))
             sample_mask = cv2.resize(sample_mask, (original_dims[1].item(), original_dims[0].item()),
                                      interpolation=cv2.INTER_NEAREST)
@@ -182,5 +175,5 @@ def process_src_tgt(dl_src, dl_tgt, patch_size, min_overlap):
     batched_target_labels[np.array(range(t_len))] = batched_target_labels[shuffled_inds]
     batched_target_labels = batched_target_labels.float()
     print('Time to process target data: {}'.format(time.strftime("%H:%M:%S",
-                                                                   time.gmtime(time.time() - reprocess_target_time))))
+                                                                 time.gmtime(time.time() - reprocess_target_time))))
     return batched_target_data, batched_target_labels
