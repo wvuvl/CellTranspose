@@ -82,6 +82,7 @@ def adapt_network(model: nn.Module, source_dl, target_dl, val_dl, sas_class_loss
                                                    margin=1, gamma=0.1)
 
             train_loss = source_grad_loss + target_grad_loss + adaptation_class_loss
+            # train_loss = target_grad_loss + adaptation_class_loss
             train_epoch_losses.append(train_loss.item())
             train_loss.backward()
             optimizer.step()

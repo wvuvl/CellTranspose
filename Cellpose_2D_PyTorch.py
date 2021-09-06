@@ -35,8 +35,10 @@ def sas_class_loss(g_source, lbl_source, g_target, lbl_target, margin=1, gamma=0
     sa_loss = (1 - gamma) * 0.5 * torch.square(st_dist)
     s_loss = (1 - gamma) * 0.5 * torch.square(torch.max(torch.tensor(0).to(torch.device('cuda' if torch.cuda.is_available() else 'cpu')), margin - st_dist))
     source_class_loss = nn.BCEWithLogitsLoss(reduction='mean')(g_source, lbl_source)
+    # target_class_loss = nn.BCEWithLogitsLoss(reduction='mean')(g_target, lbl_target)
 
     loss = torch.mean(match_mask * sa_loss + (~match_mask * s_loss) + source_class_loss)
+    # loss = torch.mean(match_mask * sa_loss + (~match_mask * s_loss) + target_class_loss)
     return loss
 
 
