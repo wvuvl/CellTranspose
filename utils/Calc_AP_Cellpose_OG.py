@@ -1,0 +1,54 @@
+"""Used to calculate AP from masks obtained through original Cellpose model"""
+
+import os
+import numpy as np
+import tifffile
+from cellpose_src.metrics import average_precision
+import pickle
+import matplotlib.pyplot as plt
+
+mask_path = '/media/matthew/Data Drive/Datasets/Neuro_Proj1_Data/cellpose_og_results/BBBC024_v1_2D'
+label_path = '/media/matthew/Data Drive/Datasets/Neuro_Proj1_Data/BBBC024_v1_2D_raw_tiff_combined_split/test/labels'
+
+masks = []
+labels = []
+filenames = []
+
+for file in sorted(i for i in os.listdir(mask_path) if i.endswith('.npy')):
+    masks.append(np.load(os.path.join(mask_path, file), allow_pickle=True).item()['masks'])
+for file in sorted(os.listdir(label_path)):
+    labels.append(tifffile.imread(os.path.join(label_path, file)))
+    filenames.append(file)
+
+# Count cells in each mask and calculate counting error
+with open(os.path.join(mask_path, 'counted_cells.txt'), 'w') as cc:
+    predicted_count = 0
+    true_count = 0
+    for i in range(len(masks)):
+        num_masks = len(np.unique(masks[i]))-1
+        num_predicted = len(np.unique(labels[i]))-1
+        cc.write('{}:\nPredicted: {}; True: {}\n'.format(filenames[i], num_masks, num_predicted))
+        predicted_count += num_masks
+        true_count += num_predicted
+    cc.write('\nTotal cell count:\nPredicted: {}; True: {}\n'.format(predicted_count, true_count))
+    counting_error = (abs(true_count - predicted_count)) / true_count
+    cc.write('Total counting error rate: {}'.format(counting_error))
+
+# Calculate AP
+tau = np.arange(0.0, 1.01, 0.01)
+ap_info = average_precision(labels, masks, threshold=tau)
+ap_overall = np.average(ap_info[0], axis=0)
+tp_overall = np.sum(ap_info[1], axis=0).astype('int32')
+fp_overall = np.sum(ap_info[2], axis=0).astype('int32')
+fn_overall = np.sum(ap_info[3], axis=0).astype('int32')
+false_error = (fp_overall[51] + fn_overall[51]) / (tp_overall[51] + fn_overall[51])
+with open(os.path.join(mask_path, 'AP_Results.pkl'), 'wb') as apr:
+    pickle.dump((tau, ap_overall, tp_overall, fp_overall, fn_overall), apr)
+plt.figure()
+plt.plot(tau, ap_overall)
+plt.title('Average Precision for Original Cellpose')
+plt.xlabel(r'IoU Matching Threshold $\tau$')
+plt.ylabel('Average Precision')
+plt.yticks(np.arange(0, 1.01, step=0.2))
+plt.savefig(os.path.join(mask_path, 'AP Results'))
+plt.show()
