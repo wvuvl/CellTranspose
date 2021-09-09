@@ -1,10 +1,9 @@
 import math
-# from torch import tensor, mean, unique, zeros, ones, empty, cat, squeeze, unsqueeze, as_tensor, no_grad, equal
 import torch
 import cv2
 import numpy as np
 import copy
-from cellpose_src.dynamics import masks_to_flows, follow_flows, get_masks, remove_bad_flow_masks
+from cellpose_src.dynamics import masks_to_flows, follow_flows, get_masks
 from cellpose_src.utils import diameters, fill_holes_and_remove_small_masks
 from cellpose_src.transforms import _taper_mask
 import random
@@ -13,8 +12,9 @@ import torchvision.transforms.functional as TF
 import matplotlib.pyplot as plt
 
 
+# TODO: Need to update to work for all situations
+#  (currently only for when 1-channel 2D image doesn't include channel dim)
 def reformat(x, is_pf=False, do_3D=False):
-    # TODO: Need to update to work for all situations (currently only for when 1-channel 2D image doesn't include channel dim)
     """
     Reformats raw input data with the following expected output:
     If 2-D -> torch.tensor with shape [1, x_dim, y_dim]
@@ -75,10 +75,10 @@ class Resize(object):
             X, y, pf = resize_from_labels(X, y, self.default_med, pf)
             return X, y, pf, original_dims
         else:
-            X, y = predict_and_resize(X, y, self.default_med, self.gc_model, self.sz_model)  # Add pf here
+            X, y = predict_and_resize(X, y, self.default_med, self.gc_model, self.sz_model)  # TODO: Add pf here
             if self.refine:
                 X, y = refined_predict_and_resize(X, y, self.default_med, self.gc_model, self.device,
-                                                  self.patch_per_batch, self.patch_size, self.min_overlap)  # Add pf here
+                                                  self.patch_per_batch, self.patch_size, self.min_overlap)  # TODO: Add pf here
             return X, y, original_dims
 
 

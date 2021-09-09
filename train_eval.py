@@ -154,7 +154,7 @@ def process_src_tgt(dl_src, dl_tgt, patch_size, min_overlap):
     reprocess_source_time = time.time()
     dl_src.dataset.reprocess_on_epoch(patch_size, min_overlap)
     print('Time to process source data: {}'.format(time.strftime("%H:%M:%S",
-                                                                   time.gmtime(time.time() - reprocess_source_time))))
+                                                                 time.gmtime(time.time() - reprocess_source_time))))
     reprocess_target_time = time.time()
     dl_tgt.dataset.reprocess_on_epoch(patch_size, min_overlap)
     target_data = dl_tgt.dataset.data_samples

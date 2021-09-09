@@ -1,7 +1,5 @@
 """
 Utility code for miscellaneous tasks
-
-Created by Matthew Keaton on 4/16/2020
 """
 
 import numpy as np
@@ -11,6 +9,7 @@ import seaborn as sns
 sns.set()
 
 
+# TODO: Yet to be updated to work for this project
 def create_confusion_matrix(y_true, y_pred, classes, normalize=None):
     # Get data into confusion matrix (array)
     num_classes = len(classes)

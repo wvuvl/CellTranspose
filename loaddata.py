@@ -1,8 +1,6 @@
 """
 Data Loader implementation, specifically designed for in-house datasets. Code will be designed to reflect flexibility in
 custom dataloaders for new data.
-
-Created by Matthew Keaton 2/18/21
 """
 import numpy as np
 from torch.utils.data import Dataset
@@ -39,13 +37,13 @@ class CellPoseData(Dataset):
                  resize: Resize = None):
         """"
         Args:
+            split_name: name corresponding to the split (i.e. train, validation, test, target)
             data_dirs: root directory/directories of the dataset, containing 'data' and 'labels' folders
-            pf_dirs: root directory/directories of pre-calculated flows, if they exist.
+            pf_dirs: root directory/directories of pre-calculated flows, if they exist
             do_3D: whether or not to train 3D cellpose model (requires that from_3d is true)
             from_3D: whether input samples are 2D images (False) or 3D volumes (True)
-            d_transform: composed transformation to be applied to input data
-            l_transform: composed transformation to be applied to input labels
-            size_model: input size_model to be used for diameter prediction/resizing
+            evaluate: if set to true, returns additional information when calling __getitem__()
+            resize: Resize object containing parameters by which to resize input samples accordingly
         """
         self.evaluate = evaluate
         if isinstance(data_dirs, list):  # TODO: Determine how to not treat input as list (if necessary)

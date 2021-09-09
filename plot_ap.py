@@ -1,18 +1,16 @@
 """
 Takes input labels and predicted masks, and generates plot of average precision (AP = TP / (TP + FP + FN))
-
-Created by Matthew Keaton on 3/16/21
 """
 
 import os
 import tifffile
 import pickle
+import numpy as np
 from cellpose_src.metrics import average_precision
 import matplotlib.pyplot as plt
 
 label_dir = '/home/mrkeaton/Documents/Datasets/Neuro_Proj1_Data/2D Toy Dataset - 2-dim/labels'
 prediction_dir = '/home/mrkeaton/Documents/Datasets/Neuro_Proj1_Data/2D Toy Dataset - 2-dim/results/results3'
-import numpy as np
 
 # Load in Ground Truth labels
 labels = []

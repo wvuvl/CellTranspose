@@ -250,7 +250,6 @@ with open(os.path.join(args.results_dir, 'logfile.txt'), 'w') as log:
             log.write('Target dataset(s): {}\n'.format(args.target_dataset))
         else:
             log.write('Training dataset(s): {}\n'.format(args.train_dataset))
-            # txt.write('Gamma: {}; Margin: {}\n'.format())
         log.write('Learning rate: {}; Momentum: {}\n'.format(args.learning_rate, args.momentum))
         log.write('Epochs: {}; Batch size: {}\n'.format(args.epochs, args.batch_size))
         log.write('GPUs: {}\n'.format(num_workers))

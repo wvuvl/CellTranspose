@@ -2,8 +2,6 @@
 Implementation of the Cellpose model architecture, as described in the paper
 "Cellpose: a generalist algorithm for cellular segmentation",
 which can be found via the Cellpose github repository: https://github.com/MouseLand/cellpose
-
-Created by Matthew Keaton on 3/3/21
 """
 
 import torch

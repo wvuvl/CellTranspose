@@ -20,11 +20,13 @@ parser.add_argument('--do-3D', help='Whether or not to use 3D-Cellpose (Must use
                     action='store_true', default=False)
 parser.add_argument('--from-3D', help='Whether the input training source data is 3D: assumes 2D if set to False.',
                     action='store_true', default=False)
-parser.add_argument('--cellpose-pretrained', help='Location of the generalized cellpose model to use for diameter estimation.')
+parser.add_argument('--cellpose-pretrained',
+                    help='Location of the generalized cellpose model to use for diameter estimation.')
 parser.add_argument('--train-dataset', help='The directory(s) containing data to be used for training.', nargs='+')
 args = parser.parse_args()
 
-assert not os.path.exists(args.results_dir), 'Results folder currently exists; please specify new location to save results.'
+assert not os.path.exists(args.results_dir),\
+    'Results folder currently exists; please specify new location to save results.'
 os.mkdir(args.results_dir)
 torch.cuda.empty_cache()
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -33,13 +35,11 @@ gen_cellpose = UpdatedCellpose(channels=1, device=device)
 gen_cellpose = torch.nn.DataParallel(gen_cellpose)
 gen_cellpose.to(device)
 gen_cellpose.load_state_dict(torch.load(args.cellpose_pretrained))
-# gen_cellpose = torch.nn.DataParallel(gen_cellpose)
 gen_cellpose.eval()
 
 size_model = SizeModel().to(device)
 optimizer = torch.optim.SGD(size_model.parameters(), lr=args.learning_rate, momentum=args.momentum)
 loss_fn = torch.nn.MSELoss()
-# loss_fn = torch.nn.L1Loss()
 
 train_dataset = CellPoseData('Training', args.train_dataset, do_3D=args.do_3D, from_3D=args.from_3D)
 train_dl = torch.utils.data.DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True)  # num_workers=num_workers
