@@ -13,6 +13,7 @@ from transforms import reformat, normalize1stto99th, Resize, random_horizontal_f
     random_rotate, labels_to_flows, generate_patches, remove_empty_label_patches, remove_cut_cells
 
 import matplotlib.pyplot as plt
+from time import time
 
 
 class CellPoseData(Dataset):
@@ -144,7 +145,10 @@ class CellPoseData(Dataset):
     def __len__(self):
         return len(self.data_samples)
 
-    def reprocess_on_epoch(self, patch_size, min_overlap):
+    # Augmentations and tiling applied to input data (for training and adaptation) -
+    # separated from DataLoader to allow for possibility of running only once or once per epoch
+    # NOTE: ltf takes ~50% of time; generating patches and concatenating takes nearly as long
+    def process_dataset(self, patch_size, min_overlap):
         self.data_samples = tensor([])
         self.label_samples = tensor([])
         for (data, labels) in zip(self.data, self.labels):
@@ -160,6 +164,7 @@ class CellPoseData(Dataset):
             self.label_samples = cat((self.label_samples, labels))
         # self.data_samples, self.label_samples = remove_empty_label_patches(self.data_samples, self.label_samples)
 
+    # Generates patches for validation dataset - only happens once
     def pre_generate_patches(self, patch_size, min_overlap):
         self.data_samples = tensor([])
         self.label_samples = tensor([])

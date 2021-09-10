@@ -18,7 +18,7 @@ def train_network(model, train_dl, val_dl, class_loss, flow_loss, patch_size, mi
 
     print('Preprocessing data:')
     reprocess_train_time = time.time()
-    train_dl.dataset.reprocess_on_epoch(patch_size, min_overlap)
+    train_dl.dataset.process_dataset(patch_size, min_overlap)
     print('Time to reprocess training data: {}'.format(time.strftime("%H:%M:%S",
                                                                      time.gmtime(time.time() - reprocess_train_time))))
     print('Beginning network training.\n')
@@ -98,13 +98,13 @@ def adapt_network(model: nn.Module, source_dl, target_dl, val_dl, sas_class_loss
     return train_losses, val_losses
 
 
-# TODO: Fix this
 def validate_network(model, data_loader, flow_loss, class_loss, device):
     model.eval()
     val_epoch_losses = []
     with no_grad():
         for (val_sample_data, val_sample_labels) in tqdm(data_loader, desc='Performing validation'):
             val_sample_data = val_sample_data.to(device)
+            # TODO: Possibly add passing in precalculated flows to decrease validation time (~85-90% of validation time)
             val_sample_labels = as_tensor(
                 [labels_to_flows(val_sample_labels[i].numpy()) for i in range(len(val_sample_labels))]).to(device)
             output = model(val_sample_data)
@@ -151,11 +151,11 @@ def eval_network(model: nn.Module, data_loader: DataLoader, device, patch_per_ba
 def process_src_tgt(dl_src, dl_tgt, patch_size, min_overlap):
     print('Processing data:')
     reprocess_source_time = time.time()
-    dl_src.dataset.reprocess_on_epoch(patch_size, min_overlap)
+    dl_src.dataset.process_dataset(patch_size, min_overlap)
     print('Time to process source data: {}'.format(time.strftime("%H:%M:%S",
                                                                  time.gmtime(time.time() - reprocess_source_time))))
     reprocess_target_time = time.time()
-    dl_tgt.dataset.reprocess_on_epoch(patch_size, min_overlap)
+    dl_tgt.dataset.process_dataset(patch_size, min_overlap)
     target_data = dl_tgt.dataset.data_samples
     target_labels = dl_tgt.dataset.label_samples
     batched_target_data = target_data
