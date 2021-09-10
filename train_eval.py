@@ -17,7 +17,6 @@ def train_network(model, train_dl, val_dl, class_loss, flow_loss, patch_size, mi
     start_train = time.time()
 
     print('Preprocessing data:')
-    # Test reprocessing once
     reprocess_train_time = time.time()
     train_dl.dataset.reprocess_on_epoch(patch_size, min_overlap)
     print('Time to reprocess training data: {}'.format(time.strftime("%H:%M:%S",

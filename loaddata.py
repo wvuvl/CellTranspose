@@ -7,7 +7,6 @@ from torch.utils.data import Dataset
 from torch import as_tensor, tensor, cat, unsqueeze
 import os
 from tifffile import imread
-from tqdm.contrib import tzip
 from tqdm import tqdm
 
 from transforms import reformat, normalize1stto99th, Resize, random_horizontal_flip,\
@@ -76,14 +75,15 @@ class CellPoseData(Dataset):
         self.original_dims = []
         if do_3D:  # and from_3D
             for ind in tqdm(range(len(self.d_list)), desc='Loading {} Dataset...'.format(split_name)):
-                new_data = as_tensor(list(imread(self.d_list[ind])).astype('float'))
-                new_data = reformat(new_data)
+                new_data = as_tensor(list(imread(self.d_list[ind]).astype('float')))
+                # new_data = as_tensor(imread(self.d_list[ind]).astype('float'))
+                new_data = reformat(new_data, do_3D=True)
                 new_data = normalize1stto99th(new_data)
                 new_label = as_tensor(list(imread(self.l_list[ind])).astype('int16'))
-                new_label = reformat(new_label)
+                new_label = reformat(new_label, do_3D=True)
                 if pf_dirs is not None:
                     new_pf = as_tensor(list(imread(self.pf_list[ind])))
-                    new_pf = reformat(new_pf, is_pf=True)  # TODO: May/may not need updated to reflect do_3D loading
+                    new_pf = reformat(new_pf, is_pf=True, do_3D=True)  # TODO: May/may not need updated to reflect do_3D loading
                 else:
                     new_pf = None
                 if resize is not None:
@@ -95,22 +95,30 @@ class CellPoseData(Dataset):
 
         else:
             if from_3D:
-                for d_file, l_file in tzip(self.d_list, self.l_list, desc='Loading {} Dataset...'.format(split_name)):
-                    raw_vol = imread(d_file).astype('float')
-                    new_data = reformat(as_tensor(raw_vol[len(raw_vol)//2]))
-                    new_data = normalize1stto99th(new_data)
-                    raw_vol = imread(l_file).astype('int16')
-                    new_label = reformat(as_tensor(raw_vol[len(raw_vol) // 2]))
-                    if resize is not None:
-                        new_data, new_label, original_dim = resize(new_data, new_label)
-                        self.original_dims.append(original_dim)
-                    self.data.append(new_data)
-                    self.labels.append(new_label)
-                # if pf_dirs is not None:
-                #     for pf_file in tqdm(self.pf_list, desc='Loading Precalculated Flows...'):
-                #         new_pf = imread(pf_file)
-                #         new_pf = reformat(new_pf, is_pf=True)  # TODO: May/may not need updated to reflect from_3D loading
-                #         self.pflows.append(new_pf)
+                # Note: majority of bottleneck caused by reading and normalizing data
+                for ind in tqdm(range(len(self.d_list)), desc='Loading {} Dataset...'.format(split_name)):
+                    raw_data_vol = imread(self.d_list[ind]).astype('float')
+                    raw_data_vol = [reformat(as_tensor(raw_data_vol[i])) for i in range(len(raw_data_vol))]
+                    raw_data_vol = [normalize1stto99th(raw_data_vol[i]) for i in range(len(raw_data_vol))]
+                    raw_label_vol = imread(self.l_list[ind]).astype('int16')
+                    raw_label_vol = [reformat(as_tensor(raw_label_vol[i])) for i in range(len(raw_label_vol))]
+                    if pf_dirs is not None:  # Not currently handled
+                        print('Add this later')
+                        # if resize is not None:
+                        #     *do_resize_here*
+                    else:
+                        if resize is not None:
+                            new_data = []
+                            new_label = []
+                            original_dim = []
+                            for i in range(len(raw_data_vol)):
+                                nd, nl, _, od = resize(raw_data_vol[i], raw_label_vol[i])
+                                new_data.append(nd)
+                                new_label.append(nl)
+                                original_dim.append(od)
+                            self.original_dims.extend(original_dim)
+                    self.data.extend(new_data)
+                    self.labels.extend(new_label)
 
             else:
                 for ind in tqdm(range(len(self.d_list)), desc='Loading {} Dataset...'.format(split_name)):

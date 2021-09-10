@@ -37,7 +37,7 @@ def reformat(x, is_pf=False, do_3D=False):
                         x = x.view(1, x.shape[0], x.shape[1])
                     # else:
                 else:
-                    raise ValueError('Data is not 2D; if intending to use 3D volumes, pass in "--do_3D" argument.')
+                    raise ValueError('Data is not 2D; if intending to use 3D volumes, pass in "--do-3D" argument.')
         # else:
     return x
 
@@ -69,62 +69,65 @@ class Resize(object):
                 self.min_overlap = min_overlap
                 self.patch_size = patch_size
 
-    def __call__(self, X, y, pf=None):
+    def __call__(self, x, y, pf=None):
         original_dims = y.shape[1], y.shape[2]
         if self.use_labels:
-            X, y, pf = resize_from_labels(X, y, self.default_med, pf)
-            return X, y, pf, original_dims
+            x, y, pf = resize_from_labels(x, y, self.default_med, pf)
+            return x, y, pf, original_dims
         else:
-            X, y = predict_and_resize(X, y, self.default_med, self.gc_model, self.sz_model)  # TODO: Add pf here
+            x, y = predict_and_resize(x, y, self.default_med, self.gc_model, self.sz_model)  # TODO: Add pf here
             if self.refine:
-                X, y = refined_predict_and_resize(X, y, self.default_med, self.gc_model, self.device,
+                x, y = refined_predict_and_resize(x, y, self.default_med, self.gc_model, self.device,
                                                   self.patch_per_batch, self.patch_size, self.min_overlap)  # TODO: Add pf here
-            return X, y, original_dims
+            return x, y, original_dims
 
 
-def resize_from_labels(X, y, default_med, pf=None):
+def resize_from_labels(x, y, default_med, pf=None):
     # calculate diameters using only full cells in image - remove cut off cells during median diameter calculation
     y_cf = copy.deepcopy(torch.squeeze(y, dim=0))
     y_cf = remove_cut_cells(y_cf)
     med, cts = diameters(y_cf)
-    rescale_w, rescale_h = default_med[0] / med, default_med[1] / med
-    X = np.transpose(X.numpy(), (1, 2, 0))
-    X = cv2.resize(X, (int(X.shape[1] * rescale_w), int(X.shape[0] * rescale_h)),
-                   interpolation=cv2.INTER_LINEAR)[np.newaxis, :]
-    y = np.transpose(y.numpy(), (1, 2, 0))
-    y = cv2.resize(y, (int(y.shape[1] * rescale_w), int(y.shape[0] * rescale_h)),
-                   interpolation=cv2.INTER_NEAREST)[np.newaxis, :]
-    if pf is not None:
-        pf = np.transpose(pf[0], (1, 2, 0))
-        pf = cv2.resize(pf, (int(pf.shape[1] * rescale_w), int(pf.shape[0] * rescale_h)),
-                        interpolation=cv2.INTER_LINEAR)
-        pf = np.transpose(pf, (2, 0, 1))
+    if med > 0:
+        rescale_w, rescale_h = default_med[0] / med, default_med[1] / med
+        x = np.transpose(x.numpy(), (1, 2, 0))
+        x = cv2.resize(x, (int(x.shape[1] * rescale_w), int(x.shape[0] * rescale_h)),
+                       interpolation=cv2.INTER_LINEAR)[np.newaxis, :]
+        y = np.transpose(y.numpy(), (1, 2, 0))
+        y = cv2.resize(y, (int(y.shape[1] * rescale_w), int(y.shape[0] * rescale_h)),
+                       interpolation=cv2.INTER_NEAREST)[np.newaxis, :]
+        if pf is not None:
+            pf = np.transpose(pf[0], (1, 2, 0))
+            pf = cv2.resize(pf, (int(pf.shape[1] * rescale_w), int(pf.shape[0] * rescale_h)),
+                            interpolation=cv2.INTER_LINEAR)
+            pf = np.transpose(pf, (2, 0, 1))
+        else:
+            pf = []
+        return torch.tensor(x), torch.tensor(y), torch.tensor(pf)
     else:
-        pf = []
-    return torch.tensor(X), torch.tensor(y), torch.tensor(pf)
+        return x, y, pf
 
 
-def predict_and_resize(X, y, default_med, gc_model, sz_model):
-    X = torch.unsqueeze(X, dim=0).float()
+def predict_and_resize(x, y, default_med, gc_model, sz_model):
+    x = torch.unsqueeze(x, dim=0).float()
     with torch.no_grad():
-        style = gc_model(X, style_only=True)
+        style = gc_model(x, style_only=True)
         med = sz_model(style)
-    X = torch.squeeze(X, dim=0)
+    x = torch.squeeze(x, dim=0)
     rescale_w, rescale_h = default_med[0] / med, default_med[1] / med
-    X = np.transpose(X.cpu().numpy(), (1, 2, 0))
-    X = cv2.resize(X, (int(X.shape[1] * rescale_w), int(X.shape[0] * rescale_h)),
+    x = np.transpose(x.cpu().numpy(), (1, 2, 0))
+    x = cv2.resize(x, (int(x.shape[1] * rescale_w), int(x.shape[0] * rescale_h)),
                    interpolation=cv2.INTER_LINEAR)[np.newaxis, :]
     y = np.transpose(y.cpu().numpy(), (1, 2, 0))
     y = cv2.resize(y, (int(y.shape[1] * rescale_w), int(y.shape[0] * rescale_h)),
                    interpolation=cv2.INTER_NEAREST)[np.newaxis, :]
-    return torch.tensor(X), torch.tensor(y)
+    return torch.tensor(x), torch.tensor(y)
 
 
 # produce output masks using gc_model, then calculate mean diameter
-def refined_predict_and_resize(X, y, default_med, gc_model, device, patch_per_batch, patch_size, min_overlap):
-        X = torch.unsqueeze(X, dim=0)
-        im_dims = (X.shape[2], X.shape[3])
-        sample_data, _ = generate_patches(X, y, patch=patch_size, min_overlap=min_overlap, eval=True)
+def refined_predict_and_resize(x, y, default_med, gc_model, device, patch_per_batch, patch_size, min_overlap):
+        x = torch.unsqueeze(x, dim=0)
+        im_dims = (x.shape[2], x.shape[3])
+        sample_data, _ = generate_patches(x, y, patch=patch_size, min_overlap=min_overlap, eval=True)
         with torch.no_grad():
             predictions = torch.tensor([]).to(device)
             for patch_ind in range(0, len(sample_data), patch_per_batch):
@@ -135,26 +138,26 @@ def refined_predict_and_resize(X, y, default_med, gc_model, device, patch_per_ba
         sample_mask = followflows(predictions)
         med, cts = diameters(sample_mask.numpy())
         rescale_w, rescale_h = default_med[0] / med, default_med[1] / med
-        X = torch.squeeze(X, dim=0)
-        X = np.transpose(X.cpu().numpy(), (1, 2, 0))
-        X = cv2.resize(X, (int(X.shape[1] * rescale_w), int(X.shape[0] * rescale_h)),
+        x = torch.squeeze(x, dim=0)
+        x = np.transpose(x.cpu().numpy(), (1, 2, 0))
+        x = cv2.resize(x, (int(x.shape[1] * rescale_w), int(x.shape[0] * rescale_h)),
                        interpolation=cv2.INTER_LINEAR)[np.newaxis, :]
         y = np.transpose(y.cpu().numpy(), (1, 2, 0))
         y = cv2.resize(y, (int(y.shape[1] * rescale_w), int(y.shape[0] * rescale_h)),
                        interpolation=cv2.INTER_NEAREST)[np.newaxis, :]
-        return torch.tensor(X), torch.tensor(y)
+        return torch.tensor(x), torch.tensor(y)
 
 
-def random_horizontal_flip(X, y):
+def random_horizontal_flip(x, y):
     if np.random.rand() > .5:
-        X = TF.hflip(X)
+        x = TF.hflip(x)
         y = TF.hflip(y)
-    return X, y
+    return x, y
 
 
-def random_rotate(X, y):
+def random_rotate(x, y):
     angle = random.random() * 360
-    return TF.rotate(X, angle), TF.rotate(y, angle)
+    return TF.rotate(x, angle), TF.rotate(y, angle)
 
 
 def labels_to_flows(label):

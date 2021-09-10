@@ -9,35 +9,46 @@ from torch import nn
 
 
 # Standard Cellpose class loss
-def class_loss(lbl, y):
-    class_pred = lbl[:, 0]
-    class_y = y[:, 0]
-    class_loss = nn.BCEWithLogitsLoss(reduction='mean')(class_y, class_pred)  #TODO: INITIALIZE LOSS TO MAKE MORE EFFICIENT
-    return class_loss
+class ClassLoss:
+    def __init__(self, class_loss):
+        self.loss = class_loss
+
+    def __call__(self, y, lbl):
+        class_pred = lbl[:, 0]
+        class_y = y[:, 0]
+        class_loss = self.loss(class_y, class_pred)
+        return class_loss
 
 
 # Standard Cellpose flow loss
-def flow_loss(lbl, y):
-    flow_pred = 5. * lbl[:, 1:]
-    flow_y = 5. * y[:, 1:]
-    flow_loss = nn.MSELoss(reduction='mean')(flow_y, flow_pred)  # TODO: INITIALIZE LOSS TO MAKE MORE EFFICIENT
-    return flow_loss
+class FlowLoss:
+    def __init__(self, flow_loss):
+        self.loss = flow_loss
+
+    def __call__(self, y, lbl):
+        flow_pred = 5. * lbl[:, 1:]
+        flow_y = 5. * y[:, 1:]
+        flow_loss = self.loss(flow_y, flow_pred)
+        return flow_loss
 
 
 # Semantic Alignment/Separation Contrastive Loss for classification
-def sas_class_loss(g_source, lbl_source, g_target, lbl_target, margin=1, gamma=0.1):
+class SASClassLoss:
+    def __init__(self, sas_class_loss):
+        self.loss = sas_class_loss
 
-    match_mask = torch.eq(lbl_source, lbl_target)  # Mask where each pixel is 1 (source GT = target GT) or 0 (source GT != target GT)
-    st_dist = torch.linalg.norm(g_source - g_target) / g_source.data.nelement()
+    def __call__(self, g_source, lbl_source, g_target, lbl_target, margin=1, gamma=0.1):
+        match_mask = torch.eq(lbl_source, lbl_target)  # Mask where each pixel is 1 (source GT = target GT) or 0 (source GT != target GT)
+        st_dist = torch.linalg.norm(g_source - g_target) / g_source.data.nelement()
 
-    sa_loss = (1 - gamma) * 0.5 * torch.square(st_dist)
-    s_loss = (1 - gamma) * 0.5 * torch.square(torch.max(torch.tensor(0).to(torch.device('cuda' if torch.cuda.is_available() else 'cpu')), margin - st_dist))
-    source_class_loss = nn.BCEWithLogitsLoss(reduction='mean')(g_source, lbl_source)
-    # target_class_loss = nn.BCEWithLogitsLoss(reduction='mean')(g_target, lbl_target)
+        sa_loss = (1 - gamma) * 0.5 * torch.square(st_dist)
+        s_loss = (1 - gamma) * 0.5 * torch.square(torch.max(torch.tensor(0).to(torch.device('cuda' if torch.cuda.is_available() else 'cpu')), margin - st_dist))
+        source_class_loss = nn.BCEWithLogitsLoss(reduction='mean')(g_source, lbl_source)
+        # target_class_loss = nn.BCEWithLogitsLoss(reduction='mean')(g_target, lbl_target)
 
-    loss = torch.mean(match_mask * sa_loss + (~match_mask * s_loss) + source_class_loss)
-    # loss = torch.mean(match_mask * sa_loss + (~match_mask * s_loss) + target_class_loss)
-    return loss
+        loss = torch.mean(match_mask * sa_loss + (~match_mask * s_loss) + source_class_loss)
+        # loss = torch.mean(match_mask * sa_loss + (~match_mask * s_loss) + target_class_loss)
+        return loss
 
 
 def conv_block(in_feat, out_feat):

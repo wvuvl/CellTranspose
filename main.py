@@ -12,11 +12,9 @@ import time
 
 from transforms import Resize, reformat
 from loaddata import CellPoseData
-from Cellpose_2D_PyTorch import UpdatedCellpose, SizeModel, class_loss, flow_loss, sas_class_loss
+from Cellpose_2D_PyTorch import UpdatedCellpose, SizeModel, ClassLoss, FlowLoss, SASClassLoss
 from train_eval import train_network, adapt_network, eval_network
 from cellpose_src.metrics import average_precision
-
-start_time = time.time()
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--learning-rate', type=float)
@@ -106,6 +104,8 @@ if args.pretrained_model is not None:
     model.load_state_dict(load(args.pretrained_model))
 
 if not args.eval_only:
+    class_loss = ClassLoss(nn.BCEWithLogitsLoss(reduction='mean'))
+    flow_loss = FlowLoss(nn.MSELoss(reduction='mean'))
     start_train = time.time()
     optimizer = SGD(model.parameters(), lr=args.learning_rate, momentum=args.momentum)
     train_dataset = CellPoseData('Training', args.train_dataset, do_3D=args.do_3D, from_3D=args.train_from_3D,
@@ -127,10 +127,12 @@ if not args.eval_only:
         print('No validation data given --> skipping validation.')
 
     if args.do_adaptation:
+        sas_class_loss = SASClassLoss(nn.BCEWithLogitsLoss(reduction='mean'))
         target_dataset = CellPoseData('Target', args.target_dataset, pf_dirs=args.target_flows, do_3D=args.do_3D,
                                       from_3D=args.target_from_3D, resize=Resize(median_diams, use_labels=True,
                                                                                  patch_per_batch=args.batch_size))
         target_dl = DataLoader(target_dataset, batch_size=args.batch_size, shuffle=True)
+
         train_losses, val_losses = adapt_network(model, train_dl, target_dl, val_dl, sas_class_loss, class_loss,
                                                  flow_loss, patch_size=patch_size, min_overlap=min_overlap,
                                                  optimizer=optimizer, device=device, n_epochs=args.epochs)
@@ -194,11 +196,12 @@ if not args.train_only:
             true_count += num_predicted
         cc.write('\nTotal cell count:\nPredicted: {}; True: {}\n'.format(predicted_count, true_count))
         counting_error = (abs(true_count - predicted_count)) / true_count
-        cc.write('Total counting error rate: {}'.format(counting_error))
+        cc.write('Total counting error rate: {:.6f}'.format(counting_error))
     print('Total cell count:\nPredicted: {}; True: {}'.format(predicted_count, true_count))
     print('Total counting error rate: {}'.format(counting_error))
 
     # AP Calculation
+    # TODO: Have working with 3D as well (possibly re-initialize test dataset without resizing)
     if args.calculate_ap:
         labels = []
         for l in test_dataset.l_list:
@@ -220,10 +223,10 @@ if not args.train_only:
         plt.yticks(np.arange(0, 1.01, step=0.2))
         plt.savefig(os.path.join(args.results_dir, 'AP Results'))
         plt.show()
-        print('AP Results at IoU threshold 0.5:\nTrue Postive: {}; False Positive: {}; False Negative: {}'
-              .format(tp_overall[51], fp_overall[51], fn_overall[51]))
+        print('AP Results at IoU threshold 0.5: AP = {}\nTrue Postive: {}; False Positive: {}; False Negative: {}'
+              .format(ap_overall[51], tp_overall[51], fp_overall[51], fn_overall[51]))
         false_error = (fp_overall[51] + fn_overall[51]) / (tp_overall[51] + fn_overall[51])
-        print('Total false error rate: {}'.format(false_error))
+        print('Total false error rate: {:.6f}'.format(false_error))
         with open(os.path.join(args.results_dir, '{}_AP_Results.pkl'.format(args.dataset_name)), 'wb') as apr:
             pickle.dump((tau, ap_overall, tp_overall, fp_overall, fn_overall, false_error), apr)
 
