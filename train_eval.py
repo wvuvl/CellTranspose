@@ -38,13 +38,23 @@ def train_network(model, train_dl, val_dl, class_loss, flow_loss, patch_size, mi
             train_loss.backward()
             optimizer.step()
 
-        train_losses.append(mean(train_epoch_losses))
+        train_epoch_loss = mean(train_epoch_losses)
+        train_losses.append(train_epoch_loss)
         if val_dl is not None:
             val_epoch_loss = validate_network(model, val_dl, flow_loss, class_loss, device)
             val_losses.append(val_epoch_loss)
-            print('Train loss: {:.3f}; Validation loss: {:.3f}'.format(mean(train_epoch_losses), val_epoch_loss))
+            print('Train loss: {:.3f}; Validation loss: {:.3f}'.format(train_epoch_loss, val_epoch_loss))
         else:
-            print('Train loss: {:.3f}'.format(mean(train_epoch_losses)))
+            print('Train loss: {:.3f}'.format(train_epoch_loss))
+
+        if e % 10 == 0:
+            plt.figure()
+            epoch_i = np.arange(1, e+1)
+            plt.plot(epoch_i, train_losses)
+            plt.plot(epoch_i, val_losses)
+            plt.legend(('Train Losses', 'Validation Losses'))
+            plt.show()
+
 
     print('Train time: {}'.format(time.strftime("%H:%M:%S", time.gmtime(time.time() - start_train))))
     return train_losses, val_losses
@@ -103,15 +113,21 @@ def validate_network(model, data_loader, flow_loss, class_loss, device):
     val_epoch_losses = []
     with no_grad():
         for (val_sample_data, val_sample_labels) in tqdm(data_loader, desc='Performing validation'):
+            loading = time.time()
             val_sample_data = val_sample_data.to(device)
+            print('Loading: {}'.format(time.time() - loading))
             # TODO: Possibly add passing in precalculated flows to decrease validation time (~85-90% of validation time)
+            ltf = time.time()
             val_sample_labels = as_tensor(
                 [labels_to_flows(val_sample_labels[i].numpy()) for i in range(len(val_sample_labels))]).to(device)
+            print('Labels to flows: {}'.format(time.time() - ltf))
+            forward = time.time()
             output = model(val_sample_data)
             grad_loss = flow_loss(output, val_sample_labels).item()
             mask_loss = class_loss(output, val_sample_labels).item()
             val_loss = grad_loss + mask_loss
             val_epoch_losses.append(val_loss)
+            print('Inference: {}'.format(time.time() - forward))
     return mean(val_epoch_losses)
 
 

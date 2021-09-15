@@ -35,7 +35,9 @@ def reformat(x, is_pf=False, do_3D=False):
                     x = x[:, :, info_chans]
                     if x.shape[2] == 1:
                         x = x.view(1, x.shape[0], x.shape[1])
-                    # else:
+                    else:
+                        # Temporary; change this for cyto + nuclei stuff
+                        x = x[:, :, 1].view(1, x.shape[0], x.shape[1])
                 else:
                     raise ValueError('Data is not 2D; if intending to use 3D volumes, pass in "--do-3D" argument.')
         # else:

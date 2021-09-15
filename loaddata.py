@@ -6,8 +6,9 @@ import numpy as np
 from torch.utils.data import Dataset
 from torch import as_tensor, tensor, cat, unsqueeze
 import os
-from tifffile import imread
 from tqdm import tqdm
+import tifffile
+import cv2
 
 from transforms import reformat, normalize1stto99th, Resize, random_horizontal_flip,\
     random_rotate, labels_to_flows, generate_patches, remove_empty_label_patches, remove_cut_cells
@@ -52,15 +53,19 @@ class CellPoseData(Dataset):
             for dir_i in data_dirs:
                 self.d_list = self.d_list + sorted([dir_i + os.sep + 'data' + os.sep + f for f in
                                                     os.listdir(os.path.join(dir_i, 'data')) if f.lower()
-                                                   .endswith('.tiff') or f.lower().endswith('.tif')])
+                                                   .endswith('.tiff') or f.lower().endswith('.tif')
+                                                    or f.lower().endswith('.png')])
                 self.l_list = self.l_list + sorted([dir_i + os.sep + 'labels' + os.sep + f for f in
                                                     os.listdir(os.path.join(dir_i, 'labels')) if f.lower()
-                                                   .endswith('.tiff') or f.lower().endswith('.tif')])
+                                                   .endswith('.tiff') or f.lower().endswith('.tif')
+                                                    or f.lower().endswith('.png')])
         else:
             self.d_list = sorted([data_dirs + os.sep + 'data' + os.sep + f for f in os.listdir(os.path.join(
-                data_dirs, 'data')) if f.lower().endswith('.tiff') or f.lower().endswith('.tif')])
+                data_dirs, 'data')) if f.lower().endswith('.tiff') or f.lower().endswith('.tif')
+                                  or f.lower().endswith('.png')])
             self.l_list = sorted([data_dirs + os.sep + 'labels' + os.sep + f for f in os.listdir(os.path.join(
-                data_dirs, 'labels')) if f.lower().endswith('.tiff') or f.lower().endswith('.tif')])
+                data_dirs, 'labels')) if f.lower().endswith('.tiff') or f.lower().endswith('.tif')
+                                  or f.lower().endswith('.png')])
         if pf_dirs is not None:
             if isinstance(pf_dirs, list):  # TODO: Determine how to not treat input as list (if necessary)
                 self.pf_list = []
@@ -76,14 +81,19 @@ class CellPoseData(Dataset):
         self.original_dims = []
         if do_3D:  # and from_3D
             for ind in tqdm(range(len(self.d_list)), desc='Loading {} Dataset...'.format(split_name)):
-                new_data = as_tensor(list(imread(self.d_list[ind]).astype('float')))
+                ext = os.path.splitext(self.d_list[ind])[-1]
+                if ext == '.tif' or ext == '.tiff':
+                    new_data = as_tensor(list(tifffile.imread(self.d_list[ind]).astype('float')))
+                    new_label = as_tensor(list(tifffile.imread(self.l_list[ind])).astype('int16'))
+                else:
+                    new_data = as_tensor(list(cv2.imread(self.d_list[ind], -1).astype('float')))
+                    new_label = as_tensor(list(cv2.imread(self.l_list[ind], -1).astype('int16')))
                 # new_data = as_tensor(imread(self.d_list[ind]).astype('float'))
                 new_data = reformat(new_data, do_3D=True)
                 new_data = normalize1stto99th(new_data)
-                new_label = as_tensor(list(imread(self.l_list[ind])).astype('int16'))
                 new_label = reformat(new_label, do_3D=True)
                 if pf_dirs is not None:
-                    new_pf = as_tensor(list(imread(self.pf_list[ind])))
+                    new_pf = as_tensor(list(tifffile.imread(self.pf_list[ind])))
                     new_pf = reformat(new_pf, is_pf=True, do_3D=True)  # TODO: May/may not need updated to reflect do_3D loading
                 else:
                     new_pf = None
@@ -98,10 +108,15 @@ class CellPoseData(Dataset):
             if from_3D:
                 # Note: majority of bottleneck caused by reading and normalizing data
                 for ind in tqdm(range(len(self.d_list)), desc='Loading {} Dataset...'.format(split_name)):
-                    raw_data_vol = imread(self.d_list[ind]).astype('float')
+                    ext = os.path.splitext(self.d_list[ind])[-1]
+                    if ext == '.tif' or ext == '.tiff':
+                        raw_data_vol = tifffile.imread(self.d_list[ind]).astype('float')
+                        raw_label_vol = tifffile.imread(self.l_list[ind]).astype('int16')
+                    else:
+                        raw_data_vol = cv2.imread(self.d_list[ind], -1).astype('float')
+                        raw_label_vol = cv2.imread(self.l_list[ind], -1).astype('int16')
                     raw_data_vol = [reformat(as_tensor(raw_data_vol[i])) for i in range(len(raw_data_vol))]
                     raw_data_vol = [normalize1stto99th(raw_data_vol[i]) for i in range(len(raw_data_vol))]
-                    raw_label_vol = imread(self.l_list[ind]).astype('int16')
                     raw_label_vol = [reformat(as_tensor(raw_label_vol[i])) for i in range(len(raw_label_vol))]
                     if pf_dirs is not None:  # Not currently handled
                         print('Add this later')
@@ -123,13 +138,18 @@ class CellPoseData(Dataset):
 
             else:
                 for ind in tqdm(range(len(self.d_list)), desc='Loading {} Dataset...'.format(split_name)):
-                    new_data = as_tensor(imread(self.d_list[ind]).astype('float'))
+                    ext = os.path.splitext(self.d_list[ind])[-1]
+                    if ext == '.tif' or ext == '.tiff':
+                        new_data = as_tensor(tifffile.imread(self.d_list[ind]).astype('float'))
+                        new_label = as_tensor(tifffile.imread(self.l_list[ind]).astype('int16'))
+                    else:
+                        new_data = as_tensor(cv2.imread(self.d_list[ind], -1).astype('float'))
+                        new_label = as_tensor(cv2.imread(self.l_list[ind], -1).astype('int16'))
                     new_data = reformat(new_data)
                     new_data = normalize1stto99th(new_data)
-                    new_label = as_tensor(imread(self.l_list[ind]).astype('int16'))
                     new_label = reformat(new_label)
                     if pf_dirs is not None:
-                        new_pf = imread(self.pf_list[ind])
+                        new_pf = tifffile.imread(self.pf_list[ind])
                         new_pf = reformat(new_pf, is_pf=True)
                     else:
                         new_pf = None
