@@ -13,7 +13,7 @@ import time
 
 from transforms import Resize, reformat
 from loaddata import CellPoseData
-from Cellpose_2D_PyTorch import UpdatedCellpose, SizeModel, ClassLoss, FlowLoss, SASClassLoss
+from Cellpose_2D_PyTorch import UpdatedCellpose, SizeModel, ClassLoss, FlowLoss, SASClassLoss, ContrastiveFlowLoss
 from train_eval import train_network, adapt_network, eval_network
 from cellpose_src.metrics import average_precision
 
@@ -129,13 +129,14 @@ if not args.eval_only:
 
     if args.do_adaptation:
         sas_class_loss = SASClassLoss(nn.BCEWithLogitsLoss(reduction='mean'))
+        c_flow_loss = ContrastiveFlowLoss()
         target_dataset = CellPoseData('Target', args.target_dataset, pf_dirs=args.target_flows, do_3D=args.do_3D,
                                       from_3D=args.target_from_3D, resize=Resize(median_diams, use_labels=True,
                                                                                  patch_per_batch=args.batch_size))
         target_dl = DataLoader(target_dataset, batch_size=args.batch_size, shuffle=True)
 
-        train_losses, val_losses = adapt_network(model, train_dl, target_dl, val_dl, sas_class_loss, class_loss,
-                                                 flow_loss, patch_size=patch_size, min_overlap=min_overlap,
+        train_losses, val_losses = adapt_network(model, train_dl, target_dl, val_dl, sas_class_loss, c_flow_loss,
+                                                 class_loss, flow_loss, patch_size=patch_size, min_overlap=min_overlap,
                                                  optimizer=optimizer, device=device, n_epochs=args.epochs)
     else:
         train_losses, val_losses = train_network(model, train_dl, val_dl, class_loss, flow_loss,

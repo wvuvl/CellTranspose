@@ -60,8 +60,8 @@ def train_network(model, train_dl, val_dl, class_loss, flow_loss, patch_size, mi
     return train_losses, val_losses
 
 
-def adapt_network(model: nn.Module, source_dl, target_dl, val_dl, sas_class_loss, class_loss, flow_loss,
-                  patch_size, min_overlap, optimizer, device, n_epochs):
+def adapt_network(model: nn.Module, source_dl, target_dl, val_dl, sas_class_loss, c_flow_loss,
+                  class_loss, flow_loss, patch_size, min_overlap, optimizer, device, n_epochs):
     train_losses = []
     val_losses = []
     batched_target_data, batched_target_labels = process_src_tgt(source_dl, target_dl, patch_size, min_overlap)
@@ -89,8 +89,13 @@ def adapt_network(model: nn.Module, source_dl, target_dl, val_dl, sas_class_loss
             adaptation_class_loss = sas_class_loss(source_output[:, 0], source_sample_labels[:, 0],
                                                    target_output[:, 0], target_sample_labels[:, 0],
                                                    margin=1, gamma=0.1)
+            adaptation_flow_loss = c_flow_loss(source_output[:, 1:], source_sample_labels[:, 1:],
+                                               target_output[:, 1:], target_sample_labels[:, 1:],
+                                               temperature=0.1)
 
-            train_loss = source_grad_loss + target_grad_loss + adaptation_class_loss
+            train_loss = source_grad_loss + target_grad_loss
+            # train_loss = source_grad_loss + target_grad_loss + adaptation_class_loss
+            # train_loss = source_grad_loss + target_grad_loss + adaptation_class_loss + adaptation_flow_loss
             # train_loss = target_grad_loss + adaptation_class_loss
             train_epoch_losses.append(train_loss.item())
             train_loss.backward()

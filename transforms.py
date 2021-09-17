@@ -74,8 +74,8 @@ class Resize(object):
     def __call__(self, x, y, pf=None):
         original_dims = y.shape[1], y.shape[2]
         if self.use_labels:
-            x, y, pf = resize_from_labels(x, y, self.default_med, pf)
-            return x, y, pf, original_dims
+            x, y = resize_from_labels(x, y, self.default_med, pf)
+            return x, y, original_dims
         else:
             x, y = predict_and_resize(x, y, self.default_med, self.gc_model, self.sz_model)  # TODO: Add pf here
             if self.refine:
@@ -102,11 +102,11 @@ def resize_from_labels(x, y, default_med, pf=None):
             pf = cv2.resize(pf, (int(pf.shape[1] * rescale_w), int(pf.shape[0] * rescale_h)),
                             interpolation=cv2.INTER_LINEAR)
             pf = np.transpose(pf, (2, 0, 1))
-        else:
-            pf = []
-        return torch.tensor(x), torch.tensor(y), torch.tensor(pf)
+            pf[0] = (pf[0] > 0.5).astype(np.float32)
+            return torch.tensor(x), torch.tensor(pf)
+        return torch.tensor(x), torch.tensor(y)
     else:
-        return x, y, pf
+        return x, y
 
 
 def predict_and_resize(x, y, default_med, gc_model, sz_model):

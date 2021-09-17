@@ -102,7 +102,6 @@ class CellPoseData(Dataset):
                     self.original_dims.append(original_dim)
                 self.data.extend(new_data)
                 self.labels.extend(new_label)
-                self.pflows.extend(new_pf)
 
         else:
             if from_3D:
@@ -154,10 +153,9 @@ class CellPoseData(Dataset):
                     else:
                         new_pf = None
                     if resize is not None:
-                        new_data, new_label, new_pf, original_dim = resize(new_data, new_label, new_pf)
+                        new_data, new_label, original_dim = resize(new_data, new_label, new_pf)
                         self.original_dims.append(original_dim)
                     self.data.append(new_data)
-                    new_label = cat((new_label, new_pf[1:]))
                     self.labels.append(new_label)
         self.data_samples = self.data
         self.label_samples = self.labels
@@ -171,7 +169,7 @@ class CellPoseData(Dataset):
     def process_dataset(self, patch_size, min_overlap):
         self.data_samples = tensor([])
         self.label_samples = tensor([])
-        for (data, labels) in zip(self.data, self.labels):
+        for (data, labels) in zip(self.data, self.labels):  # TODO: tzip
             data, labels = random_horizontal_flip(data, labels)
             data, labels = random_rotate(data, labels)
             if labels.shape[0] == 1:

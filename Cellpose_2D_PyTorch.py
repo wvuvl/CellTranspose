@@ -35,7 +35,7 @@ class FlowLoss:
 # Semantic Alignment/Separation Contrastive Loss for classification
 class SASClassLoss:
     def __init__(self, sas_class_loss):
-        self.loss = sas_class_loss
+        self.class_loss = sas_class_loss
 
     def __call__(self, g_source, lbl_source, g_target, lbl_target, margin=1, gamma=0.1):
         match_mask = torch.eq(lbl_source, lbl_target)  # Mask where each pixel is 1 (source GT = target GT) or 0 (source GT != target GT)
@@ -43,12 +43,21 @@ class SASClassLoss:
 
         sa_loss = (1 - gamma) * 0.5 * torch.square(st_dist)
         s_loss = (1 - gamma) * 0.5 * torch.square(torch.max(torch.tensor(0).to(torch.device('cuda' if torch.cuda.is_available() else 'cpu')), margin - st_dist))
-        source_class_loss = nn.BCEWithLogitsLoss(reduction='mean')(g_source, lbl_source)
-        # target_class_loss = nn.BCEWithLogitsLoss(reduction='mean')(g_target, lbl_target)
+        source_class_loss = self.class_loss(g_source, lbl_source)
+        # target_class_loss = self.class_loss(g_target, lbl_target)
 
         loss = torch.mean(match_mask * sa_loss + (~match_mask * s_loss) + source_class_loss)
-        # loss = torch.mean(match_mask * sa_loss + (~match_mask * s_loss) + target_class_loss)
+        # loss = torch.mean(match_mask * sa_loss + (~match_mask * s_loss)) + target_class_loss
         return loss
+
+
+class ContrastiveFlowLoss:
+    def __init__(self):
+        # self.loss = c_flow_loss
+        print('initialized')
+
+    def __call__(self, z_source, lbl_source, z_target, lbl_target, temperature=0.1):
+        return
 
 
 def conv_block(in_feat, out_feat):
