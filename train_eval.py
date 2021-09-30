@@ -5,7 +5,6 @@ from tqdm import tqdm
 import cv2
 import numpy as np
 from statistics import mean
-import math
 from transforms import labels_to_flows, followflows, generate_patches, recombine_patches
 
 import matplotlib.pyplot as plt
@@ -19,8 +18,8 @@ def train_network(model, train_dl, val_dl, class_loss, flow_loss, patch_size, mi
     print('Preprocessing data:')
     reprocess_train_time = time.time()
     train_dl.dataset.process_dataset(patch_size, min_overlap)
-    print('Time to reprocess training data: {}'.format(time.strftime("%H:%M:%S",
-                                                                     time.gmtime(time.time() - reprocess_train_time))))
+    print('Time to reprocess training data: {}'
+          .format(time.strftime("%H:%M:%S", time.gmtime(time.time() - reprocess_train_time))))
     print('Beginning network training.\n')
 
     for e in range(1, n_epochs + 1):
@@ -55,16 +54,14 @@ def train_network(model, train_dl, val_dl, class_loss, flow_loss, patch_size, mi
             plt.legend(('Train Losses', 'Validation Losses'))
             plt.show()
 
-
     print('Train time: {}'.format(time.strftime("%H:%M:%S", time.gmtime(time.time() - start_train))))
     return train_losses, val_losses
 
 
 def adapt_network(model: nn.Module, source_dl, target_dl, val_dl, sas_class_loss, c_flow_loss,
-                  class_loss, flow_loss, patch_size, min_overlap, optimizer, device, n_epochs):
+                  class_loss, flow_loss, optimizer, device, n_epochs):
     train_losses = []
     val_losses = []
-    batched_target_data, batched_target_labels = process_src_tgt(source_dl, target_dl, patch_size, min_overlap)
     print('Beginning domain adaptation.\n')
 
     # Assume # of target samples << # of source samples
@@ -72,7 +69,7 @@ def adapt_network(model: nn.Module, source_dl, target_dl, val_dl, sas_class_loss
     for e in range(1, n_epochs + 1):
         model.train()
         train_epoch_losses = []
-        # batched_target_data, batched_target_labels = process_data()
+        target_dl_iter = iter(target_dl)
         for i, (source_sample_data, source_sample_labels) in enumerate(tqdm(
                 source_dl, desc='Training - Epoch {}/{}'.format(e, n_epochs))):
             optimizer.zero_grad()
@@ -81,8 +78,13 @@ def adapt_network(model: nn.Module, source_dl, target_dl, val_dl, sas_class_loss
             source_sample_labels = source_sample_labels.to(device)
             source_output = model(source_sample_data)
 
-            target_sample_data = batched_target_data[i*target_dl.batch_size:(i+1)*target_dl.batch_size].to(device)
-            target_sample_labels = batched_target_labels[i*target_dl.batch_size:(i+1)*target_dl.batch_size].to(device)
+            try:
+                target_sample = next(target_dl_iter)
+            except StopIteration:
+                target_dl_iter = iter(target_dl)
+                target_sample = next(target_dl_iter)
+            target_sample_data = target_sample[0].to(device)
+            target_sample_labels = target_sample[1].to(device)
             target_output = model(target_sample_data)
             source_grad_loss = flow_loss(source_output, source_sample_labels)
             target_grad_loss = flow_loss(target_output, target_sample_labels)
@@ -118,21 +120,15 @@ def validate_network(model, data_loader, flow_loss, class_loss, device):
     val_epoch_losses = []
     with no_grad():
         for (val_sample_data, val_sample_labels) in tqdm(data_loader, desc='Performing validation'):
-            loading = time.time()
+            # When not using precalculated flows, makes up majority of validation time (~85-90%)
             val_sample_data = val_sample_data.to(device)
-            print('Loading: {}'.format(time.time() - loading))
-            # TODO: Possibly add passing in precalculated flows to decrease validation time (~85-90% of validation time)
-            ltf = time.time()
             val_sample_labels = as_tensor(
                 [labels_to_flows(val_sample_labels[i].numpy()) for i in range(len(val_sample_labels))]).to(device)
-            print('Labels to flows: {}'.format(time.time() - ltf))
-            forward = time.time()
             output = model(val_sample_data)
             grad_loss = flow_loss(output, val_sample_labels).item()
             mask_loss = class_loss(output, val_sample_labels).item()
             val_loss = grad_loss + mask_loss
             val_epoch_losses.append(val_loss)
-            print('Inference: {}'.format(time.time() - forward))
     return mean(val_epoch_losses)
 
 
@@ -167,34 +163,3 @@ def eval_network(model: nn.Module, data_loader: DataLoader, device, patch_per_ba
                 label_list.append(label_files[i][label_files[i].rfind('/')+1: label_files[i].rfind('.')])
 
     return masks, pred_list, label_list
-
-
-def process_src_tgt(dl_src, dl_tgt, patch_size, min_overlap):
-    print('Processing data:')
-    reprocess_source_time = time.time()
-    dl_src.dataset.process_dataset(patch_size, min_overlap)
-    print('Time to process source data: {}'.format(time.strftime("%H:%M:%S",
-                                                                 time.gmtime(time.time() - reprocess_source_time))))
-    reprocess_target_time = time.time()
-    dl_tgt.dataset.process_dataset(patch_size, min_overlap)
-    target_data = dl_tgt.dataset.data_samples
-    target_labels = dl_tgt.dataset.label_samples
-    batched_target_data = target_data
-    batched_target_labels = target_labels
-    for _ in range(1, math.ceil(len(dl_src.dataset) / len(target_data))):
-        batched_target_data = cat((batched_target_data, target_data))
-        batched_target_labels = cat((batched_target_labels, target_labels))
-
-    # Shuffle the target data
-    t_len = len(dl_src.dataset)
-    shuffled_inds = np.array(range(t_len))
-    np.random.shuffle(shuffled_inds)
-    batched_target_data = batched_target_data[:t_len]
-    batched_target_data[np.array(range(t_len))] = batched_target_data[shuffled_inds]
-    batched_target_data = batched_target_data.float()
-    batched_target_labels = batched_target_labels[:t_len]
-    batched_target_labels[np.array(range(t_len))] = batched_target_labels[shuffled_inds]
-    batched_target_labels = batched_target_labels.float()
-    print('Time to process target data: {}'.format(time.strftime("%H:%M:%S",
-                                                                 time.gmtime(time.time() - reprocess_target_time))))
-    return batched_target_data, batched_target_labels

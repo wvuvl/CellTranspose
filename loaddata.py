@@ -6,7 +6,9 @@ import numpy as np
 from torch.utils.data import Dataset
 from torch import as_tensor, tensor, cat, unsqueeze
 import os
+import math
 from tqdm import tqdm
+from tqdm.contrib import tzip
 import tifffile
 import cv2
 
@@ -14,7 +16,6 @@ from transforms import reformat, normalize1stto99th, Resize, random_horizontal_f
     random_rotate, labels_to_flows, generate_patches, remove_empty_label_patches, remove_cut_cells
 
 import matplotlib.pyplot as plt
-from time import time
 
 
 class CellPoseData(Dataset):
@@ -46,6 +47,7 @@ class CellPoseData(Dataset):
             evaluate: if set to true, returns additional information when calling __getitem__()
             resize: Resize object containing parameters by which to resize input samples accordingly
         """
+        self.split_name = split_name
         self.evaluate = evaluate
         if isinstance(data_dirs, list):  # TODO: Determine how to not treat input as list (if necessary)
             self.d_list = []
@@ -88,7 +90,6 @@ class CellPoseData(Dataset):
                 else:
                     new_data = as_tensor(list(cv2.imread(self.d_list[ind], -1).astype('float')))
                     new_label = as_tensor(list(cv2.imread(self.l_list[ind], -1).astype('int16')))
-                # new_data = as_tensor(imread(self.d_list[ind]).astype('float'))
                 new_data = reformat(new_data, do_3D=True)
                 new_data = normalize1stto99th(new_data)
                 new_label = reformat(new_label, do_3D=True)
@@ -166,10 +167,10 @@ class CellPoseData(Dataset):
     # Augmentations and tiling applied to input data (for training and adaptation) -
     # separated from DataLoader to allow for possibility of running only once or once per epoch
     # NOTE: ltf takes ~50% of time; generating patches and concatenating takes nearly as long
-    def process_dataset(self, patch_size, min_overlap):
+    def process_dataset(self, patch_size, min_overlap, batch_size=None):
         self.data_samples = tensor([])
         self.label_samples = tensor([])
-        for (data, labels) in zip(self.data, self.labels):  # TODO: tzip
+        for (data, labels) in tzip(self.data, self.labels, desc='Processing {} Dataset...'.format(self.split_name)):
             data, labels = random_horizontal_flip(data, labels)
             data, labels = random_rotate(data, labels)
             if labels.shape[0] == 1:
@@ -180,6 +181,12 @@ class CellPoseData(Dataset):
             # labels = remove_cut_cells(labels, flows=True)
             self.data_samples = cat((self.data_samples, data))
             self.label_samples = cat((self.label_samples, labels))
+        if batch_size is not None:
+            ds = self.data_samples
+            ls = self.label_samples
+            for _ in range(1, math.ceil(batch_size / len(self.data_samples))):  # len(self)
+                self.data_samples = cat((self.data_samples, ds))
+                self.label_samples = cat((self.label_samples, ls))
         # self.data_samples, self.label_samples = remove_empty_label_patches(self.data_samples, self.label_samples)
 
     # Generates patches for validation dataset - only happens once

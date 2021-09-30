@@ -1,5 +1,5 @@
 import argparse
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, RandomSampler, BatchSampler
 from torch import nn, device, load, save, squeeze, as_tensor
 from torch.cuda import is_available, device_count, empty_cache
 from torch.optim import SGD
@@ -112,7 +112,8 @@ if not args.eval_only:
     train_dataset = CellPoseData('Training', args.train_dataset, do_3D=args.do_3D, from_3D=args.train_from_3D,
                                  resize=Resize(median_diams, use_labels=True,
                                                patch_per_batch=args.batch_size))
-    train_dl = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True)
+    train_dataset.process_dataset(patch_size, min_overlap)
+    train_dl = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, drop_last=True)
 
     if args.val_dataset is not None:
         val_dataset = CellPoseData('Validation', args.val_dataset, do_3D=args.do_3D, from_3D=args.val_from_3D,
@@ -133,11 +134,14 @@ if not args.eval_only:
         target_dataset = CellPoseData('Target', args.target_dataset, pf_dirs=args.target_flows, do_3D=args.do_3D,
                                       from_3D=args.target_from_3D, resize=Resize(median_diams, use_labels=True,
                                                                                  patch_per_batch=args.batch_size))
-        target_dl = DataLoader(target_dataset, batch_size=args.batch_size, shuffle=True)
+        target_dataset.process_dataset(patch_size, min_overlap, batch_size=args.batch_size)
+        rs = RandomSampler(target_dataset, replacement=False)
+        bs = BatchSampler(rs, 512, True)
+        target_dl = DataLoader(target_dataset, batch_sampler=bs)
 
         train_losses, val_losses = adapt_network(model, train_dl, target_dl, val_dl, sas_class_loss, c_flow_loss,
-                                                 class_loss, flow_loss, patch_size=patch_size, min_overlap=min_overlap,
-                                                 optimizer=optimizer, device=device, n_epochs=args.epochs)
+                                                 class_loss, flow_loss, optimizer=optimizer, device=device,
+                                                 n_epochs=args.epochs)
     else:
         train_losses, val_losses = train_network(model, train_dl, val_dl, class_loss, flow_loss,
                                                  patch_size, min_overlap,
