@@ -54,7 +54,7 @@ class SASClassLoss:
 class ContrastiveFlowLoss:
     def __init__(self):
         # self.loss = c_flow_loss
-        print('initialized')
+        return
 
     def __call__(self, z_source, lbl_source, z_target, lbl_target, temperature=0.1):
         return

@@ -18,8 +18,11 @@ from train_eval import train_network, adapt_network, eval_network
 from cellpose_src.metrics import average_precision
 
 parser = argparse.ArgumentParser()
+parser.add_argument('--n-chan', type=int,
+                    help='Maximum number of channels in input images (i.e. 2 for cytoplasm + nuclei images).')
 parser.add_argument('--learning-rate', type=float)
 parser.add_argument('--momentum', type=float)
+parser.add_argument('--weight-decay', type=float)
 parser.add_argument('--batch-size', type=int)
 parser.add_argument('--epochs', type=int)
 parser.add_argument('--median-diams', type=int,
@@ -29,13 +32,15 @@ parser.add_argument('--patch-size', type=int,
                     help='Size of image patches with which to tile.')
 parser.add_argument('--min-overlap', type=int,
                     help='Amount of overlap to use for tiling - currently the same for train, validation, and test.')
+parser.add_argument('--test-overlap', type=int,
+                    help='Amount of overlap to use for tiling during testing - if unspecified, defaults to min-overlap')
 parser.add_argument('--dataset-name', help='Name of dataset to use for reporting results (omit the word "Dataset").')
 parser.add_argument('--results-dir', help='Folder in which to save experiment results.')
 parser.add_argument('--train-only', help='Only perform training, no evaluation (mutually exclusive with "eval-only").',
                     action='store_true')
 parser.add_argument('--eval-only', help='Only perform evaluation, no training (mutually exclusive with "train-only").',
                     action='store_true',)
-parser.add_argument('--pretrained-model', help='Pretrained model to load in')
+parser.add_argument('--pretrained-model', help='Location of pretrained model to load in. Default: None')
 parser.add_argument('--do-adaptation', help='Whether to perform domain adaptation or standard training.',
                     action='store_true')
 parser.add_argument('--do-3D', help='Whether or not to use 3D-Cellpose (Must use 3D volumes).',
@@ -86,6 +91,10 @@ empty_cache()
 median_diams = (args.median_diams, args.median_diams)
 patch_size = (args.patch_size, args.patch_size)
 min_overlap = (args.min_overlap, args.min_overlap)
+if args.test_overlap is not None:
+    test_overlap = (args.test_overlap, args.test_overlap)
+else:
+    test_overlap = min_overlap
 
 if not (args.val_use_labels and args.test_use_labels):
     gen_cellpose = UpdatedCellpose(channels=1, device='cuda:0')
@@ -98,7 +107,7 @@ else:
     gen_cellpose = None
     gen_size_model = None
 
-model = UpdatedCellpose(channels=1, device=device)
+model = UpdatedCellpose(channels=args.n_chan, device=device)
 model = nn.DataParallel(model)
 model.to(device)
 if args.pretrained_model is not None:
@@ -108,15 +117,15 @@ if not args.eval_only:
     class_loss = ClassLoss(nn.BCEWithLogitsLoss(reduction='mean'))
     flow_loss = FlowLoss(nn.MSELoss(reduction='mean'))
     start_train = time.time()
-    optimizer = SGD(model.parameters(), lr=args.learning_rate, momentum=args.momentum)
-    train_dataset = CellPoseData('Training', args.train_dataset, do_3D=args.do_3D, from_3D=args.train_from_3D,
+    optimizer = SGD(model.parameters(), lr=args.learning_rate, momentum=args.momentum, weight_decay=args.weight_decay)
+    train_dataset = CellPoseData('Training', args.train_dataset, args.n_chan, do_3D=args.do_3D, from_3D=args.train_from_3D,
                                  resize=Resize(median_diams, use_labels=True,
                                                patch_per_batch=args.batch_size))
     train_dataset.process_dataset(patch_size, min_overlap)
     train_dl = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, drop_last=True)
 
     if args.val_dataset is not None:
-        val_dataset = CellPoseData('Validation', args.val_dataset, do_3D=args.do_3D, from_3D=args.val_from_3D,
+        val_dataset = CellPoseData('Validation', args.val_dataset, args.n_chan, do_3D=args.do_3D, from_3D=args.val_from_3D,
                                    resize=Resize(median_diams, use_labels=args.val_use_labels, refine=True,
                                                  gc_model=gen_cellpose, sz_model=gen_size_model,
                                                  min_overlap=min_overlap, device=device,
@@ -131,12 +140,12 @@ if not args.eval_only:
     if args.do_adaptation:
         sas_class_loss = SASClassLoss(nn.BCEWithLogitsLoss(reduction='mean'))
         c_flow_loss = ContrastiveFlowLoss()
-        target_dataset = CellPoseData('Target', args.target_dataset, pf_dirs=args.target_flows, do_3D=args.do_3D,
-                                      from_3D=args.target_from_3D, resize=Resize(median_diams, use_labels=True,
-                                                                                 patch_per_batch=args.batch_size))
+        target_dataset = CellPoseData('Target', args.target_dataset, args.n_chan, pf_dirs=args.target_flows,
+                                      do_3D=args.do_3D, from_3D=args.target_from_3D,
+                                      resize=Resize(median_diams, use_labels=True, patch_per_batch=args.batch_size))
         target_dataset.process_dataset(patch_size, min_overlap, batch_size=args.batch_size)
         rs = RandomSampler(target_dataset, replacement=False)
-        bs = BatchSampler(rs, 512, True)
+        bs = BatchSampler(rs, args.batch_size, True)
         target_dl = DataLoader(target_dataset, batch_sampler=bs)
 
         train_losses, val_losses = adapt_network(model, train_dl, target_dl, val_dl, sas_class_loss, c_flow_loss,
@@ -144,7 +153,6 @@ if not args.eval_only:
                                                  n_epochs=args.epochs)
     else:
         train_losses, val_losses = train_network(model, train_dl, val_dl, class_loss, flow_loss,
-                                                 patch_size, min_overlap,
                                                  optimizer=optimizer, device=device, n_epochs=args.epochs)
     save(model.state_dict(), os.path.join(args.results_dir, 'trained_model.pt'))
     end_train = time.time()
@@ -167,16 +175,16 @@ if not args.eval_only:
 
 if not args.train_only:
     start_eval = time.time()
-    test_dataset = CellPoseData('Test', args.test_dataset, do_3D=args.do_3D, from_3D=args.test_from_3D, evaluate=True,
+    test_dataset = CellPoseData('Test', args.test_dataset, args.n_chan, do_3D=args.do_3D, from_3D=args.test_from_3D, evaluate=True,
                                 resize=Resize(median_diams, use_labels=args.test_use_labels, refine=True,
                                               gc_model=gen_cellpose, sz_model=gen_size_model,
-                                              min_overlap=min_overlap, device=device,
+                                              min_overlap=test_overlap, device=device,
                                               patch_per_batch=args.batch_size))
 
     eval_dl = DataLoader(test_dataset, batch_size=1, shuffle=False)
 
     masks, prediction_list, label_list = eval_network(model, eval_dl, device, patch_per_batch=args.batch_size,
-                                                      patch_size=patch_size, min_overlap=min_overlap)
+                                                      patch_size=patch_size, min_overlap=test_overlap)
 
     for i in range(len(masks)):
         masks[i] = masks[i].astype('int32')
@@ -203,39 +211,44 @@ if not args.train_only:
         cc.write('\nTotal cell count:\nPredicted: {}; True: {}\n'.format(predicted_count, true_count))
         counting_error = (abs(true_count - predicted_count)) / true_count
         cc.write('Total counting error rate: {:.6f}'.format(counting_error))
-    print('Total cell count:\nPredicted: {}; True: {}'.format(predicted_count, true_count))
-    print('Total counting error rate: {}'.format(counting_error))
+        print('Total cell count:\nPredicted: {}; True: {}'.format(predicted_count, true_count))
+        print('Total counting error rate: {}'.format(counting_error))
 
-    # AP Calculation
-    # TODO: Have working with 3D as well (possibly re-initialize test dataset without resizing)
-    if args.calculate_ap:
-        labels = []
-        for l in test_dataset.l_list:
-            label = as_tensor(cv2.imread(l, -1).astype('int16'))
-            # label = as_tensor(tifffile.imread(l).astype('int16'))
-            label = squeeze(reformat(label), dim=0).numpy()
-            labels.append(label)
-        tau = np.arange(0.0, 1.01, 0.01)
-        ap_info = average_precision(labels, masks, threshold=tau)
-        ap_per_im = ap_info[0]
-        ap_overall = np.average(ap_per_im, axis=0)
-        tp_overall = np.sum(ap_info[1], axis=0).astype('int32')
-        fp_overall = np.sum(ap_info[2], axis=0).astype('int32')
-        fn_overall = np.sum(ap_info[3], axis=0).astype('int32')
-        plt.figure()
-        plt.plot(tau, ap_overall)
-        plt.title('Average Precision for Cellpose on {} Dataset'.format(args.dataset_name))
-        plt.xlabel(r'IoU Matching Threshold $\tau$')
-        plt.ylabel('Average Precision')
-        plt.yticks(np.arange(0, 1.01, step=0.2))
-        plt.savefig(os.path.join(args.results_dir, 'AP Results'))
-        plt.show()
-        print('AP Results at IoU threshold 0.5: AP = {}\nTrue Postive: {}; False Positive: {}; False Negative: {}'
-              .format(ap_overall[51], tp_overall[51], fp_overall[51], fn_overall[51]))
-        false_error = (fp_overall[51] + fn_overall[51]) / (tp_overall[51] + fn_overall[51])
-        print('Total false error rate: {:.6f}'.format(false_error))
-        with open(os.path.join(args.results_dir, '{}_AP_Results.pkl'.format(args.dataset_name)), 'wb') as apr:
-            pickle.dump((tau, ap_overall, tp_overall, fp_overall, fn_overall, false_error), apr)
+        # AP Calculation
+        # TODO: Have working with 3D as well (possibly re-initialize test dataset without resizing)
+        if args.calculate_ap:
+            labels = []
+            for l in test_dataset.l_list:
+                label = as_tensor(cv2.imread(l, -1).astype('int16'))
+                # label = as_tensor(tifffile.imread(l).astype('int16'))
+                label = squeeze(reformat(label), dim=0).numpy()
+                labels.append(label)
+            tau = np.arange(0.0, 1.01, 0.01)
+            ap_info = average_precision(labels, masks, threshold=tau)
+            ap_per_im = ap_info[0]
+            ap_overall = np.average(ap_per_im, axis=0)
+            tp_overall = np.sum(ap_info[1], axis=0).astype('int32')
+            fp_overall = np.sum(ap_info[2], axis=0).astype('int32')
+            fn_overall = np.sum(ap_info[3], axis=0).astype('int32')
+            plt.figure()
+            plt.plot(tau, ap_overall)
+            plt.title('Average Precision for Cellpose on {} Dataset'.format(args.dataset_name))
+            plt.xlabel(r'IoU Matching Threshold $\tau$')
+            plt.ylabel('Average Precision')
+            plt.yticks(np.arange(0, 1.01, step=0.2))
+            plt.savefig(os.path.join(args.results_dir, 'AP Results'))
+            plt.show()
+            cc.write('\nAP Results at IoU threshold 0.5: AP = {}\nTrue Postive: {}; False Positive: {}; False Negative:'
+                     ' {}\n'.format(ap_overall[51], tp_overall[51], fp_overall[51], fn_overall[51]))
+            print('AP Results at IoU threshold 0.5: AP = {}\nTrue Postive: {}; False Positive: {}; False Negative: {}'
+                  .format(ap_overall[51], tp_overall[51], fp_overall[51], fn_overall[51]))
+            false_error = (fp_overall[51] + fn_overall[51]) / (tp_overall[51] + fn_overall[51])
+            cc.write('Total false error rate: {:.6f}'.format(false_error))
+            print('Total false error rate: {:.6f}'.format(false_error))
+            with open(os.path.join(args.results_dir, '{}_AP_Results.pkl'.format(args.dataset_name)), 'wb') as apr:
+                pickle.dump((tau, ap_overall, tp_overall, fp_overall, fn_overall, false_error), apr)
+
+print(args.results_dir)
 
 with open(os.path.join(args.results_dir, 'logfile.txt'), 'w') as log:
     if args.train_only:
@@ -247,9 +260,11 @@ with open(os.path.join(args.results_dir, 'logfile.txt'), 'w') as log:
     if not args.train_only:
         log.write('Time to evaluate: {}\n'.format(time.strftime("%H:%M:%S", time.gmtime(end_eval - start_eval))))
     log.write('\n')
+    log.write('Number of channels: {}\n'.format(args.n_chan))
     log.write('Cells resized to possess median diameter of {}.\n'.format(args.median_diams))
     log.write('Patch size: {}\n'.format(args.patch_size))
-    log.write('Minimum patch overlap: {}\n'.format(args.min_overlap))
+    log.write('Minimum patch overlap (train): {}\n'.format(args.min_overlap))
+    log.write('Minimum patch overlap (test): {} \n'.format(test_overlap[0]))
     log.write('\n')
     log.write('Zeros removed: all\n')
     log.write('\n')

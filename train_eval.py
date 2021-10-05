@@ -5,23 +5,17 @@ from tqdm import tqdm
 import cv2
 import numpy as np
 from statistics import mean
-from transforms import labels_to_flows, followflows, generate_patches, recombine_patches
+from transforms import followflows, generate_patches, recombine_patches
 
 import matplotlib.pyplot as plt
 
 
-def train_network(model, train_dl, val_dl, class_loss, flow_loss, patch_size, min_overlap, optimizer, device, n_epochs):
+def train_network(model, train_dl, val_dl, class_loss, flow_loss, optimizer, device, n_epochs):
     train_losses = []
     val_losses = []
     start_train = time.time()
 
-    print('Preprocessing data:')
-    reprocess_train_time = time.time()
-    train_dl.dataset.process_dataset(patch_size, min_overlap)
-    print('Time to reprocess training data: {}'
-          .format(time.strftime("%H:%M:%S", time.gmtime(time.time() - reprocess_train_time))))
     print('Beginning network training.\n')
-
     for e in range(1, n_epochs + 1):
         train_epoch_losses = []
         model.train()
@@ -46,7 +40,7 @@ def train_network(model, train_dl, val_dl, class_loss, flow_loss, patch_size, mi
         else:
             print('Train loss: {:.3f}'.format(train_epoch_loss))
 
-        if e % 10 == 0:
+        if e % (n_epochs / 3) == 0:
             plt.figure()
             epoch_i = np.arange(1, e+1)
             plt.plot(epoch_i, train_losses)
@@ -86,19 +80,20 @@ def adapt_network(model: nn.Module, source_dl, target_dl, val_dl, sas_class_loss
             target_sample_data = target_sample[0].to(device)
             target_sample_labels = target_sample[1].to(device)
             target_output = model(target_sample_data)
-            source_grad_loss = flow_loss(source_output, source_sample_labels)
+            # source_class_loss = class_loss(source_output, source_sample_labels)
+            # target_class_loss = class_loss(target_output, target_sample_labels)
+            # source_grad_loss = flow_loss(source_output, source_sample_labels)
             target_grad_loss = flow_loss(target_output, target_sample_labels)
             adaptation_class_loss = sas_class_loss(source_output[:, 0], source_sample_labels[:, 0],
                                                    target_output[:, 0], target_sample_labels[:, 0],
                                                    margin=1, gamma=0.1)
-            adaptation_flow_loss = c_flow_loss(source_output[:, 1:], source_sample_labels[:, 1:],
-                                               target_output[:, 1:], target_sample_labels[:, 1:],
-                                               temperature=0.1)
+            # adaptation_flow_loss = c_flow_loss(source_output[:, 1:], source_sample_labels[:, 1:],
+            #                                    target_output[:, 1:], target_sample_labels[:, 1:],
+            #                                    temperature=0.1)
 
-            train_loss = source_grad_loss + target_grad_loss
-            # train_loss = source_grad_loss + target_grad_loss + adaptation_class_loss
-            # train_loss = source_grad_loss + target_grad_loss + adaptation_class_loss + adaptation_flow_loss
-            # train_loss = target_grad_loss + adaptation_class_loss
+            # train_loss = target_class_loss + target_grad_loss
+            train_loss = adaptation_class_loss + target_grad_loss
+            # train_loss = adaptation_class_loss + source_grad_loss + target_grad_loss
             train_epoch_losses.append(train_loss.item())
             train_loss.backward()
             optimizer.step()
@@ -122,8 +117,7 @@ def validate_network(model, data_loader, flow_loss, class_loss, device):
         for (val_sample_data, val_sample_labels) in tqdm(data_loader, desc='Performing validation'):
             # When not using precalculated flows, makes up majority of validation time (~85-90%)
             val_sample_data = val_sample_data.to(device)
-            val_sample_labels = as_tensor(
-                [labels_to_flows(val_sample_labels[i].numpy()) for i in range(len(val_sample_labels))]).to(device)
+            val_sample_labels = val_sample_labels.to(device)
             output = model(val_sample_data)
             grad_loss = flow_loss(output, val_sample_labels).item()
             mask_loss = class_loss(output, val_sample_labels).item()

@@ -14,7 +14,7 @@ import matplotlib.pyplot as plt
 
 # TODO: Need to update to work for all situations
 #  (currently only for when 1-channel 2D image doesn't include channel dim)
-def reformat(x, is_pf=False, do_3D=False):
+def reformat(x, n_chan=1, is_pf=False, do_3D=False):
     """
     Reformats raw input data with the following expected output:
     If 2-D -> torch.tensor with shape [1, x_dim, y_dim]
@@ -33,11 +33,11 @@ def reformat(x, is_pf=False, do_3D=False):
                 if x.shape[2] < 10:
                     info_chans = [len(torch.unique(x[:, :, i])) > 1 for i in range(x.shape[2])]
                     x = x[:, :, info_chans]
-                    if x.shape[2] == 1:
-                        x = x.view(1, x.shape[0], x.shape[1])
-                    else:
-                        # Temporary; change this for cyto + nuclei stuff
-                        x = x[:, :, 1].view(1, x.shape[0], x.shape[1])
+                    x = torch.tensor(np.transpose(x.numpy(), (2, 0, 1))[:n_chan])  # Remove any additional channels
+                    # Concatenate empty channels if image has fewer than the specified number of channels
+                    if x.shape[0] < n_chan:
+                        zeros = torch.zeros((n_chan - x.shape[0]), x.shape[1], x.shape[2])
+                        x = torch.cat((x, zeros))
                 else:
                     raise ValueError('Data is not 2D; if intending to use 3D volumes, pass in "--do-3D" argument.')
         # else:
@@ -51,8 +51,9 @@ def normalize1stto99th(x):
     """
     sample = x.clone()
     for chan in range(len(sample)):
-        sample[chan] = (sample[chan] - np.percentile(sample[chan], 1))\
-                       / (np.percentile(sample[chan], 99) - np.percentile(sample[chan], 1))
+        if len(torch.unique(sample[chan])) != 1:
+            sample[chan] = (sample[chan] - np.percentile(sample[chan], 1))\
+                           / (np.percentile(sample[chan], 99) - np.percentile(sample[chan], 1))
     return sample
 
 
@@ -93,7 +94,11 @@ def resize_from_labels(x, y, default_med, pf=None):
         rescale_w, rescale_h = default_med[0] / med, default_med[1] / med
         x = np.transpose(x.numpy(), (1, 2, 0))
         x = cv2.resize(x, (int(x.shape[1] * rescale_w), int(x.shape[0] * rescale_h)),
-                       interpolation=cv2.INTER_LINEAR)[np.newaxis, :]
+                       interpolation=cv2.INTER_LINEAR)
+        if x.ndim == 2:
+            x = x[np.newaxis, :]
+        else:
+            x = np.transpose(x, (2, 0, 1))
         y = np.transpose(y.numpy(), (1, 2, 0))
         y = cv2.resize(y, (int(y.shape[1] * rescale_w), int(y.shape[0] * rescale_h)),
                        interpolation=cv2.INTER_NEAREST)[np.newaxis, :]
@@ -199,7 +204,7 @@ def generate_patches(data, label=None, eval=False, patch=(96, 96), min_overlap=(
     num_y_patches = math.ceil((data.shape[2] - min_overlap[1]) / (patch[1] - min_overlap[1]))
     y_patches = np.linspace(0, data.shape[2] - patch[1], num_y_patches, dtype=int)
 
-    patch_data = torch.empty((data.shape[0] * num_x_patches * num_y_patches, 1, patch[0], patch[1]))
+    patch_data = torch.empty((data.shape[0] * num_x_patches * num_y_patches, data.shape[1], patch[0], patch[1]))
     if eval:
         patch_label = torch.empty((label.shape[0] * num_x_patches * num_y_patches, patch[0], patch[1]))
     else:
@@ -208,7 +213,7 @@ def generate_patches(data, label=None, eval=False, patch=(96, 96), min_overlap=(
     for b in range(data.shape[0]):
         for i in range(num_x_patches):
             for j in range(num_y_patches):
-                d_patch = data[b, 0, y_patches[j]:y_patches[j] + patch[1], x_patches[i]:x_patches[i] + patch[0]]
+                d_patch = data[b, :, y_patches[j]:y_patches[j] + patch[1], x_patches[i]:x_patches[i] + patch[0]]
                 patch_data[(b * num_y_patches * num_x_patches) + (num_y_patches * i + j)] = d_patch
                 if eval:
                     l_patch = label[b, y_patches[j]:y_patches[j] + patch[1], x_patches[i]:x_patches[i] + patch[0]]

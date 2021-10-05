@@ -35,11 +35,12 @@ class CellPoseData(Dataset):
 
     # Currently, set to load in volumes upfront to cpu memory (via __init__())
     # rather than one at a time via gpu memory (via __getitem__())
-    def __init__(self, split_name, data_dirs, pf_dirs=None, do_3D=False, from_3D=False, evaluate=False,
+    def __init__(self, split_name, data_dirs, n_chan, pf_dirs=None, do_3D=False, from_3D=False, evaluate=False,
                  resize: Resize = None):
         """"
         Args:
             split_name: name corresponding to the split (i.e. train, validation, test, target)
+            n_chan: Maximum number of channels in input images (i.e. 2 for cytoplasm + nuclei images)
             data_dirs: root directory/directories of the dataset, containing 'data' and 'labels' folders
             pf_dirs: root directory/directories of pre-calculated flows, if they exist
             do_3D: whether or not to train 3D cellpose model (requires that from_3d is true)
@@ -90,7 +91,7 @@ class CellPoseData(Dataset):
                 else:
                     new_data = as_tensor(list(cv2.imread(self.d_list[ind], -1).astype('float')))
                     new_label = as_tensor(list(cv2.imread(self.l_list[ind], -1).astype('int16')))
-                new_data = reformat(new_data, do_3D=True)
+                new_data = reformat(new_data, n_chan, do_3D=True)
                 new_data = normalize1stto99th(new_data)
                 new_label = reformat(new_label, do_3D=True)
                 if pf_dirs is not None:
@@ -115,7 +116,7 @@ class CellPoseData(Dataset):
                     else:
                         raw_data_vol = cv2.imread(self.d_list[ind], -1).astype('float')
                         raw_label_vol = cv2.imread(self.l_list[ind], -1).astype('int16')
-                    raw_data_vol = [reformat(as_tensor(raw_data_vol[i])) for i in range(len(raw_data_vol))]
+                    raw_data_vol = [reformat(as_tensor(raw_data_vol[i]), n_chan) for i in range(len(raw_data_vol))]
                     raw_data_vol = [normalize1stto99th(raw_data_vol[i]) for i in range(len(raw_data_vol))]
                     raw_label_vol = [reformat(as_tensor(raw_label_vol[i])) for i in range(len(raw_label_vol))]
                     if pf_dirs is not None:  # Not currently handled
@@ -145,7 +146,7 @@ class CellPoseData(Dataset):
                     else:
                         new_data = as_tensor(cv2.imread(self.d_list[ind], -1).astype('float'))
                         new_label = as_tensor(cv2.imread(self.l_list[ind], -1).astype('int16'))
-                    new_data = reformat(new_data)
+                    new_data = reformat(new_data, n_chan)
                     new_data = normalize1stto99th(new_data)
                     new_label = reformat(new_label)
                     if pf_dirs is not None:
@@ -167,20 +168,24 @@ class CellPoseData(Dataset):
     # Augmentations and tiling applied to input data (for training and adaptation) -
     # separated from DataLoader to allow for possibility of running only once or once per epoch
     # NOTE: ltf takes ~50% of time; generating patches and concatenating takes nearly as long
+    # TODO: Save generated training data? Massively increase time to train
     def process_dataset(self, patch_size, min_overlap, batch_size=None):
         self.data_samples = tensor([])
         self.label_samples = tensor([])
         for (data, labels) in tzip(self.data, self.labels, desc='Processing {} Dataset...'.format(self.split_name)):
-            data, labels = random_horizontal_flip(data, labels)
-            data, labels = random_rotate(data, labels)
-            if labels.shape[0] == 1:
-                labels = as_tensor([labels_to_flows(labels[i].numpy()) for i in range(len(labels))])
-            else:
-                labels = labels[np.newaxis, :]
-            data, labels = generate_patches(unsqueeze(data, 0), labels, patch=patch_size, min_overlap=min_overlap)
-            # labels = remove_cut_cells(labels, flows=True)
-            self.data_samples = cat((self.data_samples, data))
-            self.label_samples = cat((self.label_samples, labels))
+            try:
+                data, labels = random_horizontal_flip(data, labels)
+                data, labels = random_rotate(data, labels)
+                if labels.shape[0] == 1:
+                    labels = as_tensor([labels_to_flows(labels[i].numpy()) for i in range(len(labels))])
+                else:
+                    labels = labels[np.newaxis, :]
+                data, labels = generate_patches(unsqueeze(data, 0), labels, patch=patch_size, min_overlap=min_overlap)
+                # labels = remove_cut_cells(labels, flows=True)
+                self.data_samples = cat((self.data_samples, data))
+                self.label_samples = cat((self.label_samples, labels))
+            except RuntimeError:
+                print('Caught Size Mismatch.')
         if batch_size is not None:
             ds = self.data_samples
             ls = self.label_samples
@@ -188,6 +193,7 @@ class CellPoseData(Dataset):
                 self.data_samples = cat((self.data_samples, ds))
                 self.label_samples = cat((self.label_samples, ls))
         # self.data_samples, self.label_samples = remove_empty_label_patches(self.data_samples, self.label_samples)
+        print('Number of generated samples: {}'.format(len(self.data_samples)))
 
     # Generates patches for validation dataset - only happens once
     def pre_generate_patches(self, patch_size, min_overlap):
@@ -195,9 +201,11 @@ class CellPoseData(Dataset):
         self.label_samples = tensor([])
         new_l_list = []
         new_original_dims = []
-        for (data, labels, label_fname, original_dim) in zip(self.data, self.labels, self.l_list, self.original_dims):
+        for (data, labels, label_fname, original_dim) in tzip(self.data, self.labels, self.l_list, self.original_dims,
+                                                              desc='Processing Validation Dataset...'):
             data, labels = generate_patches(unsqueeze(data, 0), labels, eval=True,
                                             patch=patch_size, min_overlap=min_overlap)
+            labels = as_tensor([labels_to_flows(labels[i].numpy()) for i in range(len(labels))])
             # data, labels = remove_empty_label_patches(data, labels)
             self.data_samples = cat((self.data_samples, data))
             self.label_samples = cat((self.label_samples, labels))
