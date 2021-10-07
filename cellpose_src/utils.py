@@ -354,7 +354,7 @@ def process_cells(M0, npix=20):
     return M0
 
 
-def fill_holes_and_remove_small_masks(masks, min_size=15):
+def fill_holes_and_remove_small_masks(masks, min_size=30):
     """ fill holes in masks (2D/3D) and discard masks smaller than min_size (2D)
 
     fill holes in each mask using scipy.ndimage.morphology.binary_fill_holes

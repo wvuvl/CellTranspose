@@ -183,12 +183,13 @@ def followflows(flows):
     """
     Combines follow_flows, get_masks, and fill_holes_and_remove_small_masks from Cellpose implementation
     """
-    niter = 100; interp = True; use_gpu = True; cellprob_threshold = 0.0; flow_threshold = 1.0; min_size=30  # min_size=15
+    niter = 200; interp = True; use_gpu = True; cellprob_threshold = 0.0; flow_threshold = 1.0; min_size=30  # min_size=15
     masks = torch.zeros((flows.shape[0], flows.shape[-2], flows.shape[-1]))
     for i, flow in enumerate(flows):
         cellprob = flow[0].cpu().numpy()
         dP = flow[1:].cpu().numpy()
-        p = follow_flows(-1 * dP * (cellprob > cellprob_threshold) / 5., niter, interp, use_gpu)
+        # p = follow_flows(-1 * dP * (cellprob > cellprob_threshold) / 5., niter, interp, use_gpu)
+        p = follow_flows(-1 * dP * (cellprob > cellprob_threshold), niter, interp, use_gpu)
 
         maski = get_masks(p, iscell=(cellprob > cellprob_threshold), flows=dP, threshold=flow_threshold)
         maski = fill_holes_and_remove_small_masks(maski, min_size=min_size)

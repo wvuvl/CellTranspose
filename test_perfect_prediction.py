@@ -1,3 +1,4 @@
+import argparse
 import matplotlib.pyplot as plt
 from torch import as_tensor, squeeze
 import numpy as np
@@ -10,15 +11,22 @@ from transforms import Resize, reformat, labels_to_flows, followflows
 from loaddata import CellPoseData
 from cellpose_src.metrics import average_precision
 
-dataset_name = "Cellpose_Specialized"
-results_dir = "/home/matthew/Documents/Datasets/Neuro_Proj1_Data/DA_Results/Perfect_Prediction_Results_1"
-dataset_dir = "/home/matthew/Documents/Datasets/Neuro_Proj1_Data/Cellpose_Dataset/Specialized/test"
+parser = argparse.ArgumentParser()
+parser.add_argument('--dataset-name')
+parser.add_argument('--results-dir')
+parser.add_argument('--dataset-dir')
+args = parser.parse_args()
+
+dataset_name = args.dataset_name
+results_dir = args.results_dir
+dataset_dir = args.dataset_dir
 median_diams = (30, 30)
 
 assert not os.path.exists(results_dir),\
     'Results folder {} currently exists; please specify new location to save results.'.format(results_dir)
 os.mkdir(results_dir)
 os.mkdir(os.path.join(results_dir, 'tiff_results'))
+os.mkdir(os.path.join(results_dir, 'raw_predictions_tiffs'))
 
 dataset = CellPoseData('Perfect Prediction Reconstruction', dataset_dir, n_chan=2, do_3D=False, from_3D=False,
                        resize=Resize(median_diams, use_labels=True, patch_per_batch=1))
@@ -39,12 +47,14 @@ for i in range(len(flows)):
                              interpolation=cv2.INTER_NEAREST)
     masks.append(sample_mask)
 
-print('test')
-
-# Save Masks
+# Save Masks and Flows
 for i in range(len(masks)):
     masks[i] = masks[i].astype('int32')
     tifffile.imwrite(os.path.join(results_dir, 'tiff_results', str(i) + '.tif'), masks[i])
+    with open(os.path.join(args.results_dir, str(i) + '_raw_masks_flows.pkl'), 'wb') as rmf_pkl:
+        pickle.dump(flows[i], rmf_pkl)
+        tifffile.imwrite(os.path.join(args.results_dir, 'raw_predictions_tiffs', str(i) + '.tif'),
+                     flows[i].numpy())
 
 # Calculate Error and AP
 labels = []
@@ -53,7 +63,6 @@ for l in dataset.l_list:
     # label = as_tensor(tifffile.imread(l).astype('int16'))
     label = squeeze(reformat(label), dim=0).numpy()
     labels.append(label)
-
 with open(os.path.join(results_dir, 'counted_cells.txt'), 'w') as cc:
     predicted_count = 0
     true_count = 0

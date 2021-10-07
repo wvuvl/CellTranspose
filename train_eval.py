@@ -106,6 +106,14 @@ def adapt_network(model: nn.Module, source_dl, target_dl, val_dl, sas_class_loss
         else:
             print('Train loss: {:.3f}'.format(mean(train_epoch_losses)))
 
+        if e % (n_epochs / 3) == 0:
+            plt.figure()
+            epoch_i = np.arange(1, e+1)
+            plt.plot(epoch_i, train_losses)
+            plt.plot(epoch_i, val_losses)
+            plt.legend(('Train Losses', 'Validation Losses'))
+            plt.show()
+
     print('Train time: {}'.format(time.strftime("%H:%M:%S", time.gmtime(time.time() - start_train))))
     return train_losses, val_losses
 
