@@ -37,17 +37,17 @@ class SASClassLoss:
     def __init__(self, sas_class_loss):
         self.class_loss = sas_class_loss
 
-    def __call__(self, g_source, lbl_source, g_target, lbl_target, margin=1, gamma=0.1):
+    def __call__(self, g_source, lbl_source, g_target, lbl_target, margin=1, gamma_1=0.1, gamma_2=0.5):
         match_mask = torch.eq(lbl_source, lbl_target)  # Mask where each pixel is 1 (source GT = target GT) or 0 (source GT != target GT)
         st_dist = torch.linalg.norm(g_source - g_target) / g_source.data.nelement()
 
-        sa_loss = (1 - gamma) * 0.5 * torch.square(st_dist)
-        s_loss = (1 - gamma) * 0.5 * torch.square(torch.max(torch.tensor(0).to(torch.device('cuda' if torch.cuda.is_available() else 'cpu')), margin - st_dist))
-        source_class_loss = self.class_loss(g_source, lbl_source)
-        # target_class_loss = self.class_loss(g_target, lbl_target)
+        sa_loss = (1 - gamma_1) * 0.5 * torch.square(st_dist)
+        s_loss = (1 - gamma_1) * 0.5 * torch.square(torch.max(torch.tensor(0).to(torch.device('cuda' if torch.cuda.is_available() else 'cpu')), margin - st_dist))
+        source_class_loss = gamma_1 * gamma_2 * self.class_loss(g_source, lbl_source)
+        target_class_loss = gamma_1 * self.class_loss(g_target, lbl_target)
 
-        loss = torch.mean(match_mask * sa_loss + (~match_mask * s_loss) + source_class_loss)
-        # loss = torch.mean(match_mask * sa_loss + (~match_mask * s_loss)) + target_class_loss
+        # loss = torch.mean(match_mask * sa_loss + (~match_mask * s_loss) + source_class_loss)
+        loss = torch.mean(match_mask * sa_loss + (~match_mask * s_loss)) + target_class_loss
         return loss
 
 

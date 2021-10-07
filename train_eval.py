@@ -10,7 +10,7 @@ from transforms import followflows, generate_patches, recombine_patches
 import matplotlib.pyplot as plt
 
 
-def train_network(model, train_dl, val_dl, class_loss, flow_loss, optimizer, device, n_epochs):
+def train_network(model, train_dl, val_dl, class_loss, flow_loss, optimizer, scheduler, device, n_epochs):
     train_losses = []
     val_losses = []
     start_train = time.time()
@@ -19,6 +19,7 @@ def train_network(model, train_dl, val_dl, class_loss, flow_loss, optimizer, dev
     for e in range(1, n_epochs + 1):
         train_epoch_losses = []
         model.train()
+        print(scheduler.get_last_lr())
         for (sample_data, sample_labels) in tqdm(train_dl, desc='Training - Epoch {}/{}'.format(e, n_epochs)):
             sample_data = sample_data.to(device)
             sample_labels = sample_labels.to(device)
@@ -31,6 +32,7 @@ def train_network(model, train_dl, val_dl, class_loss, flow_loss, optimizer, dev
             train_loss.backward()
             optimizer.step()
 
+        scheduler.step()
         train_epoch_loss = mean(train_epoch_losses)
         train_losses.append(train_epoch_loss)
         if val_dl is not None:
@@ -53,7 +55,7 @@ def train_network(model, train_dl, val_dl, class_loss, flow_loss, optimizer, dev
 
 
 def adapt_network(model: nn.Module, source_dl, target_dl, val_dl, sas_class_loss, c_flow_loss,
-                  class_loss, flow_loss, optimizer, device, n_epochs):
+                  class_loss, flow_loss, optimizer, scheduler, device, n_epochs):
     train_losses = []
     val_losses = []
     print('Beginning domain adaptation.\n')
@@ -98,6 +100,7 @@ def adapt_network(model: nn.Module, source_dl, target_dl, val_dl, sas_class_loss
             train_loss.backward()
             optimizer.step()
 
+        scheduler.step()
         train_losses.append(mean(train_epoch_losses))
         if val_dl is not None:
             val_epoch_loss = validate_network(model, val_dl, flow_loss, class_loss, device)

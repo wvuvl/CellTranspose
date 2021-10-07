@@ -3,6 +3,7 @@ from torch.utils.data import DataLoader, RandomSampler, BatchSampler
 from torch import nn, device, load, save, squeeze, as_tensor
 from torch.cuda import is_available, device_count, empty_cache
 from torch.optim import SGD
+from torch.optim.lr_scheduler import CosineAnnealingLR
 import os
 import pickle
 import numpy as np
@@ -16,6 +17,7 @@ from loaddata import CellPoseData
 from Cellpose_2D_PyTorch import UpdatedCellpose, SizeModel, ClassLoss, FlowLoss, SASClassLoss, ContrastiveFlowLoss
 from train_eval import train_network, adapt_network, eval_network
 from cellpose_src.metrics import average_precision
+from misc_utils import produce_logfile
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--n-chan', type=int,
@@ -31,7 +33,7 @@ parser.add_argument('--median-diams', type=int,
 parser.add_argument('--patch-size', type=int,
                     help='Size of image patches with which to tile.')
 parser.add_argument('--min-overlap', type=int,
-                    help='Amount of overlap to use for tiling - currently the same for train, validation, and test.')
+                    help='Amount of overlap to use for tiling - currently the same for train and validation.')
 parser.add_argument('--test-overlap', type=int,
                     help='Amount of overlap to use for tiling during testing - if unspecified, defaults to min-overlap')
 parser.add_argument('--dataset-name', help='Name of dataset to use for reporting results (omit the word "Dataset").')
@@ -59,9 +61,9 @@ parser.add_argument('--test-from-3D', help='Whether the input test data is 3D: a
                     action='store_true')
 parser.add_argument('--test-use-labels', help='Whether to use labels for resizing test data.',
                     action='store_true')
-parser.add_argument('--target-dataset', help='The directory containing target data to be used for domain adaptation.'
-                                             'Note: if do-adaptation is set to False, this parameter will be ignored.',
-                    nargs='+')
+parser.add_argument('--target-dataset',
+                    help='The directory containing target data to be used for domain adaptation. Note: if do-adaptation'
+                         ' is set to False, this parameter will be ignored.', nargs='+')
 parser.add_argument('--target-from-3D', help='Whether the input target data is 3D: assumes 2D if set to False.',
                     action='store_true')
 parser.add_argument('--target-flows', help='The directory(s) containing pre-calculated flows. If left empty, '
@@ -74,6 +76,10 @@ parser.add_argument('--refine-prediction', help='Whether or not to apply refined
                                                 'slower evaluation).', action='store_true')
 parser.add_argument('--calculate-ap', help='Whether to perform AP calculation at the end of evaluation.',
                     action='store_true')
+parser.add_argument('--save-dataset', help='Name of directory to save training dataset to: '
+                                           'if None, will not save dataset.')
+parser.add_argument('--load-from-torch', help='If true, assumes dataset is being loaded from torch files, with no '
+                                              'preprocessing required.', action='store_true')
 args = parser.parse_args()
 
 print(args.results_dir)
@@ -88,13 +94,13 @@ num_workers = device_count()
 device = device('cuda' if is_available() else 'cpu')
 empty_cache()
 
-median_diams = (args.median_diams, args.median_diams)
-patch_size = (args.patch_size, args.patch_size)
-min_overlap = (args.min_overlap, args.min_overlap)
+args.median_diams = (args.median_diams, args.median_diams)
+args.patch_size = (args.patch_size, args.patch_size)
+args.min_overlap = (args.min_overlap, args.min_overlap)
 if args.test_overlap is not None:
-    test_overlap = (args.test_overlap, args.test_overlap)
+    args.test_overlap = (args.test_overlap, args.test_overlap)
 else:
-    test_overlap = min_overlap
+    args.test_overlap = args.min_overlap
 
 if not (args.val_use_labels and args.test_use_labels):
     gen_cellpose = UpdatedCellpose(channels=1, device='cuda:0')
@@ -116,22 +122,32 @@ if args.pretrained_model is not None:
 if not args.eval_only:
     class_loss = ClassLoss(nn.BCEWithLogitsLoss(reduction='mean'))
     flow_loss = FlowLoss(nn.MSELoss(reduction='mean'))
-    start_train = time.time()
     optimizer = SGD(model.parameters(), lr=args.learning_rate, momentum=args.momentum, weight_decay=args.weight_decay)
-    train_dataset = CellPoseData('Training', args.train_dataset, args.n_chan, do_3D=args.do_3D, from_3D=args.train_from_3D,
-                                 resize=Resize(median_diams, use_labels=True,
-                                               patch_per_batch=args.batch_size))
-    train_dataset.process_dataset(patch_size, min_overlap)
+    scheduler = CosineAnnealingLR(optimizer, T_max=args.epochs, eta_min=args.learning_rate/100, last_epoch=-1)
+    if args.load_from_torch:
+        print('Loading Saved Training Dataset... ', end='')
+        train_dataset = load(args.train_dataset[0])
+        print('Done.')
+    else:
+        train_dataset = CellPoseData('Training', args.train_dataset, args.n_chan, do_3D=args.do_3D, from_3D=args.train_from_3D,
+                                     resize=Resize(args.median_diams, use_labels=True,
+                                                   patch_per_batch=args.batch_size))
+        train_dataset.process_dataset(args.patch_size, args.min_overlap)
+    if args.save_dataset:
+        print('Saving Training Dataset... ', end='')
+        save(train_dataset, args.save_dataset)
+        print('Saved.')
+
     train_dl = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, drop_last=True)
 
     if args.val_dataset is not None:
         val_dataset = CellPoseData('Validation', args.val_dataset, args.n_chan, do_3D=args.do_3D, from_3D=args.val_from_3D,
-                                   resize=Resize(median_diams, use_labels=args.val_use_labels, refine=True,
+                                   resize=Resize(args.median_diams, use_labels=args.val_use_labels, refine=True,
                                                  gc_model=gen_cellpose, sz_model=gen_size_model,
-                                                 min_overlap=min_overlap, device=device,
+                                                 min_overlap=args.min_overlap, device=device,
                                                  patch_per_batch=args.batch_size)
                                    )
-        val_dataset.pre_generate_patches(patch_size=patch_size, min_overlap=min_overlap)
+        val_dataset.pre_generate_patches(patch_size=args.patch_size, min_overlap=args.min_overlap)
         val_dl = DataLoader(val_dataset, batch_size=args.batch_size, shuffle=False)
     else:
         val_dl = None
@@ -142,21 +158,26 @@ if not args.eval_only:
         c_flow_loss = ContrastiveFlowLoss()
         target_dataset = CellPoseData('Target', args.target_dataset, args.n_chan, pf_dirs=args.target_flows,
                                       do_3D=args.do_3D, from_3D=args.target_from_3D,
-                                      resize=Resize(median_diams, use_labels=True, patch_per_batch=args.batch_size))
-        target_dataset.process_dataset(patch_size, min_overlap, batch_size=args.batch_size)
+                                      resize=Resize(args.median_diams, use_labels=True,
+                                                    patch_per_batch=args.batch_size))
+
+        target_dataset.process_dataset(args.patch_size, args.min_overlap, batch_size=args.batch_size)
         rs = RandomSampler(target_dataset, replacement=False)
         bs = BatchSampler(rs, args.batch_size, True)
         target_dl = DataLoader(target_dataset, batch_sampler=bs)
 
+        start_train = time.time()
         train_losses, val_losses = adapt_network(model, train_dl, target_dl, val_dl, sas_class_loss, c_flow_loss,
-                                                 class_loss, flow_loss, optimizer=optimizer, device=device,
-                                                 n_epochs=args.epochs)
+                                                 class_loss, flow_loss, optimizer=optimizer, scheduler=scheduler,
+                                                 device=device, n_epochs=args.epochs)
     else:
+        start_train = time.time()
         train_losses, val_losses = train_network(model, train_dl, val_dl, class_loss, flow_loss,
-                                                 optimizer=optimizer, device=device, n_epochs=args.epochs)
+                                                 optimizer=optimizer, scheduler=scheduler, device=device, n_epochs=args.epochs)
     save(model.state_dict(), os.path.join(args.results_dir, 'trained_model.pt'))
     end_train = time.time()
-    print('Time to train: {}'.format(time.strftime("%H:%M:%S", time.gmtime(end_train - start_train))))
+    ttt = time.strftime("%H:%M:%S", time.gmtime(end_train - start_train))
+    print('Time to train: {}'.format(ttt))
 
     plt.figure()
     x_range = np.arange(1, len(train_losses)+1)
@@ -176,15 +197,15 @@ if not args.eval_only:
 if not args.train_only:
     start_eval = time.time()
     test_dataset = CellPoseData('Test', args.test_dataset, args.n_chan, do_3D=args.do_3D, from_3D=args.test_from_3D, evaluate=True,
-                                resize=Resize(median_diams, use_labels=args.test_use_labels, refine=True,
+                                resize=Resize(args.median_diams, use_labels=args.test_use_labels, refine=True,
                                               gc_model=gen_cellpose, sz_model=gen_size_model,
-                                              min_overlap=test_overlap, device=device,
+                                              min_overlap=args.test_overlap, device=device,
                                               patch_per_batch=args.batch_size))
 
     eval_dl = DataLoader(test_dataset, batch_size=1, shuffle=False)
 
     masks, prediction_list, label_list = eval_network(model, eval_dl, device, patch_per_batch=args.batch_size,
-                                                      patch_size=patch_size, min_overlap=test_overlap)
+                                                      patch_size=args.patch_size, min_overlap=args.test_overlap)
 
     for i in range(len(masks)):
         masks[i] = masks[i].astype('int32')
@@ -197,7 +218,8 @@ if not args.train_only:
         tifffile.imwrite(os.path.join(args.results_dir, 'raw_predictions_tiffs', label_list[i] + '.tif'),
                          prediction_list[i])
     end_eval = time.time()
-    print('Time to evaluate: {}'.format(time.strftime("%H:%M:%S", time.gmtime(end_eval - start_eval))))
+    tte = time.strftime("%H:%M:%S", time.gmtime(end_eval - start_eval))
+    print('Time to evaluate: {}'.format(tte))
 
     with open(os.path.join(args.results_dir, 'counted_cells.txt'), 'w') as cc:
         predicted_count = 0
@@ -250,42 +272,4 @@ if not args.train_only:
 
 print(args.results_dir)
 
-with open(os.path.join(args.results_dir, 'logfile.txt'), 'w') as log:
-    if args.train_only:
-        log.write('train-only\n')
-    if not args.eval_only:
-        log.write('Time to train: {}\n'.format(time.strftime("%H:%M:%S", time.gmtime(end_train - start_train))))
-    else:
-        log.write('eval-only\n')
-    if not args.train_only:
-        log.write('Time to evaluate: {}\n'.format(time.strftime("%H:%M:%S", time.gmtime(end_eval - start_eval))))
-    log.write('\n')
-    log.write('Number of channels: {}\n'.format(args.n_chan))
-    log.write('Cells resized to possess median diameter of {}.\n'.format(args.median_diams))
-    log.write('Patch size: {}\n'.format(args.patch_size))
-    log.write('Minimum patch overlap (train): {}\n'.format(args.min_overlap))
-    log.write('Minimum patch overlap (test): {} \n'.format(test_overlap[0]))
-    log.write('\n')
-    log.write('Zeros removed: all\n')
-    log.write('\n')
-    if not args.eval_only:
-        log.write('Adaptation: {}\n'.format(args.do_adaptation))
-        if args.do_adaptation:
-            log.write('Source dataset(s): {}\n'.format(args.train_dataset))
-            log.write('Target dataset(s): {}\n'.format(args.target_dataset))
-        else:
-            log.write('Training dataset(s): {}\n'.format(args.train_dataset))
-        log.write('Learning rate: {}; Momentum: {}\n'.format(args.learning_rate, args.momentum))
-        log.write('Epochs: {}; Batch size: {}\n'.format(args.epochs, args.batch_size))
-        log.write('GPUs: {}\n'.format(num_workers))
-        log.write('Pretrained model: {}\n'.format(args.pretrained_model))
-        log.write('\n')
-        log.write('Validation dataset(s): {}\n'.format(args.val_dataset))
-        log.write('Labels used for validation: {}\n'.format(args.val_use_labels))
-    if not args.train_only:
-        log.write('Test dataset(s): {}\n'.format(args.test_dataset))
-        log.write('Labels used for testing: {}\n'.format(args.test_use_labels))
-    log.write('Refined size predictions: {}\n'.format(args.refine_prediction))
-    log.write('\n')
-    log.write('Cellpose model for size prediction: {}\n'.format(args.cellpose_model))
-    log.write('Size model: {}'.format(args.size_model))
+produce_logfile(args, ttt, tte, num_workers)

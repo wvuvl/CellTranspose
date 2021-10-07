@@ -32,6 +32,7 @@ dataset = CellPoseData('Perfect Prediction Reconstruction', dataset_dir, n_chan=
                        resize=Resize(median_diams, use_labels=True, patch_per_batch=1))
 # Labels to Flows
 labels = dataset.labels
+l_list = dataset.l_list
 original_dims = dataset.original_dims
 flows = []
 for i in range(len(labels)):
@@ -41,6 +42,7 @@ for i in range(len(labels)):
 # Flows to Masks
 masks = []
 for i in range(len(flows)):
+    print(l_list[i])
     sample_mask = followflows(flows[i])
     sample_mask = np.transpose(sample_mask.numpy(), (1, 2, 0))
     sample_mask = cv2.resize(sample_mask, (original_dims[i][1], original_dims[i][0]),
