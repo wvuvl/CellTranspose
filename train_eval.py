@@ -42,7 +42,7 @@ def train_network(model, train_dl, val_dl, class_loss, flow_loss, optimizer, sch
         else:
             print('Train loss: {:.3f}'.format(train_epoch_loss))
 
-        if e % (n_epochs / 3) == 0:
+        if e % (n_epochs / 5) == 0:
             plt.figure()
             epoch_i = np.arange(1, e+1)
             plt.plot(epoch_i, train_losses)
@@ -88,7 +88,7 @@ def adapt_network(model: nn.Module, source_dl, target_dl, val_dl, sas_class_loss
             target_grad_loss = flow_loss(target_output, target_sample_labels)
             adaptation_class_loss = sas_class_loss(source_output[:, 0], source_sample_labels[:, 0],
                                                    target_output[:, 0], target_sample_labels[:, 0],
-                                                   margin=1, gamma=0.1)
+                                                   margin=0.25, gamma_1=0.2, gamma_2=0.25)
             # adaptation_flow_loss = c_flow_loss(source_output[:, 1:], source_sample_labels[:, 1:],
             #                                    target_output[:, 1:], target_sample_labels[:, 1:],
             #                                    temperature=0.1)
@@ -109,7 +109,7 @@ def adapt_network(model: nn.Module, source_dl, target_dl, val_dl, sas_class_loss
         else:
             print('Train loss: {:.3f}'.format(mean(train_epoch_losses)))
 
-        if e % (n_epochs / 3) == 0:
+        if e % (n_epochs / 5) == 0:
             plt.figure()
             epoch_i = np.arange(1, e+1)
             plt.plot(epoch_i, train_losses)

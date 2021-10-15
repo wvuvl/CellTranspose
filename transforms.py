@@ -8,6 +8,7 @@ from cellpose_src.utils import diameters, fill_holes_and_remove_small_masks
 from cellpose_src.transforms import _taper_mask
 import random
 import torchvision.transforms.functional as TF
+from utils.Calc_extents import diam_range
 
 import matplotlib.pyplot as plt
 
@@ -89,7 +90,7 @@ def resize_from_labels(x, y, default_med, pf=None):
     # calculate diameters using only full cells in image - remove cut off cells during median diameter calculation
     y_cf = copy.deepcopy(torch.squeeze(y, dim=0))
     y_cf = remove_cut_cells(y_cf)
-    med, cts = diameters(y_cf)
+    med = diam_range(y_cf)
     if med > 0:
         rescale_w, rescale_h = default_med[0] / med, default_med[1] / med
         x = np.transpose(x.numpy(), (1, 2, 0))
@@ -273,7 +274,7 @@ def remove_empty_label_patches(data, labels):
     return data, labels
 
 
-def recombine_patches(labels, im_dims=(500, 500), min_overlap=(64, 64)):
+def recombine_patches(labels, im_dims, min_overlap):
     # Creates recombined images after averaging together
 
     num_x_patches = math.ceil((im_dims[1] - min_overlap[0]) / (labels.shape[3] - min_overlap[0]))

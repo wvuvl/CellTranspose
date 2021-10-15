@@ -175,7 +175,7 @@ class CellPoseData(Dataset):
         for (data, labels) in tzip(self.data, self.labels, desc='Processing {} Dataset...'.format(self.split_name)):
             try:
                 data, labels = random_horizontal_flip(data, labels)
-                data, labels = random_rotate(data, labels)
+                # data, labels = random_rotate(data, labels)
                 if labels.shape[0] == 1:
                     labels = as_tensor([labels_to_flows(labels[i].numpy()) for i in range(len(labels))])
                 else:
