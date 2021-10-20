@@ -67,59 +67,63 @@ def adapt_network(model: nn.Module, source_dl, target_dl, val_dl, sas_class_loss
     # Assume # of target samples << # of source samples
     start_train = time.time()
     for e in range(1, n_epochs + 1):
-        model.train()
-        train_epoch_losses = []
-        target_dl_iter = iter(target_dl)
-        for i, (source_sample_data, source_sample_labels) in enumerate(tqdm(
-                source_dl, desc='Training - Epoch {}/{}'.format(e, n_epochs))):
-            optimizer.zero_grad()
+        try:
+            model.train()
+            train_epoch_losses = []
+            target_dl_iter = iter(target_dl)
+            for i, (source_sample_data, source_sample_labels) in enumerate(tqdm(
+                    source_dl, desc='Training - Epoch {}/{}'.format(e, n_epochs))):
+                optimizer.zero_grad()
 
-            source_sample_data = source_sample_data.to(device)
-            source_sample_labels = source_sample_labels.to(device)
-            source_output = model(source_sample_data)
+                source_sample_data = source_sample_data.to(device)
+                source_sample_labels = source_sample_labels.to(device)
+                source_output = model(source_sample_data)
 
-            try:
-                target_sample = next(target_dl_iter)
-            except StopIteration:
-                target_dl_iter = iter(target_dl)
-                target_sample = next(target_dl_iter)
-            target_sample_data = target_sample[0].to(device)
-            target_sample_labels = target_sample[1].to(device)
-            target_output = model(target_sample_data)
-            # source_class_loss = class_loss(source_output, source_sample_labels)
-            # target_class_loss = class_loss(target_output, target_sample_labels)
-            # source_grad_loss = flow_loss(source_output, source_sample_labels)
-            target_grad_loss = flow_loss(target_output, target_sample_labels)
-            adaptation_class_loss = sas_class_loss(source_output[:, 0], source_sample_labels[:, 0],
-                                                   target_output[:, 0], target_sample_labels[:, 0],
-                                                   margin=0.25, gamma_1=0.2, gamma_2=0.25)
-            adaptation_flow_loss = c_flow_loss(source_output[:, 1:], source_sample_labels[:, 1:],
-                                               target_output[:, 1:], target_sample_labels[:, 1:],
-                                               temperature=0.1)
+                try:
+                    target_sample = next(target_dl_iter)
+                except StopIteration:
+                    target_dl_iter = iter(target_dl)
+                    target_sample = next(target_dl_iter)
+                target_sample_data = target_sample[0].to(device)
+                target_sample_labels = target_sample[1].to(device)
+                target_output = model(target_sample_data)
+                # source_class_loss = class_loss(source_output, source_sample_labels)
+                # target_class_loss = class_loss(target_output, target_sample_labels)
+                # source_grad_loss = flow_loss(source_output, source_sample_labels)
+                target_grad_loss = flow_loss(target_output, target_sample_labels)
+                adaptation_class_loss = sas_class_loss(source_output[:, 0], source_sample_labels[:, 0],
+                                                       target_output[:, 0], target_sample_labels[:, 0],
+                                                       margin=0.25, gamma_1=0.2, gamma_2=0.25)
+                adaptation_flow_loss = c_flow_loss(source_output[:, 1:], source_sample_labels[:, 1:],
+                                                   target_output[:, 1:], target_sample_labels[:, 1:],
+                                                   temperature=0.1)
 
-            # train_loss = target_class_loss + target_grad_loss
-            train_loss = adaptation_class_loss + target_grad_loss
-            # train_loss = adaptation_class_loss + source_grad_loss + target_grad_loss
-            train_epoch_losses.append(train_loss.item())
-            train_loss.backward()
-            optimizer.step()
+                # train_loss = target_class_loss + target_grad_loss
+                train_loss = adaptation_class_loss + target_grad_loss
+                # train_loss = adaptation_class_loss + source_grad_loss + target_grad_loss
+                train_epoch_losses.append(train_loss.item())
+                train_loss.backward()
+                optimizer.step()
 
-        scheduler.step()
-        train_losses.append(mean(train_epoch_losses))
-        if val_dl is not None:
-            val_epoch_loss = validate_network(model, val_dl, flow_loss, class_loss, device)
-            val_losses.append(val_epoch_loss)
-            print('Train loss: {:.3f}; Validation loss: {:.3f}'.format(mean(train_epoch_losses), val_epoch_loss))
-        else:
-            print('Train loss: {:.3f}'.format(mean(train_epoch_losses)))
+            scheduler.step()
+            train_losses.append(mean(train_epoch_losses))
+            if val_dl is not None:
+                val_epoch_loss = validate_network(model, val_dl, flow_loss, class_loss, device)
+                val_losses.append(val_epoch_loss)
+                print('Train loss: {:.3f}; Validation loss: {:.3f}'.format(mean(train_epoch_losses), val_epoch_loss))
+            else:
+                print('Train loss: {:.3f}'.format(mean(train_epoch_losses)))
 
-        if e % (n_epochs / 5) == 0:
-            plt.figure()
-            epoch_i = np.arange(1, e+1)
-            plt.plot(epoch_i, train_losses)
-            plt.plot(epoch_i, val_losses)
-            plt.legend(('Train Losses', 'Validation Losses'))
-            plt.show()
+            if e % (n_epochs / 5) == 0:
+                plt.figure()
+                epoch_i = np.arange(1, e+1)
+                plt.plot(epoch_i, train_losses)
+                plt.plot(epoch_i, val_losses)
+                plt.legend(('Train Losses', 'Validation Losses'))
+                plt.show()
+        except KeyboardInterrupt:
+            print('Exiting early.')
+            break
 
     print('Train time: {}'.format(time.strftime("%H:%M:%S", time.gmtime(time.time() - start_train))))
     return train_losses, val_losses
