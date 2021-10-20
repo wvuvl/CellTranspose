@@ -91,6 +91,7 @@ def resize_from_labels(x, y, default_med, pf=None):
     y_cf = copy.deepcopy(torch.squeeze(y, dim=0))
     y_cf = remove_cut_cells(y_cf)
     med = diam_range(y_cf)
+    # med, cts = diameters(y_cf)
     if med > 0:
         rescale_w, rescale_h = default_med[0] / med, default_med[1] / med
         x = np.transpose(x.numpy(), (1, 2, 0))

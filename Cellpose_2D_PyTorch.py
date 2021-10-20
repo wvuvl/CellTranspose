@@ -7,6 +7,8 @@ which can be found via the Cellpose github repository: https://github.com/MouseL
 import torch
 from torch import nn
 
+import matplotlib.pyplot as plt
+
 
 # Standard Cellpose class loss
 class ClassLoss:
@@ -37,17 +39,37 @@ class SASClassLoss:
     def __init__(self, sas_class_loss):
         self.class_loss = sas_class_loss
 
-    def __call__(self, g_source, lbl_source, g_target, lbl_target, margin=1, gamma_1=0.1, gamma_2=0.5):
-        match_mask = torch.eq(lbl_source, lbl_target)  # Mask where each pixel is 1 (source GT = target GT) or 0 (source GT != target GT)
-        st_dist = torch.linalg.norm(g_source - g_target) / g_source.data.nelement()
+    def __call__(self, g_source, lbl_source, g_target, lbl_target, margin=1, gamma_1=0.2, gamma_2=0.5):
+        # foreground_mask = lbl_source
 
-        sa_loss = (1 - gamma_1) * 0.5 * torch.square(st_dist)
-        s_loss = (1 - gamma_1) * 0.5 * torch.square(torch.max(torch.tensor(0).to(torch.device('cuda' if torch.cuda.is_available() else 'cpu')), margin - st_dist))
-        source_class_loss = gamma_1 * gamma_2 * self.class_loss(g_source, lbl_source)
-        target_class_loss = gamma_1 * self.class_loss(g_target, lbl_target)
+        match_mask = torch.eq(lbl_source, lbl_target)  # Mask where each pixel is 1 (source GT = target GT) or 0 (source GT != target GT)
+        # st_dist = torch.linalg.norm(g_source - g_target) / g_source.data.nelement()
+        # dist = 0.5 * torch.square(g_source - g_target)
+
+        frgd_mask = torch.logical_and(lbl_source, lbl_target)
+        frgd_count = torch.count_nonzero(frgd_mask)
+        bkgd_mask = torch.logical_and(torch.logical_not(lbl_source), torch.logical_not(lbl_target))
+        bkgd_count = torch.count_nonzero(bkgd_mask)
+        s_not_t_mask = torch.logical_and(lbl_source, torch.logical_not(lbl_target))
+        snt_count = torch.count_nonzero(s_not_t_mask)
+        t_not_s_mask = torch.logical_and(torch.logical_not(lbl_source), lbl_target)
+        tns_count = torch.count_nonzero(t_not_s_mask)
+
+        sa_loss = gamma_1 * 0.5 * torch.square(g_source - g_target)
+        sa_loss = (frgd_mask * sa_loss)*((frgd_count + bkgd_count)/frgd_count) + (bkgd_mask * sa_loss)*((frgd_count + bkgd_count)/bkgd_count)
+        s_loss = gamma_1 * 0.5 * torch.square(torch.max(torch.tensor(0).to(torch.device('cuda' if torch.cuda.is_available() else 'cpu')), margin - torch.abs(g_source - g_target)))
+        # s_loss = (~match_mask * s_loss)/(snt_count + tns_count)
+        s_loss = (s_not_t_mask * s_loss)*((snt_count + tns_count)/snt_count) + (t_not_s_mask * s_loss)*((snt_count + tns_count)/tns_count)
+
+        # sa_loss = (1 - gamma_1) * 0.5 * torch.square(st_dist)
+        # s_loss = (1 - gamma_1) * 0.5 * torch.square(torch.max(torch.tensor(0).to(torch.device('cuda' if torch.cuda.is_available() else 'cpu')), margin - st_dist))
+        source_class_loss = (1 - gamma_1) * self.class_loss(g_source, lbl_source)
+        # target_class_loss = gamma_1 * self.class_loss(g_target, lbl_target)
 
         # loss = torch.mean(match_mask * sa_loss + (~match_mask * s_loss) + source_class_loss)
-        loss = torch.mean(match_mask * sa_loss + (~match_mask * s_loss)) + target_class_loss
+        loss = torch.mean(sa_loss + s_loss) + source_class_loss
+        # loss = torch.mean(match_mask * sa_loss + (~match_mask * s_loss)) + target_class_loss
+        # print(loss)
         return loss
 
 
@@ -57,6 +79,10 @@ class ContrastiveFlowLoss:
         return
 
     def __call__(self, z_source, lbl_source, z_target, lbl_target, temperature=0.1):
+        # z = torch.matmul(torch.transpose(torch.flatten(lbl_source, 2, -1), 1, 2),
+        #                  torch.flatten(lbl_target, 2, -1)).view(-1, 112, 112, 112 * 112)
+        # z_v, z_i = torch.max(z, dim=-1)
+
         return
 
 
