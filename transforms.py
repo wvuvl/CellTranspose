@@ -59,8 +59,7 @@ def normalize1stto99th(x):
 
 
 class Resize(object):
-    def __init__(self, default_med, use_labels=False, refine=True, gc_model=None, sz_model=None, patch_size=(96, 96),
-                 min_overlap=(64, 64), device='cpu', patch_per_batch=None):
+    def __init__(self, default_med, patch_size, min_overlap, use_labels=False, refine=True, gc_model=None, sz_model=None, device='cpu', patch_per_batch=None):
         self.use_labels = use_labels
         self.default_med = default_med
         if not self.use_labels:
@@ -190,8 +189,8 @@ def followflows(flows):
     for i, flow in enumerate(flows):
         cellprob = flow[0].cpu().numpy()
         dP = flow[1:].cpu().numpy()
-        # p = follow_flows(-1 * dP * (cellprob > cellprob_threshold) / 5., niter, interp, use_gpu)
-        p = follow_flows(-1 * dP * (cellprob > cellprob_threshold), niter, interp, use_gpu)
+        p = follow_flows(-1 * dP * (cellprob > cellprob_threshold) / 5., niter, interp, use_gpu)
+        # p = follow_flows(-1 * dP * (cellprob > cellprob_threshold), niter, interp, use_gpu)
 
         maski = get_masks(p, iscell=(cellprob > cellprob_threshold), flows=dP, threshold=flow_threshold)
         maski = fill_holes_and_remove_small_masks(maski, min_size=min_size)

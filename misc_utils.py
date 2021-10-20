@@ -45,7 +45,7 @@ def create_confusion_matrix(y_true, y_pred, classes, normalize=None):
     else:
         sns.heatmap(conf_pivot, annot=True, cmap="BuGn", fmt='g', cbar=False)
 
-def produce_logfile(args, ttt, tte, num_workers):
+def produce_logfile(args, epochs, ttt, tte, num_workers):
     with open(os.path.join(args.results_dir, 'logfile.txt'), 'w') as log:
         if args.train_only:
             log.write('train-only\n')
@@ -72,7 +72,7 @@ def produce_logfile(args, ttt, tte, num_workers):
             else:
                 log.write('Training dataset(s): {}\n'.format(args.train_dataset))
             log.write('Learning rate: {}; Momentum: {}\n'.format(args.learning_rate, args.momentum))
-            log.write('Epochs: {}; Batch size: {}\n'.format(args.epochs, args.batch_size))
+            log.write('Epochs: {}; Batch size: {}\n'.format(epochs, args.batch_size))
             log.write('GPUs: {}\n'.format(num_workers))
             log.write('Pretrained model: {}\n'.format(args.pretrained_model))
             log.write('\n')

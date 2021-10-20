@@ -15,10 +15,10 @@ class ClassLoss:
     def __init__(self, class_loss):
         self.loss = class_loss
 
-    def __call__(self, y, lbl):
-        class_pred = lbl[:, 0]
+    def __call__(self, g, y):
+        class_pred = g[:, 0]
         class_y = y[:, 0]
-        class_loss = self.loss(class_y, class_pred)
+        class_loss = self.loss(class_pred, class_y)
         return class_loss
 
 
@@ -27,10 +27,11 @@ class FlowLoss:
     def __init__(self, flow_loss):
         self.loss = flow_loss
 
-    def __call__(self, y, lbl):
-        flow_pred = 5. * lbl[:, 1:]
+    def __call__(self, g, y):
+        # flow_pred = 5. * g[:, 1:]
+        flow_pred = g[:, 1:]
         flow_y = 5. * y[:, 1:]
-        flow_loss = self.loss(flow_y, flow_pred)
+        flow_loss = self.loss(flow_pred, flow_y)
         return flow_loss
 
 
@@ -127,30 +128,33 @@ class UpBlock(nn.Module):
         self.upsample = upsample
         if self.upsample:
             self.upsample_image = nn.Upsample(scale_factor=2)  # mode='nearest'
-            out_features = in_features // 2
+            self.out_features = in_features // 2
         else:
-            out_features = in_features
-        self.proj_style = nn.Linear(256, out_features)
-        self.c_layer1 = conv_block(in_features, out_features)
-        self.c_layer2 = conv_block(out_features, out_features)
-        self.res_conv = nn.Conv2d(in_channels=in_features, out_channels=out_features, kernel_size=1)
-        self.c_layer3 = conv_block(out_features, out_features)
-        self.c_layer4 = conv_block(out_features, out_features)
+            self.out_features = in_features
+        self.proj_style1 = nn.Linear(256, self.out_features)
+        self.proj_style2 = nn.Linear(256, self.out_features)
+        self.proj_style3 = nn.Linear(256, self.out_features)
+        self.c_layer1 = conv_block(in_features, self.out_features)
+        self.c_layer2 = conv_block(self.out_features, self.out_features)
+        self.res_conv = nn.Conv2d(in_channels=in_features, out_channels=self.out_features, kernel_size=1)
+        self.c_layer3 = conv_block(self.out_features, self.out_features)
+        self.c_layer4 = conv_block(self.out_features, self.out_features)
 
     def forward(self, z, fm, style):
-        style = self.proj_style(style)
-        style = style.view(style.shape[0], style.shape[1], 1, 1)
         if self.upsample:
             z = self.upsample_image(z)
         z_1 = self.c_layer1(z)
         z_1 += fm
         z_1 = self.c_layer2(z_1)
-        z_1 += style
+        style1 = self.proj_style1(style).view(style.shape[0], self.out_features, 1, 1)
+        z_1 += style1
         z_1 += self.res_conv(z)
         z_2 = self.c_layer3(z_1)
-        z_2 += style
+        style2 = self.proj_style2(style).view(style.shape[0], self.out_features, 1, 1)
+        z_2 += style2
         z_2 = self.c_layer4(z_2)
-        z_2 += style
+        style3 = self.proj_style3(style).view(style.shape[0], self.out_features, 1, 1)
+        z_2 += style3
         z_2 += z_1
         return z_2
 
@@ -158,7 +162,7 @@ class UpBlock(nn.Module):
 class UpdatedCellpose(nn.Module):
     def __init__(self, channels, device='cuda'):
         super().__init__()
-        self.device = device
+        self.device = device  # TODO: Removing this should be fine
         self.d_block1 = DownBlock(channels, 32, pool=False)
         self.d_block2 = DownBlock(32, 64)
         self.d_block3 = DownBlock(64, 128)

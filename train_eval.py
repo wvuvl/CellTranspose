@@ -17,38 +17,42 @@ def train_network(model, train_dl, val_dl, class_loss, flow_loss, optimizer, sch
 
     print('Beginning network training.\n')
     for e in range(1, n_epochs + 1):
-        train_epoch_losses = []
-        model.train()
-        print(scheduler.get_last_lr())
-        for (sample_data, sample_labels) in tqdm(train_dl, desc='Training - Epoch {}/{}'.format(e, n_epochs)):
-            sample_data = sample_data.to(device)
-            sample_labels = sample_labels.to(device)
-            optimizer.zero_grad()
-            output = model(sample_data)
-            mask_loss = class_loss(output, sample_labels)
-            grad_loss = flow_loss(output, sample_labels)
-            train_loss = mask_loss + grad_loss
-            train_epoch_losses.append(train_loss.item())
-            train_loss.backward()
-            optimizer.step()
+        try:
+            train_epoch_losses = []
+            model.train()
+            print(scheduler.get_last_lr())
+            for (sample_data, sample_labels) in tqdm(train_dl, desc='Training - Epoch {}/{}'.format(e, n_epochs)):
+                sample_data = sample_data.to(device)
+                sample_labels = sample_labels.to(device)
+                optimizer.zero_grad()
+                output = model(sample_data)
+                mask_loss = class_loss(output, sample_labels)
+                grad_loss = flow_loss(output, sample_labels)
+                train_loss = mask_loss + grad_loss
+                train_epoch_losses.append(train_loss.item())
+                train_loss.backward()
+                optimizer.step()
 
-        scheduler.step()
-        train_epoch_loss = mean(train_epoch_losses)
-        train_losses.append(train_epoch_loss)
-        if val_dl is not None:
-            val_epoch_loss = validate_network(model, val_dl, flow_loss, class_loss, device)
-            val_losses.append(val_epoch_loss)
-            print('Train loss: {:.3f}; Validation loss: {:.3f}'.format(train_epoch_loss, val_epoch_loss))
-        else:
-            print('Train loss: {:.3f}'.format(train_epoch_loss))
+            scheduler.step()
+            train_epoch_loss = mean(train_epoch_losses)
+            train_losses.append(train_epoch_loss)
+            if val_dl is not None:
+                val_epoch_loss = validate_network(model, val_dl, flow_loss, class_loss, device)
+                val_losses.append(val_epoch_loss)
+                print('Train loss: {:.3f}; Validation loss: {:.3f}'.format(train_epoch_loss, val_epoch_loss))
+            else:
+                print('Train loss: {:.3f}'.format(train_epoch_loss))
 
-        if e % (n_epochs / 5) == 0:
-            plt.figure()
-            epoch_i = np.arange(1, e+1)
-            plt.plot(epoch_i, train_losses)
-            plt.plot(epoch_i, val_losses)
-            plt.legend(('Train Losses', 'Validation Losses'))
-            plt.show()
+            if e % (n_epochs / 5) == 0:
+                plt.figure()
+                epoch_i = np.arange(1, e+1)
+                plt.plot(epoch_i, train_losses)
+                plt.plot(epoch_i, val_losses)
+                plt.legend(('Train Losses', 'Validation Losses'))
+                plt.show()
+        except KeyboardInterrupt:
+            print('Exiting early.')
+            break
 
     print('Train time: {}'.format(time.strftime("%H:%M:%S", time.gmtime(time.time() - start_train))))
     return train_losses, val_losses
@@ -153,8 +157,8 @@ def eval_network(model: nn.Module, data_loader: DataLoader, device, patch_per_ba
             predictions = tensor([]).to(device)
 
             for patch_ind in range(0, len(sample_data), patch_per_batch):
-                sample_patch_data = sample_data[patch_ind:patch_ind + patch_per_batch].float().to(device)
-                p = model(sample_patch_data)
+                sample_data_patches = sample_data[patch_ind:patch_ind + patch_per_batch].float().to(device)
+                p = model(sample_data_patches)
                 predictions = cat((predictions, p))
 
             predictions = recombine_patches(predictions, resized_dims, min_overlap)

@@ -21,6 +21,8 @@ dataset_name = args.dataset_name
 results_dir = args.results_dir
 dataset_dir = args.dataset_dir
 median_diams = (30, 30)
+patch_size = (96, 96)
+min_overlap = (64, 64)
 
 assert not os.path.exists(results_dir),\
     'Results folder {} currently exists; please specify new location to save results.'.format(results_dir)
@@ -29,7 +31,7 @@ os.mkdir(os.path.join(results_dir, 'tiff_results'))
 os.mkdir(os.path.join(results_dir, 'raw_predictions_tiffs'))
 
 dataset = CellPoseData('Perfect Prediction Reconstruction', dataset_dir, n_chan=2, do_3D=False, from_3D=False,
-                       resize=Resize(median_diams, use_labels=True, patch_per_batch=1))
+                       resize=Resize(median_diams, patch_size, min_overlap, use_labels=True, patch_per_batch=1))
 # Labels to Flows
 labels = dataset.labels
 l_list = dataset.l_list

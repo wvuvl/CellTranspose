@@ -97,6 +97,8 @@ empty_cache()
 args.median_diams = (args.median_diams, args.median_diams)
 args.patch_size = (args.patch_size, args.patch_size)
 args.min_overlap = (args.min_overlap, args.min_overlap)
+ttt = None
+tte = None
 if args.test_overlap is not None:
     args.test_overlap = (args.test_overlap, args.test_overlap)
 else:
@@ -130,8 +132,8 @@ if not args.eval_only:
         print('Done.')
     else:
         train_dataset = CellPoseData('Training', args.train_dataset, args.n_chan, do_3D=args.do_3D, from_3D=args.train_from_3D,
-                                     resize=Resize(args.median_diams, use_labels=True,
-                                                   patch_per_batch=args.batch_size))
+                                     resize=Resize(args.median_diams, args.patch_size, args.min_overlap,
+                                                   use_labels=True, patch_per_batch=args.batch_size))
         train_dataset.process_dataset(args.patch_size, args.min_overlap)
     if args.save_dataset:
         print('Saving Training Dataset... ', end='')
@@ -142,9 +144,9 @@ if not args.eval_only:
 
     if args.val_dataset is not None:
         val_dataset = CellPoseData('Validation', args.val_dataset, args.n_chan, do_3D=args.do_3D, from_3D=args.val_from_3D,
-                                   resize=Resize(args.median_diams, use_labels=args.val_use_labels, refine=True,
-                                                 gc_model=gen_cellpose, sz_model=gen_size_model,
-                                                 min_overlap=args.min_overlap, device=device,
+                                   resize=Resize(args.median_diams, args.patch_size, args.min_overlap,
+                                                 use_labels=args.val_use_labels, refine=True, gc_model=gen_cellpose,
+                                                 sz_model=gen_size_model, device=device,
                                                  patch_per_batch=args.batch_size)
                                    )
         val_dataset.pre_generate_patches(patch_size=args.patch_size, min_overlap=args.min_overlap)
@@ -158,8 +160,8 @@ if not args.eval_only:
         c_flow_loss = ContrastiveFlowLoss()
         target_dataset = CellPoseData('Target', args.target_dataset, args.n_chan, pf_dirs=args.target_flows,
                                       do_3D=args.do_3D, from_3D=args.target_from_3D,
-                                      resize=Resize(args.median_diams, use_labels=True,
-                                                    patch_per_batch=args.batch_size))
+                                      resize=Resize(args.median_diams, args.patch_size, args.min_overlap,
+                                                    use_labels=True, patch_per_batch=args.batch_size))
 
         target_dataset.process_dataset(args.patch_size, args.min_overlap, batch_size=args.batch_size)
         rs = RandomSampler(target_dataset, replacement=False)
@@ -197,10 +199,9 @@ if not args.eval_only:
 if not args.train_only:
     start_eval = time.time()
     test_dataset = CellPoseData('Test', args.test_dataset, args.n_chan, do_3D=args.do_3D, from_3D=args.test_from_3D, evaluate=True,
-                                resize=Resize(args.median_diams, use_labels=args.test_use_labels, refine=True,
-                                              gc_model=gen_cellpose, sz_model=gen_size_model,
-                                              min_overlap=args.test_overlap, device=device,
-                                              patch_per_batch=args.batch_size))
+                                resize=Resize(args.median_diams, args.patch_size, args.test_overlap,
+                                              use_labels=args.test_use_labels, refine=True, gc_model=gen_cellpose,
+                                              sz_model=gen_size_model, device=device, patch_per_batch=args.batch_size))
 
     eval_dl = DataLoader(test_dataset, batch_size=1, shuffle=False)
 
@@ -272,4 +273,4 @@ if not args.train_only:
 
 print(args.results_dir)
 
-produce_logfile(args, ttt, tte, num_workers)
+produce_logfile(args, len(train_losses), ttt, tte, num_workers)
