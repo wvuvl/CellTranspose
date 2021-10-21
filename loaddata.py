@@ -4,7 +4,7 @@ custom dataloaders for new data.
 """
 import numpy as np
 from torch.utils.data import Dataset
-from torch import as_tensor, tensor, cat, unsqueeze
+from torch import as_tensor, tensor, cat, unsqueeze, randperm
 import os
 import math
 from tqdm import tqdm
@@ -169,9 +169,10 @@ class CellPoseData(Dataset):
     # separated from DataLoader to allow for possibility of running only once or once per epoch
     # NOTE: ltf takes ~50% of time; generating patches and concatenating takes nearly as long
     # TODO: Save generated training data? Massively increase time to train
-    def process_dataset(self, patch_size, min_overlap, batch_size=None):
+    def process_training_data(self, patch_size, min_overlap, batch_size=None):
         self.data_samples = tensor([])
         self.label_samples = tensor([])
+        samples_generated = []
         for (data, labels) in tzip(self.data, self.labels, desc='Processing {} Dataset...'.format(self.split_name)):
             try:
                 data, labels = random_horizontal_flip(data, labels)
@@ -181,11 +182,17 @@ class CellPoseData(Dataset):
                 else:
                     labels = labels[np.newaxis, :]
                 data, labels = generate_patches(unsqueeze(data, 0), labels, patch=patch_size, min_overlap=min_overlap)
+                if len(data) > 6:
+                    rp = randperm(len(data))[:6]
+                    data = data[rp]
+                    labels = labels[rp]
                 # labels = remove_cut_cells(labels, flows=True)
                 self.data_samples = cat((self.data_samples, data))
                 self.label_samples = cat((self.label_samples, labels))
+                samples_generated.append(len(data))
             except RuntimeError:
                 print('Caught Size Mismatch.')
+                samples_generated.append(-1)
         if batch_size is not None:
             ds = self.data_samples
             ls = self.label_samples
@@ -194,9 +201,10 @@ class CellPoseData(Dataset):
                 self.label_samples = cat((self.label_samples, ls))
         # self.data_samples, self.label_samples = remove_empty_label_patches(self.data_samples, self.label_samples)
         print('Number of generated samples: {}'.format(len(self.data_samples)))
+        print(samples_generated)
 
     # Generates patches for validation dataset - only happens once
-    def pre_generate_patches(self, patch_size, min_overlap):
+    def pre_generate_validation_patches(self, patch_size, min_overlap):
         self.data_samples = tensor([])
         self.label_samples = tensor([])
         new_l_list = []

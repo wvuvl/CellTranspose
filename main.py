@@ -134,7 +134,7 @@ if not args.eval_only:
         train_dataset = CellPoseData('Training', args.train_dataset, args.n_chan, do_3D=args.do_3D, from_3D=args.train_from_3D,
                                      resize=Resize(args.median_diams, args.patch_size, args.min_overlap,
                                                    use_labels=True, patch_per_batch=args.batch_size))
-        train_dataset.process_dataset(args.patch_size, args.min_overlap)
+        train_dataset.process_training_data(args.patch_size, args.min_overlap)
     if args.save_dataset:
         print('Saving Training Dataset... ', end='')
         save(train_dataset, args.save_dataset)
@@ -149,7 +149,7 @@ if not args.eval_only:
                                                  sz_model=gen_size_model, device=device,
                                                  patch_per_batch=args.batch_size)
                                    )
-        val_dataset.pre_generate_patches(patch_size=args.patch_size, min_overlap=args.min_overlap)
+        val_dataset.pre_generate_validation_patches(patch_size=args.patch_size, min_overlap=args.min_overlap)
         val_dl = DataLoader(val_dataset, batch_size=args.batch_size, shuffle=False)
     else:
         val_dl = None
@@ -163,7 +163,7 @@ if not args.eval_only:
                                       resize=Resize(args.median_diams, args.patch_size, args.min_overlap,
                                                     use_labels=True, patch_per_batch=args.batch_size))
 
-        target_dataset.process_dataset(args.patch_size, args.min_overlap, batch_size=args.batch_size)
+        target_dataset.process_training_data(args.patch_size, args.min_overlap, batch_size=args.batch_size)
         rs = RandomSampler(target_dataset, replacement=False)
         bs = BatchSampler(rs, args.batch_size, True)
         target_dl = DataLoader(target_dataset, batch_sampler=bs)
