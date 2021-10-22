@@ -4,7 +4,7 @@ custom dataloaders for new data.
 """
 import numpy as np
 from torch.utils.data import Dataset
-from torch import as_tensor, tensor, cat, unsqueeze, randperm
+from torch import as_tensor, tensor, cat, unsqueeze, randperm, float32
 import os
 import math
 from tqdm import tqdm
@@ -176,12 +176,20 @@ class CellTransposeData(Dataset):
         for (data, labels) in tzip(self.data, self.labels, desc='Processing {} Dataset...'.format(self.split_name)):
             try:
                 data, labels = random_horizontal_flip(data, labels)
-                # data, labels = random_rotate(data, labels)
-                if labels.shape[0] == 1:
-                    labels = as_tensor([labels_to_flows(labels[i].numpy()) for i in range(len(labels))])
+                data, labels = random_rotate(data, labels)
+
+                data, labels = generate_patches(unsqueeze(data, 0), labels, patch=patch_size, min_overlap=min_overlap, eval=True)
+                if labels.ndim == 3:
+                    labels = as_tensor([labels_to_flows(labels[i].numpy()) for i in range(len(labels))], dtype=float32)
                 else:
                     labels = labels[np.newaxis, :]
-                data, labels = generate_patches(unsqueeze(data, 0), labels, patch=patch_size, min_overlap=min_overlap)
+                ###
+                # if labels.shape[0] == 1:
+                #     labels = as_tensor([labels_to_flows(labels[i].numpy()) for i in range(len(labels))])
+                # else:
+                #     labels = labels[np.newaxis, :]
+                # data, labels = generate_patches(unsqueeze(data, 0), labels, patch=patch_size, min_overlap=min_overlap)
+
                 if len(data) > 6:
                     rp = randperm(len(data))[:6]
                     data = data[rp]
