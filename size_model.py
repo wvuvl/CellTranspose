@@ -1,7 +1,7 @@
 import argparse
 import os
-from loaddata import CellPoseData
-from Cellpose_2D_PyTorch import UpdatedCellpose, SizeModel
+from loaddata import CellTransposeData
+from CellTranspose2D import CellTranspose, SizeModel
 import torch
 import numpy as np
 import time
@@ -16,7 +16,7 @@ parser.add_argument('--learning_rate', type=float)
 parser.add_argument('--momentum', type=float)
 parser.add_argument('--batch-size', type=int)
 parser.add_argument('--epochs', type=int)
-parser.add_argument('--do-3D', help='Whether or not to use 3D-Cellpose (Must use 3D volumes).',
+parser.add_argument('--do-3D', help='Whether or not to use CellTranspose3D (Must use 3D volumes).',
                     action='store_true', default=False)
 parser.add_argument('--from-3D', help='Whether the input training source data is 3D: assumes 2D if set to False.',
                     action='store_true', default=False)
@@ -31,7 +31,7 @@ os.mkdir(args.results_dir)
 torch.cuda.empty_cache()
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-gen_cellpose = UpdatedCellpose(channels=1, device=device)
+gen_cellpose = CellTranspose(channels=1, device=device)
 gen_cellpose = torch.nn.DataParallel(gen_cellpose)
 gen_cellpose.to(device)
 gen_cellpose.load_state_dict(torch.load(args.cellpose_pretrained))
@@ -41,7 +41,7 @@ size_model = SizeModel().to(device)
 optimizer = torch.optim.SGD(size_model.parameters(), lr=args.learning_rate, momentum=args.momentum)
 loss_fn = torch.nn.MSELoss()
 
-train_dataset = CellPoseData('Training', args.train_dataset, do_3D=args.do_3D, from_3D=args.from_3D)
+train_dataset = CellTransposeData('Training', args.train_dataset, do_3D=args.do_3D, from_3D=args.from_3D)
 train_dl = torch.utils.data.DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True)  # num_workers=num_workers
 
 # Training network

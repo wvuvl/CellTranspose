@@ -13,8 +13,8 @@ import cv2
 import time
 
 from transforms import Resize, reformat
-from loaddata import CellPoseData
-from Cellpose_2D_PyTorch import UpdatedCellpose, SizeModel, ClassLoss, FlowLoss, SASClassLoss, ContrastiveFlowLoss
+from loaddata import CellTransposeData
+from CellTranspose2D import CellTranspose, SizeModel, ClassLoss, FlowLoss, SASClassLoss, ContrastiveFlowLoss
 from train_eval import train_network, adapt_network, eval_network
 from cellpose_src.metrics import average_precision
 from misc_utils import produce_logfile
@@ -45,7 +45,7 @@ parser.add_argument('--eval-only', help='Only perform evaluation, no training (m
 parser.add_argument('--pretrained-model', help='Location of pretrained model to load in. Default: None')
 parser.add_argument('--do-adaptation', help='Whether to perform domain adaptation or standard training.',
                     action='store_true')
-parser.add_argument('--do-3D', help='Whether or not to use 3D-Cellpose (Must use 3D volumes).',
+parser.add_argument('--do-3D', help='Whether or not to use CellTranspose3D (Must use 3D volumes).',
                     action='store_true')
 parser.add_argument('--train-dataset', help='The directory(s) containing (source) data to be used for training.',
                     nargs='+')
@@ -69,7 +69,7 @@ parser.add_argument('--target-from-3D', help='Whether the input target data is 3
 parser.add_argument('--target-flows', help='The directory(s) containing pre-calculated flows. If left empty, '
                                            'flows will be calculated manually.', nargs='+')
 parser.add_argument('--cellpose-model',
-                    help='Location of the generalized cellpose model to use for diameter estimation.')
+                    help='Location of the generalized CellTranspose model to use for diameter estimation.')
 parser.add_argument('--size-model', help='Location of the generalized size model to use for diameter estimation.')
 parser.add_argument('--refine-prediction', help='Whether or not to apply refined diameter prediction with diameters of '
                                                 'generalized Cellpose model predictions (better accuracy,'
@@ -105,7 +105,7 @@ else:
     args.test_overlap = args.min_overlap
 
 if not (args.val_use_labels and args.test_use_labels):
-    gen_cellpose = UpdatedCellpose(channels=1, device='cuda:0')
+    gen_cellpose = CellTranspose(channels=1, device='cuda:0')
     gen_cellpose = nn.DataParallel(gen_cellpose, device_ids=[0])
     gen_cellpose.load_state_dict(load(args.cellpose_model))
 
@@ -115,7 +115,7 @@ else:
     gen_cellpose = None
     gen_size_model = None
 
-model = UpdatedCellpose(channels=args.n_chan, device=device)
+model = CellTranspose(channels=args.n_chan, device=device)
 model = nn.DataParallel(model)
 model.to(device)
 if args.pretrained_model is not None:
@@ -131,8 +131,8 @@ if not args.eval_only:
         train_dataset = load(args.train_dataset[0])
         print('Done.')
     else:
-        train_dataset = CellPoseData('Training', args.train_dataset, args.n_chan, do_3D=args.do_3D, from_3D=args.train_from_3D,
-                                     resize=Resize(args.median_diams, args.patch_size, args.min_overlap,
+        train_dataset = CellTransposeData('Training', args.train_dataset, args.n_chan, do_3D=args.do_3D, from_3D=args.train_from_3D,
+                                          resize=Resize(args.median_diams, args.patch_size, args.min_overlap,
                                                    use_labels=True, patch_per_batch=args.batch_size))
         train_dataset.process_training_data(args.patch_size, args.min_overlap)
     if args.save_dataset:
@@ -143,12 +143,12 @@ if not args.eval_only:
     train_dl = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, drop_last=True)
 
     if args.val_dataset is not None:
-        val_dataset = CellPoseData('Validation', args.val_dataset, args.n_chan, do_3D=args.do_3D, from_3D=args.val_from_3D,
-                                   resize=Resize(args.median_diams, args.patch_size, args.min_overlap,
+        val_dataset = CellTransposeData('Validation', args.val_dataset, args.n_chan, do_3D=args.do_3D, from_3D=args.val_from_3D,
+                                        resize=Resize(args.median_diams, args.patch_size, args.min_overlap,
                                                  use_labels=args.val_use_labels, refine=True, gc_model=gen_cellpose,
                                                  sz_model=gen_size_model, device=device,
                                                  patch_per_batch=args.batch_size)
-                                   )
+                                        )
         val_dataset.pre_generate_validation_patches(patch_size=args.patch_size, min_overlap=args.min_overlap)
         val_dl = DataLoader(val_dataset, batch_size=args.batch_size, shuffle=False)
     else:
@@ -158,9 +158,9 @@ if not args.eval_only:
     if args.do_adaptation:
         sas_class_loss = SASClassLoss(nn.BCEWithLogitsLoss(reduction='mean'))
         c_flow_loss = ContrastiveFlowLoss()
-        target_dataset = CellPoseData('Target', args.target_dataset, args.n_chan, pf_dirs=args.target_flows,
-                                      do_3D=args.do_3D, from_3D=args.target_from_3D,
-                                      resize=Resize(args.median_diams, args.patch_size, args.min_overlap,
+        target_dataset = CellTransposeData('Target', args.target_dataset, args.n_chan, pf_dirs=args.target_flows,
+                                           do_3D=args.do_3D, from_3D=args.target_from_3D,
+                                           resize=Resize(args.median_diams, args.patch_size, args.min_overlap,
                                                     use_labels=True, patch_per_batch=args.batch_size))
 
         target_dataset.process_training_data(args.patch_size, args.min_overlap, batch_size=args.batch_size)
@@ -198,8 +198,8 @@ if not args.eval_only:
 
 if not args.train_only:
     start_eval = time.time()
-    test_dataset = CellPoseData('Test', args.test_dataset, args.n_chan, do_3D=args.do_3D, from_3D=args.test_from_3D, evaluate=True,
-                                resize=Resize(args.median_diams, args.patch_size, args.test_overlap,
+    test_dataset = CellTransposeData('Test', args.test_dataset, args.n_chan, do_3D=args.do_3D, from_3D=args.test_from_3D, evaluate=True,
+                                     resize=Resize(args.median_diams, args.patch_size, args.test_overlap,
                                               use_labels=args.test_use_labels, refine=True, gc_model=gen_cellpose,
                                               sz_model=gen_size_model, device=device, patch_per_batch=args.batch_size))
 
@@ -255,7 +255,7 @@ if not args.train_only:
             fn_overall = np.sum(ap_info[3], axis=0).astype('int32')
             plt.figure()
             plt.plot(tau, ap_overall)
-            plt.title('Average Precision for Cellpose on {} Dataset'.format(args.dataset_name))
+            plt.title('Average Precision for CellTranspose on {} Dataset'.format(args.dataset_name))
             plt.xlabel(r'IoU Matching Threshold $\tau$')
             plt.ylabel('Average Precision')
             plt.yticks(np.arange(0, 1.01, step=0.2))

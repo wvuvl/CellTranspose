@@ -159,7 +159,7 @@ class UpBlock(nn.Module):
         return z_2
 
 
-class UpdatedCellpose(nn.Module):
+class CellTranspose(nn.Module):
     def __init__(self, channels, device='cuda'):
         super().__init__()
         self.device = device  # TODO: Removing this should be fine
@@ -218,7 +218,7 @@ if __name__ == '__main__':
     # data = torch.zeros((8, 3, 96, 96))
     # zeros = torch.zeros((8, 32, 96, 96))
     # out = db(data)
-    mc = UpdatedCellpose(3)
+    mc = CellTranspose(3)
     summary(mc, (3, 168, 168))
     # data = torch.rand((8, 3, 8, 8))
     # out = mc(data)

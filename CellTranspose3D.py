@@ -77,7 +77,7 @@ class UpBlock(nn.Module):
         return z_2
 
 
-class Cellpose(nn.Module):
+class CellTranspose3D(nn.Module):
     def __init__(self, in_features):
         super().__init__()
         self.d_block1 = DownBlock(in_features, 32, pool=False)
@@ -123,7 +123,7 @@ from torchsummary import summary
 # zeros = torch.zeros((8, 32, 96, 96))
 # out = db(data)
 
-mc = Cellpose(4).to('cuda')
+mc = CellTranspose3D(4).to('cuda')
 summary(mc, (4, 32, 32))
 # data = torch.zeros((8, 4, 64, 64)).to('cuda')
 # out = mc(data)

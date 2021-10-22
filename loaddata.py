@@ -18,7 +18,7 @@ from transforms import reformat, normalize1stto99th, Resize, random_horizontal_f
 import matplotlib.pyplot as plt
 
 
-class CellPoseData(Dataset):
+class CellTransposeData(Dataset):
     """
     Dataset subclass for loading in any tiff data, where the dataset follows the following format:
         - /data
@@ -43,7 +43,7 @@ class CellPoseData(Dataset):
             n_chan: Maximum number of channels in input images (i.e. 2 for cytoplasm + nuclei images)
             data_dirs: root directory/directories of the dataset, containing 'data' and 'labels' folders
             pf_dirs: root directory/directories of pre-calculated flows, if they exist
-            do_3D: whether or not to train 3D cellpose model (requires that from_3d is true)
+            do_3D: whether or not to train 3D CellTranspose model (requires that from_3d is true)
             from_3D: whether input samples are 2D images (False) or 3D volumes (True)
             evaluate: if set to true, returns additional information when calling __getitem__()
             resize: Resize object containing parameters by which to resize input samples accordingly

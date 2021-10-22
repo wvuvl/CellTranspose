@@ -8,7 +8,7 @@ import pickle
 import tifffile
 
 from transforms import Resize, reformat, labels_to_flows, followflows
-from loaddata import CellPoseData
+from loaddata import CellTransposeData
 from cellpose_src.metrics import average_precision
 
 parser = argparse.ArgumentParser()
@@ -30,8 +30,8 @@ os.mkdir(results_dir)
 os.mkdir(os.path.join(results_dir, 'tiff_results'))
 os.mkdir(os.path.join(results_dir, 'raw_predictions_tiffs'))
 
-dataset = CellPoseData('Perfect Prediction Reconstruction', dataset_dir, n_chan=2, do_3D=False, from_3D=False,
-                       resize=Resize(median_diams, patch_size, min_overlap, use_labels=True, patch_per_batch=1))
+dataset = CellTransposeData('Perfect Prediction Reconstruction', dataset_dir, n_chan=2, do_3D=False, from_3D=False,
+                            resize=Resize(median_diams, patch_size, min_overlap, use_labels=True, patch_per_batch=1))
 # Labels to Flows
 labels = dataset.labels
 l_list = dataset.l_list
