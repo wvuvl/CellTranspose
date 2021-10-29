@@ -3,12 +3,16 @@
 import os
 import numpy as np
 import tifffile
+import cv2
 from cellpose_src.metrics import average_precision
 import pickle
 import matplotlib.pyplot as plt
 
-mask_path = '/media/matthew/Data Drive/Datasets/Neuro_Proj1_Data/cellpose_og_results/BBBC024_v1_2D'
-label_path = '/media/matthew/Data Drive/Datasets/Neuro_Proj1_Data/BBBC024_v1_2D_raw_tiff_combined_split/test/labels'
+# mask_path = '/media/matthew/Data Drive/Datasets/Neuro_Proj1_Data/cellpose_og_results/BBBC024_v1_2D'
+mask_path = '/media/matthew/f142958d-59d8-4451-8a3d-de9bad6c021e/Neuro_Proj1_Data/DA_Results/lebowski/Original_Cellpose_Results/Gen_results_1'
+# label_path = '/media/matthew/Data Drive/Datasets/Neuro_Proj1_Data/BBBC024_v1_2D_raw_tiff_combined_split/test/labels'
+label_path = '/media/matthew/f142958d-59d8-4451-8a3d-de9bad6c021e/Neuro_Proj1_Data/Cellpose_Dataset/Generalized/test/labels'
+tif_or_png = 'png'
 
 masks = []
 labels = []
@@ -17,8 +21,14 @@ filenames = []
 for file in sorted(i for i in os.listdir(mask_path) if i.endswith('.npy')):
     masks.append(np.load(os.path.join(mask_path, file), allow_pickle=True).item()['masks'])
 for file in sorted(os.listdir(label_path)):
-    labels.append(tifffile.imread(os.path.join(label_path, file)))
-    filenames.append(file)
+    if tif_or_png == 'png':
+        labels.append(cv2.imread(os.path.join(label_path, file), -1))
+        filenames.append(file)
+    elif tif_or_png == 'tif':
+        labels.append(tifffile.imread(os.path.join(label_path, file)))
+        filenames.append(file)
+    else:
+        raise Exception('\"tif_or_png\" must be set as \"tif\" or \"png\"')
 
 # Count cells in each mask and calculate counting error
 with open(os.path.join(mask_path, 'counted_cells.txt'), 'w') as cc:
