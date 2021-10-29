@@ -219,15 +219,16 @@ class CellTransposeData(Dataset):
         new_original_dims = []
         for (data, labels, label_fname, original_dim) in tzip(self.data, self.labels, self.l_list, self.original_dims,
                                                               desc='Processing Validation Dataset...'):
-            data, labels = generate_patches(unsqueeze(data, 0), labels, eval=True,
-                                            patch=patch_size, min_overlap=min_overlap)
-            labels = as_tensor([labels_to_flows(labels[i].numpy()) for i in range(len(labels))])
-            # data, labels = remove_empty_label_patches(data, labels)
-            self.data_samples = cat((self.data_samples, data))
-            self.label_samples = cat((self.label_samples, labels))
-            for _ in range(len(data)):
-                new_l_list.append(label_fname)
-                new_original_dims.append(original_dim)
+            if data.shape[1] >= 224 and data.shape[2] >= 224:
+                data, labels = generate_patches(unsqueeze(data, 0), labels, eval=True,
+                                                patch=patch_size, min_overlap=min_overlap)
+                labels = as_tensor([labels_to_flows(labels[i].numpy()) for i in range(len(labels))])
+                # data, labels = remove_empty_label_patches(data, labels)
+                self.data_samples = cat((self.data_samples, data))
+                self.label_samples = cat((self.label_samples, labels))
+                for _ in range(len(data)):
+                    new_l_list.append(label_fname)
+                    new_original_dims.append(original_dim)
         self.l_list = new_l_list
         self.original_dims = new_original_dims
 
