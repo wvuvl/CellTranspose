@@ -1,5 +1,5 @@
 from torch.utils.data import DataLoader
-from torch import nn, tensor, cat, no_grad, as_tensor, squeeze
+from torch import nn, tensor, cat, no_grad, as_tensor, squeeze, zeros
 import time
 from tqdm import tqdm
 import cv2
@@ -156,6 +156,23 @@ def eval_network(model: nn.Module, data_loader: DataLoader, device, patch_per_ba
         for (sample_data, sample_labels, label_files, original_dims) in tqdm(data_loader,
                                                                              desc='Evaluating Test Dataset'):
             resized_dims = (sample_data.shape[2], sample_data.shape[3])
+            padding = sample_data.shape[2] < patch_size[0] or sample_data.shape[3] < patch_size[1]
+            # Add padding if image is smaller than patch size in at least one dimension
+            if padding:
+                unpadded_dims = resized_dims
+                sd = zeros((sample_data.shape[0], sample_data.shape[1], max(patch_size[0], sample_data.shape[2]),
+                            max(patch_size[1], sample_data.shape[3])))
+                sl = zeros((sample_labels.shape[0], sample_labels.shape[1], max(patch_size[0], sample_data.shape[2]),
+                            max(patch_size[1], sample_labels.shape[3])))
+                set_corner = (max(0, (patch_size[0] - sample_data.shape[2]) // 2),
+                              max(0, (patch_size[1] - sample_data.shape[3]) // 2))
+                sd[:, :, set_corner[0]:set_corner[0] + sample_data.shape[2],
+                   set_corner[1]:set_corner[1] + sample_data.shape[3]] = sample_data
+                sl[:, :, set_corner[0]:set_corner[0] + sample_labels.shape[2],
+                   set_corner[1]:set_corner[1] + sample_labels.shape[3]] = sample_labels
+                sample_data = sd
+                sample_labels = sl
+                resized_dims = (sample_data.shape[2], sample_data.shape[3])
             sample_data, _ = generate_patches(sample_data, squeeze(sample_labels, dim=0), eval=True,
                                               patch=patch_size, min_overlap=min_overlap)
             predictions = tensor([]).to(device)
@@ -168,6 +185,9 @@ def eval_network(model: nn.Module, data_loader: DataLoader, device, patch_per_ba
             predictions = recombine_patches(predictions, resized_dims, min_overlap)
             sample_mask = followflows(predictions)
             sample_mask = np.transpose(sample_mask.numpy(), (1, 2, 0))
+            if padding:
+                sample_mask = sample_mask[set_corner[0]:set_corner[0]+unpadded_dims[0],
+                                          set_corner[1]:set_corner[1]+unpadded_dims[1]]
             sample_mask = cv2.resize(sample_mask, (original_dims[1].item(), original_dims[0].item()),
                                      interpolation=cv2.INTER_NEAREST)
             pred_list.append(predictions.cpu().numpy()[0])
