@@ -99,6 +99,7 @@ args.patch_size = (args.patch_size, args.patch_size)
 args.min_overlap = (args.min_overlap, args.min_overlap)
 ttt = None
 tte = None
+train_losses = None
 if args.test_overlap is not None:
     args.test_overlap = (args.test_overlap, args.test_overlap)
 else:
