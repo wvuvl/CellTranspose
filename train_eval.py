@@ -149,12 +149,12 @@ def validate_network(model, data_loader, flow_loss, class_loss, device):
 def eval_network(model: nn.Module, data_loader: DataLoader, device, patch_per_batch, patch_size, min_overlap):
 
     model.eval()
-    print('Beginning evaluation.')
     with no_grad():
         masks = []
         label_list = []
         pred_list = []
-        for (sample_data, sample_labels, label_files, original_dims) in data_loader:
+        for (sample_data, sample_labels, label_files, original_dims) in tqdm(data_loader,
+                                                                             desc='Evaluating Test Dataset'):
             resized_dims = (sample_data.shape[2], sample_data.shape[3])
             sample_data, _ = generate_patches(sample_data, squeeze(sample_labels, dim=0), eval=True,
                                               patch=patch_size, min_overlap=min_overlap)

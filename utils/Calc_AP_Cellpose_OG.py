@@ -7,31 +7,34 @@ import cv2
 from cellpose_src.metrics import average_precision
 import pickle
 import matplotlib.pyplot as plt
+import argparse
 
-# mask_path = '/media/matthew/Data Drive/Datasets/Neuro_Proj1_Data/cellpose_og_results/BBBC024_v1_2D'
-mask_path = '/media/matthew/f142958d-59d8-4451-8a3d-de9bad6c021e/Neuro_Proj1_Data/DA_Results/lebowski/Original_Cellpose_Results/Gen_results_1'
-# label_path = '/media/matthew/Data Drive/Datasets/Neuro_Proj1_Data/BBBC024_v1_2D_raw_tiff_combined_split/test/labels'
-label_path = '/media/matthew/f142958d-59d8-4451-8a3d-de9bad6c021e/Neuro_Proj1_Data/Cellpose_Dataset/Generalized/test/labels'
+
+parser = argparse.ArgumentParser()
+parser.add_argument('--mask-path')
+parser.add_argument('--label-path')
+args = parser.parse_args()
+
 tif_or_png = 'png'
 
 masks = []
 labels = []
 filenames = []
 
-for file in sorted(i for i in os.listdir(mask_path) if i.endswith('.npy')):
-    masks.append(np.load(os.path.join(mask_path, file), allow_pickle=True).item()['masks'])
-for file in sorted(os.listdir(label_path)):
+for file in sorted(i for i in os.listdir(args.mask_path) if i.endswith('.npy')):
+    masks.append(np.load(os.path.join(args.mask_path, file), allow_pickle=True).item()['masks'])
+for file in sorted(os.listdir(args.label_path)):
     if tif_or_png == 'png':
-        labels.append(cv2.imread(os.path.join(label_path, file), -1))
+        labels.append(cv2.imread(os.path.join(args.label_path, file), -1))
         filenames.append(file)
     elif tif_or_png == 'tif':
-        labels.append(tifffile.imread(os.path.join(label_path, file)))
+        labels.append(tifffile.imread(os.path.join(args.label_path, file)))
         filenames.append(file)
     else:
         raise Exception('\"tif_or_png\" must be set as \"tif\" or \"png\"')
 
 # Count cells in each mask and calculate counting error
-with open(os.path.join(mask_path, 'counted_cells.txt'), 'w') as cc:
+with open(os.path.join(args.mask_path, 'counted_cells.txt'), 'w') as cc:
     predicted_count = 0
     true_count = 0
     for i in range(len(masks)):
@@ -52,7 +55,7 @@ tp_overall = np.sum(ap_info[1], axis=0).astype('int32')
 fp_overall = np.sum(ap_info[2], axis=0).astype('int32')
 fn_overall = np.sum(ap_info[3], axis=0).astype('int32')
 false_error = (fp_overall[51] + fn_overall[51]) / (tp_overall[51] + fn_overall[51])
-with open(os.path.join(mask_path, 'AP_Results.pkl'), 'wb') as apr:
+with open(os.path.join(args.mask_path, 'AP_Results.pkl'), 'wb') as apr:
     pickle.dump((tau, ap_overall, tp_overall, fp_overall, fn_overall), apr)
 plt.figure()
 plt.plot(tau, ap_overall)
@@ -60,5 +63,5 @@ plt.title('Average Precision for Original Cellpose')
 plt.xlabel(r'IoU Matching Threshold $\tau$')
 plt.ylabel('Average Precision')
 plt.yticks(np.arange(0, 1.01, step=0.2))
-plt.savefig(os.path.join(mask_path, 'AP Results'))
+plt.savefig(os.path.join(args.mask_path, 'AP Results'))
 plt.show()
