@@ -178,6 +178,7 @@ class CellTransposeData(Dataset):
 class TrainCellTransposeData(CellTransposeData):
     def __init__(self, split_name, data_dirs, n_chan, pf_dirs=None, do_3D=False, from_3D=False, evaluate=False, resize: Resize = None, patches_per_img = 1):
         self.patches_per_img = patches_per_img
+        self.resize = resize
         super().__init__(split_name, data_dirs, n_chan, pf_dirs=pf_dirs, do_3D=do_3D, from_3D=from_3D, evaluate=evaluate, resize=None)
 
     
@@ -205,13 +206,13 @@ class TrainCellTransposeData(CellTransposeData):
 
         d_patch = data[0, :, j:j + crop[1], i:i + crop[0]]
         
-        patch_data[1 * i + j] = d_patch
+        patch_data[0] = d_patch
 
         if lbl_flows:
             l_patch = label[:, j:j + crop[1], i:i + crop[0]]
         else:
             l_patch = label[0, j:j + crop[1], i:i + crop[0]]
-        patch_label[1 * i + j] = l_patch
+        patch_label[0] = l_patch
             
 
         return patch_data, patch_label
@@ -230,7 +231,8 @@ class TrainCellTransposeData(CellTransposeData):
 
                 data, labels = random_horizontal_flip(data, labels)
                 # data, labels = random_rotate(data, labels)
-
+                
+                #print(data.shape," ",labels.shape)
                 data, labels = self.train_generate_rand_crop(unsqueeze(data, 0), labels, crop=crop_size, lbl_flows=has_flows)
 
                 if labels.ndim == 3:
@@ -244,16 +246,12 @@ class TrainCellTransposeData(CellTransposeData):
                 #     labels = labels[np.newaxis, :]
                 # data, labels = generate_patches(unsqueeze(data, 0), labels, patch=patch_size, min_overlap=min_overlap)
 
-                if len(data) > 6:
-                    rp     = randperm(len(data))[:6]
-                    data   = data[rp]
-                    labels = labels[rp]
-                    
+
                 # labels = remove_cut_cells(labels, flows=True)
                 self.data_samples = cat((self.data_samples, data))
                 self.label_samples = cat((self.label_samples, labels))
                 samples_generated.append(len(data))
-
+                print(data.shape)
             except RuntimeError:
                 print('Caught Size Mismatch.')
                 samples_generated.append(-1)

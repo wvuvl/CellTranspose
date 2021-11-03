@@ -20,7 +20,8 @@ def train_network(model, train_dl, val_dl, class_loss, flow_loss, optimizer, sch
         try:
             train_epoch_losses = []
             model.train()
-            print(scheduler.get_last_lr())
+            print(len(train_dl))
+            #print(scheduler.get_last_lr())
             for (sample_data, sample_labels) in tqdm(train_dl, desc='Training - Epoch {}/{}'.format(e, n_epochs)):
                 sample_data = sample_data.to(device)
                 sample_labels = sample_labels.to(device)
@@ -32,8 +33,10 @@ def train_network(model, train_dl, val_dl, class_loss, flow_loss, optimizer, sch
                 train_epoch_losses.append(train_loss.item())
                 train_loss.backward()
                 optimizer.step()
+                #print(train_loss)
 
             scheduler.step()
+            
             train_epoch_loss = mean(train_epoch_losses)
             train_losses.append(train_epoch_loss)
             if val_dl is not None:
