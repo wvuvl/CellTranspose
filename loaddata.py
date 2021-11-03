@@ -169,20 +169,21 @@ class CellTransposeData(Dataset):
     # separated from DataLoader to allow for possibility of running only once or once per epoch
     # NOTE: ltf takes ~50% of time; generating patches and concatenating takes nearly as long
     # TODO: Save generated training data? Massively increase time to train
-    def process_training_data(self, patch_size, min_overlap, batch_size=None):
+    def process_training_data(self, patch_size, min_overlap, batch_size=None, has_flows=False):
         self.data_samples = tensor([])
         self.label_samples = tensor([])
         samples_generated = []
         for (data, labels) in tzip(self.data, self.labels, desc='Processing {} Dataset...'.format(self.split_name)):
             try:
                 data, labels = random_horizontal_flip(data, labels)
-                data, labels = random_rotate(data, labels)
+                # data, labels = random_rotate(data, labels)
 
-                data, labels = generate_patches(unsqueeze(data, 0), labels, patch=patch_size, min_overlap=min_overlap, eval=True)
+                data, labels = generate_patches(unsqueeze(data, 0), labels, patch=patch_size,
+                                                min_overlap=min_overlap, lbl_flows=has_flows)
                 if labels.ndim == 3:
                     labels = as_tensor([labels_to_flows(labels[i].numpy()) for i in range(len(labels))], dtype=float32)
-                else:
-                    labels = labels[np.newaxis, :]
+                # else:
+                #     labels = labels[np.newaxis, :]
                 ###
                 # if labels.shape[0] == 1:
                 #     labels = as_tensor([labels_to_flows(labels[i].numpy()) for i in range(len(labels))])
@@ -220,8 +221,8 @@ class CellTransposeData(Dataset):
         for (data, labels, label_fname, original_dim) in tzip(self.data, self.labels, self.l_list, self.original_dims,
                                                               desc='Processing Validation Dataset...'):
             if data.shape[1] >= 224 and data.shape[2] >= 224:
-                data, labels = generate_patches(unsqueeze(data, 0), labels, eval=True,
-                                                patch=patch_size, min_overlap=min_overlap)
+                data, labels = generate_patches(unsqueeze(data, 0), labels, patch=patch_size,
+                                                min_overlap=min_overlap, lbl_flows=False)
                 labels = as_tensor([labels_to_flows(labels[i].numpy()) for i in range(len(labels))])
                 # data, labels = remove_empty_label_patches(data, labels)
                 self.data_samples = cat((self.data_samples, data))

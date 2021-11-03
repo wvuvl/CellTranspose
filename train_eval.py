@@ -93,7 +93,7 @@ def adapt_network(model: nn.Module, source_dl, target_dl, val_dl, sas_class_loss
                 target_grad_loss = flow_loss(target_output, target_sample_labels)
                 adaptation_class_loss = sas_class_loss(source_output[:, 0], source_sample_labels[:, 0],
                                                        target_output[:, 0], target_sample_labels[:, 0],
-                                                       margin=0.25, gamma_1=0.2, gamma_2=0.25)
+                                                       margin=1, gamma_1=0.1, gamma_2=0.5)
                 adaptation_flow_loss = c_flow_loss(source_output[:, 1:], source_sample_labels[:, 1:],
                                                    target_output[:, 1:], target_sample_labels[:, 1:],
                                                    temperature=0.1)
@@ -173,8 +173,8 @@ def eval_network(model: nn.Module, data_loader: DataLoader, device, patch_per_ba
                 sample_data = sd
                 sample_labels = sl
                 resized_dims = (sample_data.shape[2], sample_data.shape[3])
-            sample_data, _ = generate_patches(sample_data, squeeze(sample_labels, dim=0), eval=True,
-                                              patch=patch_size, min_overlap=min_overlap)
+            sample_data, _ = generate_patches(sample_data, squeeze(sample_labels, dim=0), patch=patch_size,
+                                              min_overlap=min_overlap, lbl_flows=False)
             predictions = tensor([]).to(device)
 
             for patch_ind in range(0, len(sample_data), patch_per_batch):

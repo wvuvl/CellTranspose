@@ -28,6 +28,7 @@ def reformat(x, n_chan=1, is_pf=False, do_3D=False):
         if not do_3D:
             if x.dim() == 2:
                 x = x.view(1, x.shape[0], x.shape[1])
+                x = torch.cat((x, torch.zeros((n_chan - 1, x.shape[1], x.shape[2]))))
             # Currently transforms multi-channel input to greyscale
             elif x.dim() == 3:
                 # TODO: copying Cellpose implementation, find a cleaner method for solving this
@@ -135,7 +136,7 @@ def predict_and_resize(x, y, default_med, gc_model, sz_model):
 def refined_predict_and_resize(x, y, default_med, gc_model, device, patch_per_batch, patch_size, min_overlap):
         x = torch.unsqueeze(x, dim=0)
         im_dims = (x.shape[2], x.shape[3])
-        sample_data, _ = generate_patches(x, y, patch=patch_size, min_overlap=min_overlap, eval=True)
+        sample_data, _ = generate_patches(x, y, patch=patch_size, min_overlap=min_overlap, lbl_flows=False)
         with torch.no_grad():
             predictions = torch.tensor([]).to(device)
             for patch_ind in range(0, len(sample_data), patch_per_batch):
@@ -200,28 +201,30 @@ def followflows(flows):
 
 # Generate patches of input to be passed into model. Currently set to 64x64 patches with at least 32x32 overlap
 # - image should also already be resized such that median cell diameter is 32
-def generate_patches(data, label=None, eval=False, patch=(96, 96), min_overlap=(64, 64)):
+def generate_patches(data, label=None, patch=(96, 96), min_overlap=(64, 64), lbl_flows=False):
     num_x_patches = math.ceil((data.shape[3] - min_overlap[0]) / (patch[0] - min_overlap[0]))
     x_patches = np.linspace(0, data.shape[3] - patch[0], num_x_patches, dtype=int)
     num_y_patches = math.ceil((data.shape[2] - min_overlap[1]) / (patch[1] - min_overlap[1]))
     y_patches = np.linspace(0, data.shape[2] - patch[1], num_y_patches, dtype=int)
 
     patch_data = torch.empty((data.shape[0] * num_x_patches * num_y_patches, data.shape[1], patch[0], patch[1]))
-    if eval:
-        patch_label = torch.empty((label.shape[0] * num_x_patches * num_y_patches, patch[0], patch[1]))
+    if lbl_flows:
+        patch_label = torch.empty((num_x_patches * num_y_patches, 3, patch[0], patch[1]))
     else:
-        patch_label = torch.empty((label.shape[0] * num_x_patches * num_y_patches, 3, patch[0], patch[1]))
+        patch_label = torch.empty((label.shape[0] * num_x_patches * num_y_patches, patch[0], patch[1]))
 
-    for b in range(data.shape[0]):
-        for i in range(num_x_patches):
-            for j in range(num_y_patches):
-                d_patch = data[b, :, y_patches[j]:y_patches[j] + patch[1], x_patches[i]:x_patches[i] + patch[0]]
-                patch_data[(b * num_y_patches * num_x_patches) + (num_y_patches * i + j)] = d_patch
-                if eval:
-                    l_patch = label[b, y_patches[j]:y_patches[j] + patch[1], x_patches[i]:x_patches[i] + patch[0]]
-                else:
-                    l_patch = label[b, :, y_patches[j]:y_patches[j] + patch[1], x_patches[i]:x_patches[i] + patch[0]]
-                patch_label[(b * num_y_patches * num_x_patches) + (num_y_patches * i + j)] = l_patch
+    # for b in range(data.shape[0]):
+    for i in range(num_x_patches):
+        for j in range(num_y_patches):
+            d_patch = data[0, :, y_patches[j]:y_patches[j] + patch[1], x_patches[i]:x_patches[i] + patch[0]]
+            # patch_data[(0 * num_y_patches * num_x_patches) + (num_y_patches * i + j)] = d_patch
+            patch_data[num_y_patches * i + j] = d_patch
+            if lbl_flows:
+                l_patch = label[:, y_patches[j]:y_patches[j] + patch[1], x_patches[i]:x_patches[i] + patch[0]]
+            else:
+                l_patch = label[0, y_patches[j]:y_patches[j] + patch[1], x_patches[i]:x_patches[i] + patch[0]]
+            patch_label[num_y_patches * i + j] = l_patch
+            # patch_label[(0 * num_y_patches * num_x_patches) + (num_y_patches * i + j)] = l_patch
 
     return patch_data, patch_label
 

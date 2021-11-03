@@ -135,7 +135,7 @@ if not args.eval_only:
         train_dataset = CellTransposeData('Training', args.train_dataset, args.n_chan, do_3D=args.do_3D, from_3D=args.train_from_3D,
                                           resize=Resize(args.median_diams, args.patch_size, args.min_overlap,
                                                    use_labels=True, patch_per_batch=args.batch_size))
-        train_dataset.process_training_data(args.patch_size, args.min_overlap)
+        train_dataset.process_training_data(args.patch_size, args.min_overlap, has_flows=False)
     if args.save_dataset:
         print('Saving Training Dataset... ', end='')
         save(train_dataset, args.save_dataset)
@@ -164,7 +164,8 @@ if not args.eval_only:
                                            resize=Resize(args.median_diams, args.patch_size, args.min_overlap,
                                                     use_labels=True, patch_per_batch=args.batch_size))
 
-        target_dataset.process_training_data(args.patch_size, args.min_overlap, batch_size=args.batch_size)
+        target_dataset.process_training_data(args.patch_size, args.min_overlap,
+                                             batch_size=args.batch_size, has_flows=True)
         rs = RandomSampler(target_dataset, replacement=False)
         bs = BatchSampler(rs, args.batch_size, True)
         target_dl = DataLoader(target_dataset, batch_sampler=bs)
@@ -228,10 +229,10 @@ if not args.train_only:
         true_count = 0
         for i in range(len(test_dataset)):
             num_masks = len(np.unique(masks[i]))-1
-            num_predicted = len(np.unique(test_dataset.labels[i]))-1
-            cc.write('{}:\nPredicted: {}; True: {}\n'.format(test_dataset.d_list[i], num_masks, num_predicted))
+            num_labels = len(np.unique(test_dataset.labels[i]))-1
+            cc.write('{}:\nPredicted: {}; True: {}\n'.format(test_dataset.d_list[i], num_masks, num_labels))
             predicted_count += num_masks
-            true_count += num_predicted
+            true_count += num_labels
         cc.write('\nTotal cell count:\nPredicted: {}; True: {}\n'.format(predicted_count, true_count))
         counting_error = (abs(true_count - predicted_count)) / true_count
         cc.write('Total counting error rate: {:.6f}'.format(counting_error))
@@ -245,7 +246,7 @@ if not args.train_only:
             for l in test_dataset.l_list:
                 label = as_tensor(cv2.imread(l, -1).astype('int16'))
                 # label = as_tensor(tifffile.imread(l).astype('int16'))
-                label = squeeze(reformat(label), dim=0).numpy()
+                label = squeeze(reformat(label), dim=0).numpy().astype('int16')
                 labels.append(label)
             tau = np.arange(0.0, 1.01, 0.01)
             ap_info = average_precision(labels, masks, threshold=tau)
@@ -274,4 +275,4 @@ if not args.train_only:
 
 print(args.results_dir)
 
-produce_logfile(args, len(train_losses), ttt, tte, num_workers)
+produce_logfile(args, len(train_losses) if train_losses is not None else None, ttt, tte, num_workers)
