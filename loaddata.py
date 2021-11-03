@@ -220,7 +220,7 @@ class CellTransposeData(Dataset):
         new_original_dims = []
         for (data, labels, label_fname, original_dim) in tzip(self.data, self.labels, self.l_list, self.original_dims,
                                                               desc='Processing Validation Dataset...'):
-            if data.shape[1] >= 224 and data.shape[2] >= 224:
+            if data.shape[1] >= patch_size[0] and data.shape[2] >= patch_size[1]:
                 data, labels = generate_patches(unsqueeze(data, 0), labels, patch=patch_size,
                                                 min_overlap=min_overlap, lbl_flows=False)
                 labels = as_tensor([labels_to_flows(labels[i].numpy()) for i in range(len(labels))])
