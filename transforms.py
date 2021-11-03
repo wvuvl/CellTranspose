@@ -72,10 +72,10 @@ class Resize(object):
                 self.min_overlap = min_overlap
                 self.patch_size = patch_size
 
-    def __call__(self, x, y, pf=None):
+    def __call__(self, x, y, pf=None, margin = 1.0):
         original_dims = y.shape[1], y.shape[2]
         if self.use_labels:
-            x, y = resize_from_labels(x, y, self.default_med, pf)
+            x, y = resize_from_labels(x, y, self.default_med, pf, margin= margin)
             return x, y, original_dims
         else:
             x, y = predict_and_resize(x, y, self.default_med, self.gc_model, self.sz_model)  # TODO: Add pf here
@@ -85,11 +85,13 @@ class Resize(object):
             return x, y, original_dims
 
 
-def resize_from_labels(x, y, default_med, pf=None):
+def resize_from_labels(x, y, default_med, pf=None, margin = 1.0):
     # calculate diameters using only full cells in image - remove cut off cells during median diameter calculation
     y_cf = copy.deepcopy(torch.squeeze(y, dim=0))
     y_cf = remove_cut_cells(y_cf)
-    med = diam_range(y_cf)
+
+    med = diam_range(y_cf)*margin
+    
     # med, cts = diameters(y_cf)
     if med > 0:
         rescale_w, rescale_h = default_med[0] / med, default_med[1] / med

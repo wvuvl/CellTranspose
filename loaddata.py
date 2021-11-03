@@ -11,6 +11,7 @@ from tqdm import tqdm
 from tqdm.contrib import tzip
 import tifffile
 import cv2
+import random
 
 from transforms import reformat, normalize1stto99th, Resize, random_horizontal_flip,\
     random_rotate, labels_to_flows, generate_patches, remove_empty_label_patches, remove_cut_cells
@@ -165,6 +166,18 @@ class CellTransposeData(Dataset):
     def __len__(self):
         return len(self.data_samples)
 
+    def __getitem__(self, index):
+        if self.evaluate:
+            return self.data_samples[index], self.label_samples[index], self.l_list[index], self.original_dims[index]
+        else:
+            return self.data_samples[index], self.label_samples[index]
+
+
+class TrainCellTransposeData(CellTransposeData):
+    def __init__(self, split_name, data_dirs, n_chan, pf_dirs=None, do_3D=False, from_3D=False, evaluate=False, resize: Resize = None):
+        self.resize = resize
+        super().__init__(split_name, data_dirs, n_chan, pf_dirs=pf_dirs, do_3D=do_3D, from_3D=from_3D, evaluate=evaluate, resize=None)
+
     # Augmentations and tiling applied to input data (for training and adaptation) -
     # separated from DataLoader to allow for possibility of running only once or once per epoch
     # NOTE: ltf takes ~50% of time; generating patches and concatenating takes nearly as long
@@ -173,8 +186,12 @@ class CellTransposeData(Dataset):
         self.data_samples = tensor([])
         self.label_samples = tensor([])
         samples_generated = []
+        
         for (data, labels) in tzip(self.data, self.labels, desc='Processing {} Dataset...'.format(self.split_name)):
             try:
+                
+                data, labels, dim= self.resize(data, labels, margin = random.uniform(0.75, 1.25))
+
                 data, labels = random_horizontal_flip(data, labels)
                 data, labels = random_rotate(data, labels)
 
@@ -211,12 +228,17 @@ class CellTransposeData(Dataset):
         print('Number of generated samples: {}'.format(len(self.data_samples)))
         print(samples_generated)
 
+class ValTestCellTransposeData(CellTransposeData):
+
+    def __init__(self, split_name, data_dirs, n_chan, pf_dirs=None, do_3D=False, from_3D=False, evaluate=False, resize: Resize = None):
+        super().__init__(split_name, data_dirs, n_chan, pf_dirs=pf_dirs, do_3D=do_3D, from_3D=from_3D, evaluate=evaluate, resize=resize)
+
     # Generates patches for validation dataset - only happens once
     def pre_generate_validation_patches(self, patch_size, min_overlap):
         self.data_samples = tensor([])
         self.label_samples = tensor([])
         new_l_list = []
-        new_original_dims = []
+        new_original_dims = [] 
         for (data, labels, label_fname, original_dim) in tzip(self.data, self.labels, self.l_list, self.original_dims,
                                                               desc='Processing Validation Dataset...'):
             if data.shape[1] >= 224 and data.shape[2] >= 224:
@@ -231,9 +253,3 @@ class CellTransposeData(Dataset):
                     new_original_dims.append(original_dim)
         self.l_list = new_l_list
         self.original_dims = new_original_dims
-
-    def __getitem__(self, index):
-        if self.evaluate:
-            return self.data_samples[index], self.label_samples[index], self.l_list[index], self.original_dims[index]
-        else:
-            return self.data_samples[index], self.label_samples[index]

@@ -134,7 +134,7 @@ if not args.eval_only:
         train_dataset = CellTransposeData('Training', args.train_dataset, args.n_chan, do_3D=args.do_3D, from_3D=args.train_from_3D,
                                           resize=Resize(args.median_diams, args.patch_size, args.min_overlap,
                                                    use_labels=True, patch_per_batch=args.batch_size))
-        train_dataset.process_training_data(args.patch_size, args.min_overlap)
+        train_dataset.process_training_data(args.patch_size, args.min_overlap)   
     if args.save_dataset:
         print('Saving Training Dataset... ', end='')
         save(train_dataset, args.save_dataset)
