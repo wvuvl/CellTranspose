@@ -3,8 +3,10 @@ Data Loader implementation, specifically designed for in-house datasets. Code wi
 custom dataloaders for new data.
 """
 import numpy as np
+import torch
 from torch.utils.data import Dataset
 from torch import as_tensor, tensor, cat, unsqueeze, randperm, float32
+import torch.nn.functional as F
 import os
 import math
 from tqdm import tqdm
@@ -174,28 +176,63 @@ class CellTransposeData(Dataset):
             return self.data_samples[index], self.label_samples[index]
 
 class TrainCellTransposeData(CellTransposeData):
-    def __init__(self, split_name, data_dirs, n_chan, pf_dirs=None, do_3D=False, from_3D=False, evaluate=False, resize: Resize = None):
+    def __init__(self, split_name, data_dirs, n_chan, pf_dirs=None, do_3D=False, from_3D=False, evaluate=False, resize: Resize = None, patches_per_img = 1):
+        self.patches_per_img = patches_per_img
         super().__init__(split_name, data_dirs, n_chan, pf_dirs=pf_dirs, do_3D=do_3D, from_3D=from_3D, evaluate=evaluate, resize=None)
 
     
+    def train_generate_rand_crop(self,data, label=None, crop=(96, 96), lbl_flows=False):
+        
+        if data.shape[3] < crop[0]: 
+            pad_x = math.ceil((crop[0]-data.shape[3])/2)
+            data = F.pad(data,(pad_x,pad_x))
+        
+        if data.shape[2] < crop[1]:
+            pad_y = math.ceil((crop[1]-data.shape[2])/2)
+            data = F.pad(data,(0,0,pad_y,pad_y))
+
+        x_max = data.shape[3] - crop[0]
+        y_max = data.shape[2] - crop[1]
+        
+        patch_data = torch.empty((data.shape[0] * 1 * 1, data.shape[1], crop[0], crop[1]))
+        if lbl_flows:
+            patch_label = torch.empty((1 * 1, 3, crop[0], crop[1]))
+        else:
+            patch_label = torch.empty((label.shape[0] * 1 * 1, crop[0], crop[1]))
+
+        i = random.randint(0,x_max)
+        j = random.randint(0,y_max)
+
+        d_patch = data[0, :, j:j + crop[1], i:i + crop[0]]
+        
+        patch_data[1 * i + j] = d_patch
+
+        if lbl_flows:
+            l_patch = label[:, j:j + crop[1], i:i + crop[0]]
+        else:
+            l_patch = label[0, j:j + crop[1], i:i + crop[0]]
+        patch_label[1 * i + j] = l_patch
+            
+
+        return patch_data, patch_label
     
     # Augmentations and tiling applied to input data (for training and adaptation) -
     # separated from DataLoader to allow for possibility of running only once or once per epoch
     # NOTE: ltf takes ~50% of time; generating patches and concatenating takes nearly as long
     # TODO: Save generated training data? Massively increase time to train
-    def process_training_data(self, patch_size, min_overlap, batch_size=None, has_flows=False):
+    def process_training_data(self, crop_size, min_overlap, batch_size=None, has_flows=False):
         self.data_samples = tensor([])
         self.label_samples = tensor([])
         samples_generated = []
         for (data, labels) in tzip(self.data, self.labels, desc='Processing {} Dataset...'.format(self.split_name)):
             try:
-                data, labels, dim= self.resize(data, labels, margin = random.uniform(0.75, 1.25))
+                data, labels, dim= self.resize(data, labels, random_scale = random.uniform(0.75, 1.25))
 
                 data, labels = random_horizontal_flip(data, labels)
                 # data, labels = random_rotate(data, labels)
 
-                data, labels = generate_patches(unsqueeze(data, 0), labels, patch=patch_size,
-                                                min_overlap=min_overlap, lbl_flows=has_flows)
+                data, labels = self.train_generate_rand_crop(unsqueeze(data, 0), labels, crop=crop_size, lbl_flows=has_flows)
+
                 if labels.ndim == 3:
                     labels = as_tensor([labels_to_flows(labels[i].numpy()) for i in range(len(labels))], dtype=float32)
                 # else:
@@ -208,13 +245,15 @@ class TrainCellTransposeData(CellTransposeData):
                 # data, labels = generate_patches(unsqueeze(data, 0), labels, patch=patch_size, min_overlap=min_overlap)
 
                 if len(data) > 6:
-                    rp = randperm(len(data))[:6]
-                    data = data[rp]
+                    rp     = randperm(len(data))[:6]
+                    data   = data[rp]
                     labels = labels[rp]
+                    
                 # labels = remove_cut_cells(labels, flows=True)
                 self.data_samples = cat((self.data_samples, data))
                 self.label_samples = cat((self.label_samples, labels))
                 samples_generated.append(len(data))
+
             except RuntimeError:
                 print('Caught Size Mismatch.')
                 samples_generated.append(-1)
@@ -231,7 +270,6 @@ class TrainCellTransposeData(CellTransposeData):
 class ValTestCellTransposeData(CellTransposeData):
     def __init__(self, split_name, data_dirs, n_chan, pf_dirs=None, do_3D=False, from_3D=False, evaluate=False, resize: Resize = None):
         super().__init__(split_name, data_dirs, n_chan, pf_dirs=pf_dirs, do_3D=do_3D, from_3D=from_3D, evaluate=evaluate, resize=resize)
-
 
     # Generates patches for validation dataset - only happens once
     def pre_generate_validation_patches(self, patch_size, min_overlap):
