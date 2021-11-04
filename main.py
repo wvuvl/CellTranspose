@@ -94,8 +94,11 @@ num_workers = device_count()
 device = device('cuda' if is_available() else 'cpu')
 empty_cache()
 
+
+
 args.median_diams = (args.median_diams, args.median_diams)
 args.patch_size = (args.patch_size, args.patch_size)
+
 args.min_overlap = (args.min_overlap, args.min_overlap)
 ttt = None
 tte = None
@@ -133,9 +136,10 @@ if not args.eval_only:
         print('Done.')
     else:
         train_dataset = TrainCellTransposeData('Training', args.train_dataset, args.n_chan, do_3D=args.do_3D, from_3D=args.train_from_3D,
-                                          resize=Resize(args.median_diams, args.patch_size, args.min_overlap,
+                                            crop_size=args.patch_size, has_flows=False,
+                                            resize=Resize(args.median_diams, args.patch_size, args.min_overlap,
                                                    use_labels=True, patch_per_batch=args.batch_size))
-        train_dataset.process_training_data(args.patch_size, args.min_overlap, has_flows=False)
+        #train_dataset.process_training_data(args.patch_size, args.min_overlap, has_flows=False)
     if args.save_dataset:
         print('Saving Training Dataset... ', end='')
         save(train_dataset, args.save_dataset)
@@ -161,11 +165,12 @@ if not args.eval_only:
         c_flow_loss = ContrastiveFlowLoss()
         target_dataset = TrainCellTransposeData('Target', args.target_dataset, args.n_chan, pf_dirs=args.target_flows,
                                            do_3D=args.do_3D, from_3D=args.target_from_3D,
+                                           crop_size=args.patch_size, has_flows=False,
                                            resize=Resize(args.median_diams, args.patch_size, args.min_overlap,
                                                     use_labels=True, patch_per_batch=args.batch_size))
 
-        target_dataset.process_training_data(args.patch_size, args.min_overlap,
-                                             batch_size=args.batch_size, has_flows=True)
+        #target_dataset.process_training_data(args.patch_size, args.min_overlap, batch_size=args.batch_size, has_flows=True)
+        
         rs = RandomSampler(target_dataset, replacement=False)
         bs = BatchSampler(rs, args.batch_size, True)
         target_dl = DataLoader(target_dataset, batch_sampler=bs)
@@ -270,6 +275,7 @@ if not args.train_only:
             false_error = (fp_overall[51] + fn_overall[51]) / (tp_overall[51] + fn_overall[51])
             cc.write('Total false error rate: {:.6f}'.format(false_error))
             print('Total false error rate: {:.6f}'.format(false_error))
+            
             with open(os.path.join(args.results_dir, '{}_AP_Results.pkl'.format(args.dataset_name)), 'wb') as apr:
                 pickle.dump((tau, ap_overall, tp_overall, fp_overall, fn_overall, false_error), apr)
 
