@@ -1,5 +1,5 @@
 import argparse
-from torch.utils.data import DataLoader, RandomSampler, BatchSampler
+from torch.utils.data import DataLoader
 from torch import nn, device, load, save, squeeze, as_tensor
 from torch.cuda import is_available, device_count, empty_cache
 from torch.optim import SGD
@@ -14,8 +14,8 @@ import time
 
 from transforms import Resize, reformat
 from loaddata import TrainCellTransposeData, ValTestCellTransposeData
-from CellTranspose2D import CellTranspose, SizeModel, ClassLoss, FlowLoss, SASClassLoss, ContrastiveFlowLoss
-from train_eval import train_network, adapt_network, eval_network
+from CellTranspose2D import CellTranspose, SizeModel, ClassLoss, FlowLoss
+from train_eval import train_network, eval_network
 from cellpose_src.metrics import average_precision
 from misc_utils import produce_logfile
 
@@ -43,8 +43,6 @@ parser.add_argument('--train-only', help='Only perform training, no evaluation (
 parser.add_argument('--eval-only', help='Only perform evaluation, no training (mutually exclusive with "train-only").',
                     action='store_true',)
 parser.add_argument('--pretrained-model', help='Location of pretrained model to load in. Default: None')
-parser.add_argument('--do-adaptation', help='Whether to perform domain adaptation or standard training.',
-                    action='store_true')
 parser.add_argument('--do-3D', help='Whether or not to use CellTranspose3D (Must use 3D volumes).',
                     action='store_true')
 parser.add_argument('--train-dataset', help='The directory(s) containing (source) data to be used for training.',
@@ -61,13 +59,6 @@ parser.add_argument('--test-from-3D', help='Whether the input test data is 3D: a
                     action='store_true')
 parser.add_argument('--test-use-labels', help='Whether to use labels for resizing test data.',
                     action='store_true')
-parser.add_argument('--target-dataset',
-                    help='The directory containing target data to be used for domain adaptation. Note: if do-adaptation'
-                         ' is set to False, this parameter will be ignored.', nargs='+')
-parser.add_argument('--target-from-3D', help='Whether the input target data is 3D: assumes 2D if set to False.',
-                    action='store_true')
-parser.add_argument('--target-flows', help='The directory(s) containing pre-calculated flows. If left empty, '
-                                           'flows will be calculated manually.', nargs='+')
 parser.add_argument('--cellpose-model',
                     help='Location of the generalized CellTranspose model to use for diameter estimation.')
 parser.add_argument('--size-model', help='Location of the generalized size model to use for diameter estimation.')
@@ -157,27 +148,10 @@ if not args.eval_only:
         val_dl = None
         print('No validation data given --> skipping validation.')
 
-    if args.do_adaptation:
-        sas_class_loss = SASClassLoss(nn.BCEWithLogitsLoss(reduction='mean'))
-        c_flow_loss = ContrastiveFlowLoss(nn.MSELoss(reduction='mean'))
-        target_dataset = TrainCellTransposeData('Target', args.target_dataset, args.n_chan, pf_dirs=args.target_flows,
-                                                do_3D=args.do_3D, from_3D=args.target_from_3D,
-                                                crop_size=args.patch_size, has_flows=False,
-                                                resize=Resize(args.median_diams, args.patch_size, args.min_overlap,
-                                                              use_labels=True, patch_per_batch=args.batch_size))
-        #target_dataset.process_training_data(args.patch_size, args.min_overlap, batch_size=args.batch_size, has_flows=True)
-        rs = RandomSampler(target_dataset, replacement=False)
-        bs = BatchSampler(rs, args.batch_size, True)
-        target_dl = DataLoader(target_dataset, batch_sampler=bs)
-
-        start_train = time.time()
-        train_losses, val_losses = adapt_network(model, train_dl, target_dl, val_dl, sas_class_loss, c_flow_loss,
-                                                 class_loss, flow_loss, optimizer=optimizer, scheduler=scheduler,
-                                                 device=device, n_epochs=args.epochs)
-    else:
-        start_train = time.time()
-        train_losses, val_losses = train_network(model, train_dl, val_dl, class_loss, flow_loss,
-                                                 optimizer=optimizer, scheduler=scheduler, device=device, n_epochs=args.epochs)
+    
+    start_train = time.time()
+    train_losses, val_losses = train_network(model, train_dl, val_dl, class_loss, flow_loss,
+                                                optimizer=optimizer, scheduler=scheduler, device=device, n_epochs=args.epochs)
     save(model.state_dict(), os.path.join(args.results_dir, 'trained_model.pt'))
     end_train = time.time()
     ttt = time.strftime("%H:%M:%S", time.gmtime(end_train - start_train))
