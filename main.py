@@ -84,8 +84,8 @@ args = parser.parse_args()
 
 print(args.results_dir)
 
-#assert not os.path.exists(args.results_dir),\
-#    'Results folder {} currently exists; please specify new location to save results.'.format(args.results_dir)
+assert not os.path.exists(args.results_dir),\
+    'Results folder {} currently exists; please specify new location to save results.'.format(args.results_dir)
 os.mkdir(args.results_dir)
 os.mkdir(os.path.join(args.results_dir, 'tiff_results'))
 os.mkdir(os.path.join(args.results_dir, 'raw_predictions_tiffs'))
@@ -93,8 +93,6 @@ assert not (args.train_only and args.eval_only), 'Cannot pass in "train-only" an
 num_workers = device_count()
 device = device('cuda' if is_available() else 'cpu')
 empty_cache()
-
-
 
 args.median_diams = (args.median_diams, args.median_diams)
 args.patch_size = (args.patch_size, args.patch_size)
