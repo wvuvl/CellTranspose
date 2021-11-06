@@ -40,13 +40,7 @@ class SASClassLoss:
     def __init__(self, sas_class_loss):
         self.class_loss = sas_class_loss
 
-    def __call__(self, g_source, lbl_source, g_target, lbl_target, margin=1, gamma_1=0.2, gamma_2=0.5):
-        # foreground_mask = lbl_source
-
-        match_mask = torch.eq(lbl_source, lbl_target)  # Mask where each pixel is 1 (source GT = target GT) or 0 (source GT != target GT)
-        # st_dist = torch.linalg.norm(g_source - g_target) / g_source.data.nelement()
-        # dist = 0.5 * torch.square(g_source - g_target)
-
+    def __call__(self, g_source, lbl_source, g_target, lbl_target, margin=1, gamma_1=0.1, gamma_2=0.5):
         frgd_mask = torch.logical_and(lbl_source, lbl_target)
         frgd_count = torch.count_nonzero(frgd_mask)
         bkgd_mask = torch.logical_and(torch.logical_not(lbl_source), torch.logical_not(lbl_target))
@@ -57,34 +51,75 @@ class SASClassLoss:
         tns_count = torch.count_nonzero(t_not_s_mask)
 
         sa_loss = gamma_1 * 0.5 * torch.square(g_source - g_target)
-        sa_loss = (frgd_mask * sa_loss)*((frgd_count + bkgd_count)/frgd_count) + (bkgd_mask * sa_loss)*((frgd_count + bkgd_count)/bkgd_count)
+        sa_loss = gamma_2 * (frgd_mask * sa_loss)*((frgd_count + bkgd_count)/(frgd_count+1)) + (bkgd_mask * sa_loss)*((frgd_count + bkgd_count)/(bkgd_count+1))
         s_loss = gamma_1 * 0.5 * torch.square(torch.max(torch.tensor(0).to(torch.device('cuda' if torch.cuda.is_available() else 'cpu')), margin - torch.abs(g_source - g_target)))
-        # s_loss = (~match_mask * s_loss)/(snt_count + tns_count)
-        s_loss = (s_not_t_mask * s_loss)*((snt_count + tns_count)/snt_count) + (t_not_s_mask * s_loss)*((snt_count + tns_count)/tns_count)
+        s_loss = (1-gamma_2) * (s_not_t_mask * s_loss)*((snt_count + tns_count)/(snt_count+1)) + (t_not_s_mask * s_loss)*((snt_count + tns_count)/(tns_count+1))
 
-        # sa_loss = (1 - gamma_1) * 0.5 * torch.square(st_dist)
-        # s_loss = (1 - gamma_1) * 0.5 * torch.square(torch.max(torch.tensor(0).to(torch.device('cuda' if torch.cuda.is_available() else 'cpu')), margin - st_dist))
-        source_class_loss = (1 - gamma_1) * self.class_loss(g_source, lbl_source)
-        # target_class_loss = gamma_1 * self.class_loss(g_target, lbl_target)
+        source_class_loss = (1-gamma_1) * self.class_loss(g_source, lbl_source)
 
-        # loss = torch.mean(match_mask * sa_loss + (~match_mask * s_loss) + source_class_loss)
         loss = torch.mean(sa_loss + s_loss) + source_class_loss
-        # loss = torch.mean(match_mask * sa_loss + (~match_mask * s_loss)) + target_class_loss
-        # print(loss)
         return loss
 
 
 class ContrastiveFlowLoss:
-    def __init__(self):
-        # self.loss = c_flow_loss
+    def __init__(self, c_flow_loss):
+        self.flow_loss = c_flow_loss
         return
 
-    def __call__(self, z_source, lbl_source, z_target, lbl_target, temperature=0.1):
-        # z = torch.matmul(torch.transpose(torch.flatten(lbl_source, 2, -1), 1, 2),
-        #                  torch.flatten(lbl_target, 2, -1)).view(-1, 112, 112, 112 * 112)
-        # z_v, z_i = torch.max(z, dim=-1)
+    def __call__(self, z_source, lbl_source, z_target, lbl_target, k=10, lmda=1e-1, hardness_thresh=0.7, temperature=0.1):
 
-        return
+        # Normalize labels and outputs
+        z_source = torch.div(z_source, torch.linalg.norm(z_source, dim=1)[:, None, :])
+        z_target = torch.div(z_target, torch.linalg.norm(z_target, dim=1)[:, None, :])
+        flow_source = lbl_source[:, 1:]
+        mask_target = lbl_target[:, 0]
+        flow_target = lbl_target[:, 1:]
+        flow_target = torch.div(flow_target, torch.linalg.norm(flow_target, dim=1)[:, None, :])
+        flow_target[flow_target != flow_target] = 0
+
+        # similarity between target label and source output
+        lbl_match = torch.matmul(torch.transpose(torch.flatten(flow_target, 2, -1), 1, 2),
+                                 torch.flatten(z_source.detach(), 2, -1)).reshape(-1, 112, 112, 112, 112)
+
+        # position of highest similarity source label vector for each target label vector
+        # p_v, p_i = torch.max(lbl_match.view(-1, 112, 112, 112 * 112), dim=-1)
+        p_i = torch.argmax(lbl_match.view(-1, 112, 112, 112 * 112), dim=-1)
+        p_i_new = torch.cat((torch.div(p_i[None, :], 112, rounding_mode='floor'), p_i[None, :] % 112))
+        # Match target output with source output vectors
+        pos = torch.zeros(z_source.shape).to('cuda')
+        for b in range(pos.shape[0]):
+            for c in range(pos.shape[1]):
+                pos[b][c] = torch.take(z_source[b][c], p_i[b])
+        # Numerator: temperature-modified exponent of the normalized dot product
+        # of the target output and selected positive sample for each pixel
+        num = torch.sum(torch.mul(z_target, pos), dim=1)
+        num = torch.exp(num)
+        # num = torch.where(mask_target == 0, num, torch.tensor(0.0).to('cuda'))
+        # num = torch.mul(num, mask_target)
+
+        # Denominator: similar to numerator, but summed across each target output
+        # pixel to ALL sample pixels in source output
+        smpls = torch.matmul(torch.transpose(torch.flatten(z_target, 2, -1), 1, 2),
+                                 torch.flatten(z_source, 2, -1)).view(-1, 112, 112, 112 * 112)
+        # smpls = torch.sigmoid((smpls - hardness_thresh) * 100)
+        smpls = torch.where(smpls < hardness_thresh, smpls, torch.tensor(0.0).to('cuda'))
+        top_n = torch.topk(smpls, k, dim=-1).values
+        # smpls = torch.where(smpls < 0.9, smpls, torch.tensor(0.0).to('cuda'))
+        # smpls = torch.where(smpls > hardness_thresh and smpls < 0.9, smpls, torch.tensor(0.0).to('cuda'))
+        # den = torch.sum(torch.exp(top_n / temperature), dim=-1)
+        top_n = torch.exp(top_n)
+        den = torch.cat((torch.unsqueeze(num, -1), top_n), dim=-1)
+        den = torch.sum(den, dim=-1)
+        # NOTE: CONCAT NUM TO DEN IF NOT INCLUDED
+        # den = torch.mul(den, mask_target)
+        loss = torch.div(num, den)
+        loss = -torch.log(loss)
+        # loss = torch.where(loss > 0, -torch.log(loss), torch.tensor(0.0).to('cuda'))
+
+        source_flow_loss = self.flow_loss(z_source, flow_source)
+
+        loss = lmda * torch.mean(loss) + (1 - lmda) * source_flow_loss
+        return loss
 
 
 def conv_block(in_feat, out_feat):

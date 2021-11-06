@@ -70,6 +70,10 @@ def adapt_network(model: nn.Module, source_dl, target_dl, val_dl, sas_class_loss
         try:
             model.train()
             train_epoch_losses = []
+            train_adaptation_class_losses = []
+            train_adaptation_flow_losses = []
+            train_target_class_losses = []
+            train_target_flow_losses = []
             target_dl_iter = iter(target_dl)
             for i, (source_sample_data, source_sample_labels) in enumerate(tqdm(
                     source_dl, desc='Training - Epoch {}/{}'.format(e, n_epochs))):
@@ -88,22 +92,26 @@ def adapt_network(model: nn.Module, source_dl, target_dl, val_dl, sas_class_loss
                 target_sample_labels = target_sample[1].to(device)
                 target_output = model(target_sample_data)
                 # source_class_loss = class_loss(source_output, source_sample_labels)
-                # target_class_loss = class_loss(target_output, target_sample_labels)
+                target_class_loss = class_loss(target_output, target_sample_labels)
                 # source_grad_loss = flow_loss(source_output, source_sample_labels)
-                target_grad_loss = flow_loss(target_output, target_sample_labels)
+                target_flow_loss = flow_loss(target_output, target_sample_labels)
                 adaptation_class_loss = sas_class_loss(source_output[:, 0], source_sample_labels[:, 0],
                                                        target_output[:, 0], target_sample_labels[:, 0],
-                                                       margin=1, gamma_1=0.1, gamma_2=0.5)
-                adaptation_flow_loss = c_flow_loss(source_output[:, 1:], source_sample_labels[:, 1:],
-                                                   target_output[:, 1:], target_sample_labels[:, 1:],
-                                                   temperature=0.1)
+                                                       margin=10, gamma_1=0.2, gamma_2=0.5)
+                adaptation_flow_loss = c_flow_loss(source_output[:, 1:], source_sample_labels,
+                                                   target_output[:, 1:], target_sample_labels,
+                                                   k=2, lmda=1e-1, hardness_thresh=0.7, temperature=0.1)
 
-                # train_loss = target_class_loss + target_grad_loss
-                train_loss = adaptation_class_loss + target_grad_loss
-                # train_loss = adaptation_class_loss + source_grad_loss + target_grad_loss
+                train_loss = adaptation_class_loss + adaptation_flow_loss
                 train_epoch_losses.append(train_loss.item())
+                train_adaptation_class_losses.append(adaptation_class_loss.item())
+                train_adaptation_flow_losses.append(adaptation_flow_loss.item())
+                train_target_class_losses.append(target_class_loss.item())
+                train_target_flow_losses.append(target_flow_loss.item())
                 train_loss.backward()
                 optimizer.step()
+
+            print('stop here')
 
             scheduler.step()
             train_losses.append(mean(train_epoch_losses))

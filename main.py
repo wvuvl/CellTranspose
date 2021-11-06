@@ -158,7 +158,7 @@ if not args.eval_only:
 
     if args.do_adaptation:
         sas_class_loss = SASClassLoss(nn.BCEWithLogitsLoss(reduction='mean'))
-        c_flow_loss = ContrastiveFlowLoss()
+        c_flow_loss = ContrastiveFlowLoss(nn.MSELoss(reduction='mean'))
         target_dataset = CellTransposeData('Target', args.target_dataset, args.n_chan, pf_dirs=args.target_flows,
                                            do_3D=args.do_3D, from_3D=args.target_from_3D,
                                            resize=Resize(args.median_diams, args.patch_size, args.min_overlap,
