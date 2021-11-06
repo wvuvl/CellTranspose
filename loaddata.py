@@ -2,18 +2,17 @@
 Data Loader implementation, specifically designed for in-house datasets. Code will be designed to reflect flexibility in
 custom dataloaders for new data.
 """
-import numpy as np
 from torch.utils.data import Dataset
-from torch import as_tensor, tensor, cat, unsqueeze, randperm, float32
+from torch import empty, as_tensor, tensor, cat, unsqueeze, float32
+import torch.nn.functional as F
 import os
 import math
 from tqdm import tqdm
 from tqdm.contrib import tzip
 import tifffile
 import cv2
-
-from transforms import reformat, normalize1stto99th, Resize, random_horizontal_flip,\
-    random_rotate, labels_to_flows, generate_patches, remove_empty_label_patches, remove_cut_cells
+import random
+from transforms import reformat, normalize1stto99th, Resize, random_horizontal_flip, labels_to_flows, generate_patches
 
 import matplotlib.pyplot as plt
 
@@ -161,56 +160,93 @@ class CellTransposeData(Dataset):
                     self.labels.append(new_label)
         self.data_samples = self.data
         self.label_samples = self.labels
+        print(f"Number of samples in {split_name} Dataset: {len(self.data)}")
 
     def __len__(self):
-        return len(self.data_samples)
+        return len(self.data) #return len(self.data_samples)
 
+
+class TrainCellTransposeData(CellTransposeData):
+    def __init__(self, split_name, data_dirs, n_chan, pf_dirs=None, do_3D=False, from_3D=False, evaluate=False,
+                 crop_size=(96, 96), has_flows=False, resize: Resize=None):
+        self.resize = resize
+        self.crop_size = crop_size
+        self.has_flows = has_flows
+        super().__init__(split_name, data_dirs, n_chan, pf_dirs=pf_dirs, do_3D=do_3D,
+                         from_3D=from_3D, evaluate=evaluate, resize=None)
+
+    def train_generate_rand_crop(self, data, label=None, crop=(96, 96), lbl_flows=False):
+        if data.shape[3] < crop[0]: 
+            pad_x = math.ceil((crop[0]-data.shape[3])/2)
+            data = F.pad(data, (pad_x, pad_x))
+            label = F.pad(label, (pad_x, pad_x))
+
+        if data.shape[2] < crop[1]:
+            pad_y = math.ceil((crop[1]-data.shape[2])/2)
+            data = F.pad(data, (0, 0, pad_y, pad_y))
+            label = F.pad(label, (0, 0, pad_y, pad_y))
+
+        x_max = data.shape[3] - crop[0]
+        y_max = data.shape[2] - crop[1]
+        
+        patch_data = empty((data.shape[0] * 1 * 1, data.shape[1], crop[0], crop[1]))
+        if lbl_flows:
+            patch_label = empty((1 * 1, 3, crop[0], crop[1]))
+        else:
+            patch_label = empty((label.shape[0] * 1 * 1, crop[0], crop[1]))
+
+        i = random.randint(0, x_max)
+        j = random.randint(0, y_max)
+
+        d_patch = data[0, :, j:j + crop[1], i:i + crop[0]]
+        
+        patch_data[0] = d_patch
+
+        if lbl_flows:
+            l_patch = label[:, j:j + crop[1], i:i + crop[0]]
+        else:
+            l_patch = label[0, j:j + crop[1], i:i + crop[0]]
+        patch_label[0] = l_patch
+
+        return patch_data, patch_label
+    
     # Augmentations and tiling applied to input data (for training and adaptation) -
     # separated from DataLoader to allow for possibility of running only once or once per epoch
     # NOTE: ltf takes ~50% of time; generating patches and concatenating takes nearly as long
     # TODO: Save generated training data? Massively increase time to train
-    def process_training_data(self, patch_size, min_overlap, batch_size=None, has_flows=False):
-        self.data_samples = tensor([])
-        self.label_samples = tensor([])
+    def process_training_data(self, index, crop_size, has_flows=False):
+        #self.data_samples = tensor([])
+        #self.label_samples = tensor([])
         samples_generated = []
-        for (data, labels) in tzip(self.data, self.labels, desc='Processing {} Dataset...'.format(self.split_name)):
-            try:
-                data, labels = random_horizontal_flip(data, labels)
-                # data, labels = random_rotate(data, labels)
+        data, labels = self.data[index], self.labels[index]
+        
+        # for (data, labels) in tzip(self.data, self.labels, desc='Processing {} Dataset...'.format(self.split_name)):
+        try:
+            data, labels, dim = self.resize(data, labels, random_scale=random.uniform(0.75, 1.25))
+            data, labels = random_horizontal_flip(data, labels)
+            # data, labels = random_rotate(data, labels)
+            
+            # print(data.shape," ",labels.shape)
+            data, labels = self.train_generate_rand_crop(unsqueeze(data, 0), labels, crop=crop_size, lbl_flows=has_flows)
 
-                data, labels = generate_patches(unsqueeze(data, 0), labels, patch=patch_size,
-                                                min_overlap=min_overlap, lbl_flows=has_flows)
-                if labels.ndim == 3:
-                    labels = as_tensor([labels_to_flows(labels[i].numpy()) for i in range(len(labels))], dtype=float32)
-                # else:
-                #     labels = labels[np.newaxis, :]
-                ###
-                # if labels.shape[0] == 1:
-                #     labels = as_tensor([labels_to_flows(labels[i].numpy()) for i in range(len(labels))])
-                # else:
-                #     labels = labels[np.newaxis, :]
-                # data, labels = generate_patches(unsqueeze(data, 0), labels, patch=patch_size, min_overlap=min_overlap)
+            if labels.ndim == 3:
+                labels = as_tensor([labels_to_flows(labels[i].numpy()) for i in range(len(labels))], dtype=float32)
+           
+            return data[0], labels[0]
+        except RuntimeError:
+            print('Caught Size Mismatch.')
+            samples_generated.append(-1)
 
-                if len(data) > 6:
-                    rp = randperm(len(data))[:6]
-                    data = data[rp]
-                    labels = labels[rp]
-                # labels = remove_cut_cells(labels, flows=True)
-                self.data_samples = cat((self.data_samples, data))
-                self.label_samples = cat((self.label_samples, labels))
-                samples_generated.append(len(data))
-            except RuntimeError:
-                print('Caught Size Mismatch.')
-                samples_generated.append(-1)
-        if batch_size is not None:
-            ds = self.data_samples
-            ls = self.label_samples
-            for _ in range(1, math.ceil(batch_size / len(self.data_samples))):  # len(self)
-                self.data_samples = cat((self.data_samples, ds))
-                self.label_samples = cat((self.label_samples, ls))
-        # self.data_samples, self.label_samples = remove_empty_label_patches(self.data_samples, self.label_samples)
-        print('Number of generated samples: {}'.format(len(self.data_samples)))
-        print(samples_generated)
+    def __getitem__(self, index):
+        return self.process_training_data(index, self.crop_size, has_flows=self.has_flows)
+        # self.data[index], self.labels[index] #return self.data_samples[index], self.label_samples[index]
+
+
+class ValTestCellTransposeData(CellTransposeData):
+    def __init__(self, split_name, data_dirs, n_chan, pf_dirs=None, do_3D=False, from_3D=False, evaluate=False,
+                 resize: Resize = None):
+        super().__init__(split_name, data_dirs, n_chan, pf_dirs=pf_dirs, do_3D=do_3D, from_3D=from_3D,
+                         evaluate=evaluate, resize=resize)
 
     # Generates patches for validation dataset - only happens once
     def pre_generate_validation_patches(self, patch_size, min_overlap):

@@ -13,7 +13,7 @@ import cv2
 import time
 
 from transforms import Resize, reformat
-from loaddata import CellTransposeData
+from loaddata import TrainCellTransposeData, ValTestCellTransposeData
 from CellTranspose2D import CellTranspose, SizeModel, ClassLoss, FlowLoss, SASClassLoss, ContrastiveFlowLoss
 from train_eval import train_network, adapt_network, eval_network
 from cellpose_src.metrics import average_precision
@@ -132,10 +132,11 @@ if not args.eval_only:
         train_dataset = load(args.train_dataset[0])
         print('Done.')
     else:
-        train_dataset = CellTransposeData('Training', args.train_dataset, args.n_chan, do_3D=args.do_3D, from_3D=args.train_from_3D,
-                                          resize=Resize(args.median_diams, args.patch_size, args.min_overlap,
+        train_dataset = TrainCellTransposeData('Training', args.train_dataset, args.n_chan, do_3D=args.do_3D, from_3D=args.train_from_3D,
+                                            crop_size=args.patch_size, has_flows=False,
+                                            resize=Resize(args.median_diams, args.patch_size, args.min_overlap,
                                                    use_labels=True, patch_per_batch=args.batch_size))
-        train_dataset.process_training_data(args.patch_size, args.min_overlap, has_flows=False)
+        #train_dataset.process_training_data(args.patch_size, args.min_overlap, has_flows=False)
     if args.save_dataset:
         print('Saving Training Dataset... ', end='')
         save(train_dataset, args.save_dataset)
@@ -144,12 +145,12 @@ if not args.eval_only:
     train_dl = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, drop_last=True)
 
     if args.val_dataset is not None:
-        val_dataset = CellTransposeData('Validation', args.val_dataset, args.n_chan, do_3D=args.do_3D, from_3D=args.val_from_3D,
-                                        resize=Resize(args.median_diams, args.patch_size, args.min_overlap,
-                                                 use_labels=args.val_use_labels, refine=True, gc_model=gen_cellpose,
-                                                 sz_model=gen_size_model, device=device,
-                                                 patch_per_batch=args.batch_size)
-                                        )
+        val_dataset = ValTestCellTransposeData('Validation', args.val_dataset, args.n_chan, do_3D=args.do_3D,
+                                               from_3D=args.val_from_3D,
+                                               resize=Resize(args.median_diams, args.patch_size, args.min_overlap,
+                                                             use_labels=args.val_use_labels, refine=True,
+                                                             gc_model=gen_cellpose, sz_model=gen_size_model,
+                                                             device=device, patch_per_batch=args.batch_size))
         val_dataset.pre_generate_validation_patches(patch_size=args.patch_size, min_overlap=args.min_overlap)
         val_dl = DataLoader(val_dataset, batch_size=args.batch_size, shuffle=False)
     else:
@@ -159,13 +160,12 @@ if not args.eval_only:
     if args.do_adaptation:
         sas_class_loss = SASClassLoss(nn.BCEWithLogitsLoss(reduction='mean'))
         c_flow_loss = ContrastiveFlowLoss(nn.MSELoss(reduction='mean'))
-        target_dataset = CellTransposeData('Target', args.target_dataset, args.n_chan, pf_dirs=args.target_flows,
-                                           do_3D=args.do_3D, from_3D=args.target_from_3D,
-                                           resize=Resize(args.median_diams, args.patch_size, args.min_overlap,
-                                                    use_labels=True, patch_per_batch=args.batch_size))
-
-        target_dataset.process_training_data(args.patch_size, args.min_overlap,
-                                             batch_size=args.batch_size, has_flows=True)
+        target_dataset = TrainCellTransposeData('Target', args.target_dataset, args.n_chan, pf_dirs=args.target_flows,
+                                                do_3D=args.do_3D, from_3D=args.target_from_3D,
+                                                crop_size=args.patch_size, has_flows=False,
+                                                resize=Resize(args.median_diams, args.patch_size, args.min_overlap,
+                                                              use_labels=True, patch_per_batch=args.batch_size))
+        #target_dataset.process_training_data(args.patch_size, args.min_overlap, batch_size=args.batch_size, has_flows=True)
         rs = RandomSampler(target_dataset, replacement=False)
         bs = BatchSampler(rs, args.batch_size, True)
         target_dl = DataLoader(target_dataset, batch_sampler=bs)
@@ -200,10 +200,12 @@ if not args.eval_only:
 
 if not args.train_only:
     start_eval = time.time()
-    test_dataset = CellTransposeData('Test', args.test_dataset, args.n_chan, do_3D=args.do_3D, from_3D=args.test_from_3D, evaluate=True,
-                                     resize=Resize(args.median_diams, args.patch_size, args.test_overlap,
-                                              use_labels=args.test_use_labels, refine=True, gc_model=gen_cellpose,
-                                              sz_model=gen_size_model, device=device, patch_per_batch=args.batch_size))
+    test_dataset = ValTestCellTransposeData('Test', args.test_dataset, args.n_chan, do_3D=args.do_3D,
+                                            from_3D=args.test_from_3D, evaluate=True,
+                                            resize=Resize(args.median_diams, args.patch_size, args.test_overlap,
+                                                          use_labels=args.test_use_labels, refine=True,
+                                                          gc_model=gen_cellpose, sz_model=gen_size_model,
+                                                          device=device, patch_per_batch=args.batch_size))
 
     eval_dl = DataLoader(test_dataset, batch_size=1, shuffle=False)
 

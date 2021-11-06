@@ -20,8 +20,9 @@ def train_network(model, train_dl, val_dl, class_loss, flow_loss, optimizer, sch
         try:
             train_epoch_losses = []
             model.train()
-            print(scheduler.get_last_lr())
+            #print(scheduler.get_last_lr())
             for (sample_data, sample_labels) in tqdm(train_dl, desc='Training - Epoch {}/{}'.format(e, n_epochs)):
+                
                 sample_data = sample_data.to(device)
                 sample_labels = sample_labels.to(device)
                 optimizer.zero_grad()
@@ -34,6 +35,7 @@ def train_network(model, train_dl, val_dl, class_loss, flow_loss, optimizer, sch
                 optimizer.step()
 
             scheduler.step()
+            
             train_epoch_loss = mean(train_epoch_losses)
             train_losses.append(train_epoch_loss)
             if val_dl is not None:
@@ -43,13 +45,13 @@ def train_network(model, train_dl, val_dl, class_loss, flow_loss, optimizer, sch
             else:
                 print('Train loss: {:.3f}'.format(train_epoch_loss))
 
-            if e % (n_epochs / 5) == 0:
+            """if e % (n_epochs / 5) == 0:
                 plt.figure()
                 epoch_i = np.arange(1, e+1)
                 plt.plot(epoch_i, train_losses)
                 plt.plot(epoch_i, val_losses)
                 plt.legend(('Train Losses', 'Validation Losses'))
-                plt.show()
+                plt.show()"""
         except KeyboardInterrupt:
             print('Exiting early.')
             break
