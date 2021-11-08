@@ -160,7 +160,6 @@ class CellTransposeData(Dataset):
                     self.labels.append(new_label)
         self.data_samples = self.data
         self.label_samples = self.labels
-        print(f"Number of samples in {split_name} Dataset: {len(self.data)}")
 
     def __len__(self):
         return len(self.data) #return len(self.data_samples)

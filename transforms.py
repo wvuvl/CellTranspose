@@ -41,7 +41,15 @@ def reformat(x, n_chan=1, is_pf=False, do_3D=False):
                         zeros = torch.zeros((n_chan - x.shape[0]), x.shape[1], x.shape[2])
                         x = torch.cat((x, zeros))
                 else:
-                    raise ValueError('Data is not 2D; if intending to use 3D volumes, pass in "--do-3D" argument.')
+                    x = torch.transpose(torch.transpose(x, 2, 0), 1, 0)  # TODO: Quick fix, solve this later
+                    info_chans = [len(torch.unique(x[:, :, i])) > 1 for i in range(x.shape[2])]
+                    x = x[:, :, info_chans]
+                    x = torch.tensor(np.transpose(x.numpy(), (2, 0, 1))[:n_chan])  # Remove any additional channels
+                    # Concatenate empty channels if image has fewer than the specified number of channels
+                    if x.shape[0] < n_chan:
+                        zeros = torch.zeros((n_chan - x.shape[0]), x.shape[1], x.shape[2])
+                        x = torch.cat((x, zeros))
+                    # raise ValueError('Data is not 2D; if intending to use 3D volumes, pass in "--do-3D" argument.')
         # else:
     return x
 

@@ -20,7 +20,7 @@ def train_network(model, train_dl, val_dl, class_loss, flow_loss, optimizer, sch
         try:
             train_epoch_losses = []
             model.train()
-            #print(scheduler.get_last_lr())
+            print(scheduler.get_last_lr())
             for (sample_data, sample_labels) in tqdm(train_dl, desc='Training - Epoch {}/{}'.format(e, n_epochs)):
                 
                 sample_data = sample_data.to(device)
@@ -61,7 +61,8 @@ def train_network(model, train_dl, val_dl, class_loss, flow_loss, optimizer, sch
 
 
 def adapt_network(model: nn.Module, source_dl, target_dl, val_dl, sas_class_loss, c_flow_loss,
-                  class_loss, flow_loss, optimizer, scheduler, device, n_epochs):
+                  class_loss, flow_loss, optimizer, scheduler, device, n_epochs,
+                  k, lmbda, hardness_thresh, temperature):
     train_losses = []
     val_losses = []
     print('Beginning domain adaptation.\n')
@@ -71,6 +72,7 @@ def adapt_network(model: nn.Module, source_dl, target_dl, val_dl, sas_class_loss
     for e in range(1, n_epochs + 1):
         try:
             model.train()
+            print(scheduler.get_last_lr())
             train_epoch_losses = []
             train_adaptation_class_losses = []
             train_adaptation_flow_losses = []
@@ -95,16 +97,20 @@ def adapt_network(model: nn.Module, source_dl, target_dl, val_dl, sas_class_loss
                 target_output = model(target_sample_data)
                 # source_class_loss = class_loss(source_output, source_sample_labels)
                 target_class_loss = class_loss(target_output, target_sample_labels)
-                # source_grad_loss = flow_loss(source_output, source_sample_labels)
+                # source_flow_loss = flow_loss(source_output, source_sample_labels)
                 target_flow_loss = flow_loss(target_output, target_sample_labels)
                 adaptation_class_loss = sas_class_loss(source_output[:, 0], source_sample_labels[:, 0],
                                                        target_output[:, 0], target_sample_labels[:, 0],
                                                        margin=10, gamma_1=0.2, gamma_2=0.5)
                 adaptation_flow_loss = c_flow_loss(source_output[:, 1:], source_sample_labels,
                                                    target_output[:, 1:], target_sample_labels,
-                                                   k=2, lmda=1e-1, hardness_thresh=0.7, temperature=0.1)
+                                                   k=k, lmda=lmbda, hardness_thresh=hardness_thresh, temperature=temperature)
 
-                train_loss = adaptation_class_loss + adaptation_flow_loss
+                if e == 1:
+                    train_loss = target_class_loss + target_flow_loss
+                else:
+                    train_loss = adaptation_class_loss + adaptation_flow_loss
+                # train_loss = source_class_loss + source_flow_loss
                 train_epoch_losses.append(train_loss.item())
                 train_adaptation_class_losses.append(adaptation_class_loss.item())
                 train_adaptation_flow_losses.append(adaptation_flow_loss.item())
@@ -112,8 +118,6 @@ def adapt_network(model: nn.Module, source_dl, target_dl, val_dl, sas_class_loss
                 train_target_flow_losses.append(target_flow_loss.item())
                 train_loss.backward()
                 optimizer.step()
-
-            print('stop here')
 
             scheduler.step()
             train_losses.append(mean(train_epoch_losses))
@@ -124,13 +128,6 @@ def adapt_network(model: nn.Module, source_dl, target_dl, val_dl, sas_class_loss
             else:
                 print('Train loss: {:.3f}'.format(mean(train_epoch_losses)))
 
-            if e % (n_epochs / 5) == 0:
-                plt.figure()
-                epoch_i = np.arange(1, e+1)
-                plt.plot(epoch_i, train_losses)
-                plt.plot(epoch_i, val_losses)
-                plt.legend(('Train Losses', 'Validation Losses'))
-                plt.show()
         except KeyboardInterrupt:
             print('Exiting early.')
             break
@@ -157,6 +154,9 @@ def validate_network(model, data_loader, flow_loss, class_loss, device):
 
 # Evaluation - due to image size mismatches, must currently be run one image at a time
 def eval_network(model: nn.Module, data_loader: DataLoader, device, patch_per_batch, patch_size, min_overlap):
+
+    # temporary for speedup
+    patch_per_batch = 256
 
     model.eval()
     with no_grad():

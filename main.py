@@ -3,7 +3,7 @@ from torch.utils.data import DataLoader, RandomSampler, BatchSampler
 from torch import nn, device, load, save, squeeze, as_tensor
 from torch.cuda import is_available, device_count, empty_cache
 from torch.optim import SGD
-from torch.optim.lr_scheduler import CosineAnnealingLR
+from torch.optim.lr_scheduler import CosineAnnealingLR, StepLR
 import os
 import pickle
 import numpy as np
@@ -27,6 +27,10 @@ parser.add_argument('--momentum', type=float)
 parser.add_argument('--weight-decay', type=float)
 parser.add_argument('--batch-size', type=int)
 parser.add_argument('--epochs', type=int)
+parser.add_argument('--k', type=int)
+parser.add_argument('--lmbda', type=float)
+parser.add_argument('--hardness_thresh', type=float)
+parser.add_argument('--temperature', type=float)
 parser.add_argument('--median-diams', type=int,
                     help='Median diameter size with which to resize images to. Note: If using pretrained model, ensure '
                          'that this variable remains the same as the given model.')
@@ -126,7 +130,6 @@ if not args.eval_only:
     class_loss = ClassLoss(nn.BCEWithLogitsLoss(reduction='mean'))
     flow_loss = FlowLoss(nn.MSELoss(reduction='mean'))
     optimizer = SGD(model.parameters(), lr=args.learning_rate, momentum=args.momentum, weight_decay=args.weight_decay)
-    scheduler = CosineAnnealingLR(optimizer, T_max=args.epochs, eta_min=args.learning_rate/100, last_epoch=-1)
     if args.load_from_torch:
         print('Loading Saved Training Dataset... ', end='')
         train_dataset = load(args.train_dataset[0])
@@ -171,11 +174,14 @@ if not args.eval_only:
         target_dl = DataLoader(target_dataset, batch_sampler=bs)
 
         start_train = time.time()
+        scheduler = StepLR(optimizer, step_size=1, gamma=0.5)
         train_losses, val_losses = adapt_network(model, train_dl, target_dl, val_dl, sas_class_loss, c_flow_loss,
                                                  class_loss, flow_loss, optimizer=optimizer, scheduler=scheduler,
-                                                 device=device, n_epochs=args.epochs)
+                                                 device=device, n_epochs=args.epochs,
+                                                 k=args.k, lmbda=args.lmbda, hardness_thresh=args.hardness_thresh, temperature=args.temperature)
     else:
         start_train = time.time()
+        scheduler = CosineAnnealingLR(optimizer, T_max=args.epochs, eta_min=args.learning_rate/100, last_epoch=-1)
         train_losses, val_losses = train_network(model, train_dl, val_dl, class_loss, flow_loss,
                                                  optimizer=optimizer, scheduler=scheduler, device=device, n_epochs=args.epochs)
     save(model.state_dict(), os.path.join(args.results_dir, 'trained_model.pt'))
@@ -195,7 +201,7 @@ if not args.eval_only:
     plt.xlabel('Epoch')
     plt.ylabel('Combined Losses')
     plt.savefig(os.path.join(args.results_dir, 'Training-Validation Losses'))
-    plt.show()
+    #plt.show()
 
 
 if not args.train_only:
@@ -264,7 +270,7 @@ if not args.train_only:
             plt.ylabel('Average Precision')
             plt.yticks(np.arange(0, 1.01, step=0.2))
             plt.savefig(os.path.join(args.results_dir, 'AP Results'))
-            plt.show()
+            #plt.show()
             cc.write('\nAP Results at IoU threshold 0.5: AP = {}\nTrue Postive: {}; False Positive: {}; False Negative:'
                      ' {}\n'.format(ap_overall[51], tp_overall[51], fp_overall[51], fn_overall[51]))
             print('AP Results at IoU threshold 0.5: AP = {}\nTrue Postive: {}; False Positive: {}; False Negative: {}'

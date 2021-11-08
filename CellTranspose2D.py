@@ -66,7 +66,7 @@ class ContrastiveFlowLoss:
         self.flow_loss = c_flow_loss
         return
 
-    def __call__(self, z_source, lbl_source, z_target, lbl_target, k=10, lmda=1e-1, hardness_thresh=0.7, temperature=0.1):
+    def __call__(self, z_source, lbl_source, z_target, lbl_target, k=10, lmda=1e-1, hardness_thresh=0.95, temperature=0.1):
 
         # Normalize labels and outputs
         z_source = torch.div(z_source, torch.linalg.norm(z_source, dim=1)[:, None, :])
@@ -84,7 +84,7 @@ class ContrastiveFlowLoss:
         # position of highest similarity source label vector for each target label vector
         # p_v, p_i = torch.max(lbl_match.view(-1, 112, 112, 112 * 112), dim=-1)
         p_i = torch.argmax(lbl_match.view(-1, 112, 112, 112 * 112), dim=-1)
-        p_i_new = torch.cat((torch.div(p_i[None, :], 112, rounding_mode='floor'), p_i[None, :] % 112))
+        # p_i_new = torch.cat((torch.div(p_i[None, :], 112, rounding_mode='floor'), p_i[None, :] % 112))
         # Match target output with source output vectors
         pos = torch.zeros(z_source.shape).to('cuda')
         for b in range(pos.shape[0]):
