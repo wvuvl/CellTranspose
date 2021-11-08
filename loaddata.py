@@ -158,7 +158,6 @@ class CellTransposeData(Dataset):
                         self.original_dims.append(original_dim)
                     self.data.append(new_data)
                     self.labels.append(new_label)
-        
 
         if self.split_name.lower() == 'target' and len(self.data) < batch_size:
             ds = self.data
