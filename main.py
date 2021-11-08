@@ -136,7 +136,7 @@ if not args.eval_only:
         print('Done.')
     else:
         train_dataset = TrainCellTransposeData('Training', args.train_dataset, args.n_chan, do_3D=args.do_3D, from_3D=args.train_from_3D,
-                                            crop_size=args.patch_size, has_flows=False,
+                                            crop_size=args.patch_size, has_flows=False,batch_size=args.batch_size,
                                             resize=Resize(args.median_diams, args.patch_size, args.min_overlap,
                                                    use_labels=True, patch_per_batch=args.batch_size))
         #train_dataset.process_training_data(args.patch_size, args.min_overlap, has_flows=False)
@@ -165,7 +165,7 @@ if not args.eval_only:
         c_flow_loss = ContrastiveFlowLoss(nn.MSELoss(reduction='mean'))
         target_dataset = TrainCellTransposeData('Target', args.target_dataset, args.n_chan, pf_dirs=args.target_flows,
                                                 do_3D=args.do_3D, from_3D=args.target_from_3D,
-                                                crop_size=args.patch_size, has_flows=False,
+                                                crop_size=args.patch_size, has_flows=False,batch_size=args.batch_size,
                                                 resize=Resize(args.median_diams, args.patch_size, args.min_overlap,
                                                               use_labels=True, patch_per_batch=args.batch_size))
         #target_dataset.process_training_data(args.patch_size, args.min_overlap, batch_size=args.batch_size, has_flows=True)

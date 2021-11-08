@@ -34,7 +34,7 @@ class CellTransposeData(Dataset):
 
     # Currently, set to load in volumes upfront to cpu memory (via __init__())
     # rather than one at a time via gpu memory (via __getitem__())
-    def __init__(self, split_name, data_dirs, n_chan, pf_dirs=None, do_3D=False, from_3D=False, evaluate=False,
+    def __init__(self, split_name, data_dirs, n_chan, pf_dirs=None, do_3D=False, from_3D=False, evaluate=False, batch_size = 1,
                  resize: Resize = None):
         """"
         Args:
@@ -158,6 +158,15 @@ class CellTransposeData(Dataset):
                         self.original_dims.append(original_dim)
                     self.data.append(new_data)
                     self.labels.append(new_label)
+        
+
+        if self.split_name.lower() == 'target' and len(self.data) < batch_size:
+            ds = self.data
+            ls = self.label
+            for _ in range(1, math.ceil(batch_size / len(self.data))):
+                self.data = cat((self.data, ds))
+                self.label = cat((self.label, ls))
+        
         self.data_samples = self.data
         self.label_samples = self.labels
 
@@ -167,12 +176,12 @@ class CellTransposeData(Dataset):
 
 class TrainCellTransposeData(CellTransposeData):
     def __init__(self, split_name, data_dirs, n_chan, pf_dirs=None, do_3D=False, from_3D=False, evaluate=False,
-                 crop_size=(96, 96), has_flows=False, resize: Resize=None):
+                 crop_size=(96, 96), has_flows=False, batch_size = 1, resize: Resize=None):
         self.resize = resize
         self.crop_size = crop_size
         self.has_flows = has_flows
         super().__init__(split_name, data_dirs, n_chan, pf_dirs=pf_dirs, do_3D=do_3D,
-                         from_3D=from_3D, evaluate=evaluate, resize=None)
+                         from_3D=from_3D, evaluate=evaluate, batch_size=batch_size, resize=None)
 
     def train_generate_rand_crop(self, data, label=None, crop=(96, 96), lbl_flows=False):
         if data.shape[3] < crop[0]: 
