@@ -161,14 +161,14 @@ class CellTransposeData(Dataset):
 
         if self.split_name.lower() == 'target' and len(self.data) < batch_size:
             ds = self.data
-            ls = self.label
+            ls = self.labels
             for _ in range(1, math.ceil(batch_size / len(self.data))):
-                self.data = cat((self.data, ds))
-                self.label = cat((self.label, ls))
+                self.data = self.data+ds
+                self.labels = self.labels+ls
         
         self.data_samples = self.data
         self.label_samples = self.labels
-
+        print(len(self.data))
     def __len__(self):
         return len(self.data) #return len(self.data_samples)
 
