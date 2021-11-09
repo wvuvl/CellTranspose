@@ -9,6 +9,11 @@ from scipy.optimize import linear_sum_assignment
 from scipy.ndimage import convolve
 
 
+# Added to solve ap calculation error when original true mask doesn't count up from 0 by 1
+def num_uniques(masks_true):
+    return len(np.unique(masks_true)) - 1
+
+
 def mask_ious(masks_true, masks_pred):
     """ return best-matched masks """
     iou = _intersection_over_union(masks_true, masks_pred)[1:, 1:]
@@ -105,7 +110,7 @@ def average_precision(masks_true, masks_pred, threshold=[0.5, 0.75, 0.9]):
     tp = np.zeros((len(masks_true), len(threshold)), np.float32)
     fp = np.zeros((len(masks_true), len(threshold)), np.float32)
     fn = np.zeros((len(masks_true), len(threshold)), np.float32)
-    n_true = np.array(list(map(np.max, masks_true)))
+    n_true = np.array(list(map(num_uniques, masks_true)))
     n_pred = np.array(list(map(np.max, masks_pred)))
     for n in range(len(masks_true)):
         # _,mt = np.reshape(np.unique(masks_true[n], return_index=True), masks_pred[n].shape)

@@ -101,10 +101,10 @@ def adapt_network(model: nn.Module, source_dl, target_dl, val_dl, sas_class_loss
                 target_flow_loss = flow_loss(target_output, target_sample_labels)
                 adaptation_class_loss = sas_class_loss(source_output[:, 0], source_sample_labels[:, 0],
                                                        target_output[:, 0], target_sample_labels[:, 0],
-                                                       margin=10, gamma_1=0.2, gamma_2=0.5)
+                                                       margin=10, gamma_1=0.8, gamma_2=0.25)
                 adaptation_flow_loss = c_flow_loss(source_output[:, 1:], source_sample_labels,
                                                    target_output[:, 1:], target_sample_labels,
-                                                   k=k, lmda=lmbda, hardness_thresh=hardness_thresh, temperature=temperature)
+                                                   k=k, lmbda=lmbda, hardness_thresh=hardness_thresh, temperature=temperature)
 
                 if e == 1:
                     train_loss = target_class_loss + target_flow_loss

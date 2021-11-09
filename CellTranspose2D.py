@@ -40,7 +40,7 @@ class SASClassLoss:
     def __init__(self, sas_class_loss):
         self.class_loss = sas_class_loss
 
-    def __call__(self, g_source, lbl_source, g_target, lbl_target, margin=1, gamma_1=0.1, gamma_2=0.5):
+    def __call__(self, g_source, lbl_source, g_target, lbl_target, margin=1, gamma_1=0.8, gamma_2=0.5):
         frgd_mask = torch.logical_and(lbl_source, lbl_target)
         frgd_count = torch.count_nonzero(frgd_mask)
         bkgd_mask = torch.logical_and(torch.logical_not(lbl_source), torch.logical_not(lbl_target))
@@ -66,7 +66,7 @@ class ContrastiveFlowLoss:
         self.flow_loss = c_flow_loss
         return
 
-    def __call__(self, z_source, lbl_source, z_target, lbl_target, k=10, lmda=1e-1, hardness_thresh=0.95, temperature=0.1):
+    def __call__(self, z_source, lbl_source, z_target, lbl_target, k=10, lmbda=1e-1, hardness_thresh=0.95, temperature=0.1):
 
         # Normalize labels and outputs
         z_source = torch.div(z_source, torch.linalg.norm(z_source, dim=1)[:, None, :])
@@ -75,7 +75,7 @@ class ContrastiveFlowLoss:
         mask_target = lbl_target[:, 0]
         flow_target = lbl_target[:, 1:]
         flow_target = torch.div(flow_target, torch.linalg.norm(flow_target, dim=1)[:, None, :])
-        flow_target[flow_target != flow_target] = 0
+        flow_target[flow_target != flow_target] = 0.0
 
         # similarity between target label and source output
         lbl_match = torch.matmul(torch.transpose(torch.flatten(flow_target, 2, -1), 1, 2),
@@ -113,12 +113,13 @@ class ContrastiveFlowLoss:
         # NOTE: CONCAT NUM TO DEN IF NOT INCLUDED
         # den = torch.mul(den, mask_target)
         loss = torch.div(num, den)
-        loss = -torch.log(loss)
+        # loss = -torch.log(loss)
+        loss = torch.where(mask_target == 1, -torch.log(loss), torch.tensor(0.0).detach().to('cuda'))
         # loss = torch.where(loss > 0, -torch.log(loss), torch.tensor(0.0).to('cuda'))
 
         source_flow_loss = self.flow_loss(z_source, flow_source)
 
-        loss = lmda * torch.mean(loss) + (1 - lmda) * source_flow_loss
+        loss = lmbda * torch.mean(loss) + (1 - lmbda) * source_flow_loss
         return loss
 
 

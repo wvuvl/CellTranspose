@@ -252,8 +252,8 @@ if not args.train_only:
         if args.calculate_ap:
             labels = []
             for l in test_dataset.l_list:
-                label = as_tensor(cv2.imread(l, -1).astype('int16'))
-                # label = as_tensor(tifffile.imread(l).astype('int16'))
+                # label = as_tensor(cv2.imread(l, -1).astype('int16'))
+                label = as_tensor(tifffile.imread(l).astype('int16'))
                 label = squeeze(reformat(label), dim=0).numpy().astype('int16')
                 labels.append(label)
             tau = np.arange(0.0, 1.01, 0.01)
