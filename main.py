@@ -97,7 +97,7 @@ else:
     args.test_overlap = args.min_overlap
 
 if not (args.val_use_labels and args.test_use_labels) or (args.train_only and not args.val_use_labels) or \
-        (args.test_only and not args.test_use_labels):
+        (args.eval_only and not args.test_use_labels):
     gen_cellpose = CellTranspose(channels=1, device='cuda:0')
     gen_cellpose = nn.DataParallel(gen_cellpose, device_ids=[0])
     gen_cellpose.load_state_dict(load(args.cellpose_model))
