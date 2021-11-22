@@ -96,7 +96,8 @@ if args.test_overlap is not None:
 else:
     args.test_overlap = args.min_overlap
 
-if not (args.val_use_labels and args.test_use_labels):
+if not (args.val_use_labels and args.test_use_labels) or (args.train_only and not args.val_use_labels) or \
+        (args.test_only and not args.test_use_labels):
     gen_cellpose = CellTranspose(channels=1, device='cuda:0')
     gen_cellpose = nn.DataParallel(gen_cellpose, device_ids=[0])
     gen_cellpose.load_state_dict(load(args.cellpose_model))
@@ -127,7 +128,6 @@ if not args.eval_only:
                                             crop_size=args.patch_size, has_flows=False,
                                             resize=Resize(args.median_diams, args.patch_size, args.min_overlap,
                                                    use_labels=True, patch_per_batch=args.batch_size))
-        #train_dataset.process_training_data(args.patch_size, args.min_overlap, has_flows=False)
     if args.save_dataset:
         print('Saving Training Dataset... ', end='')
         save(train_dataset, args.save_dataset)

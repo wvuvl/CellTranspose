@@ -65,12 +65,7 @@ def produce_logfile(args, epochs, ttt, tte, num_workers):
         log.write('Zeros removed: all\n')
         log.write('\n')
         if not args.eval_only:
-            log.write('Adaptation: {}\n'.format(args.do_adaptation))
-            if args.do_adaptation:
-                log.write('Source dataset(s): {}\n'.format(args.train_dataset))
-                log.write('Target dataset(s): {}\n'.format(args.target_dataset))
-            else:
-                log.write('Training dataset(s): {}\n'.format(args.train_dataset))
+            log.write('Training dataset(s): {}\n'.format(args.train_dataset))
             log.write('Learning rate: {}; Momentum: {}\n'.format(args.learning_rate, args.momentum))
             log.write('Epochs: {}; Batch size: {}\n'.format(epochs, args.batch_size))
             log.write('GPUs: {}\n'.format(num_workers))

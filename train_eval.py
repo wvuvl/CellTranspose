@@ -7,8 +7,6 @@ import numpy as np
 from statistics import mean
 from transforms import followflows, generate_patches, recombine_patches
 
-import matplotlib.pyplot as plt
-
 
 def train_network(model, train_dl, val_dl, class_loss, flow_loss, optimizer, scheduler, device, n_epochs):
     train_losses = []
@@ -17,44 +15,31 @@ def train_network(model, train_dl, val_dl, class_loss, flow_loss, optimizer, sch
 
     print('Beginning network training.\n')
     for e in range(1, n_epochs + 1):
-        try:
-            train_epoch_losses = []
-            model.train()
-            #print(scheduler.get_last_lr())
-            for (sample_data, sample_labels) in tqdm(train_dl, desc='Training - Epoch {}/{}'.format(e, n_epochs)):
-                
-                sample_data = sample_data.to(device)
-                sample_labels = sample_labels.to(device)
-                optimizer.zero_grad()
-                output = model(sample_data)
-                mask_loss = class_loss(output, sample_labels)
-                grad_loss = flow_loss(output, sample_labels)
-                train_loss = mask_loss + grad_loss
-                train_epoch_losses.append(train_loss.item())
-                train_loss.backward()
-                optimizer.step()
+        train_epoch_losses = []
+        model.train()
+        for (sample_data, sample_labels) in tqdm(train_dl, desc='Training - Epoch {}/{}'.format(e, n_epochs)):
 
-            scheduler.step()
-            
-            train_epoch_loss = mean(train_epoch_losses)
-            train_losses.append(train_epoch_loss)
-            if val_dl is not None:
-                val_epoch_loss = validate_network(model, val_dl, flow_loss, class_loss, device)
-                val_losses.append(val_epoch_loss)
-                print('Train loss: {:.3f}; Validation loss: {:.3f}'.format(train_epoch_loss, val_epoch_loss))
-            else:
-                print('Train loss: {:.3f}'.format(train_epoch_loss))
+            sample_data = sample_data.to(device)
+            sample_labels = sample_labels.to(device)
+            optimizer.zero_grad()
+            output = model(sample_data)
+            mask_loss = class_loss(output, sample_labels)
+            grad_loss = flow_loss(output, sample_labels)
+            train_loss = mask_loss + grad_loss
+            train_epoch_losses.append(train_loss.item())
+            train_loss.backward()
+            optimizer.step()
 
-            """if e % (n_epochs / 5) == 0:
-                plt.figure()
-                epoch_i = np.arange(1, e+1)
-                plt.plot(epoch_i, train_losses)
-                plt.plot(epoch_i, val_losses)
-                plt.legend(('Train Losses', 'Validation Losses'))
-                plt.show()"""
-        except KeyboardInterrupt:
-            print('Exiting early.')
-            break
+        scheduler.step()
+
+        train_epoch_loss = mean(train_epoch_losses)
+        train_losses.append(train_epoch_loss)
+        if val_dl is not None:
+            val_epoch_loss = validate_network(model, val_dl, flow_loss, class_loss, device)
+            val_losses.append(val_epoch_loss)
+            print('Train loss: {:.3f}; Validation loss: {:.3f}'.format(train_epoch_loss, val_epoch_loss))
+        else:
+            print('Train loss: {:.3f}'.format(train_epoch_loss))
 
     print('Train time: {}'.format(time.strftime("%H:%M:%S", time.gmtime(time.time() - start_train))))
     return train_losses, val_losses
@@ -65,7 +50,6 @@ def validate_network(model, data_loader, flow_loss, class_loss, device):
     val_epoch_losses = []
     with no_grad():
         for (val_sample_data, val_sample_labels) in tqdm(data_loader, desc='Performing validation'):
-            # When not using precalculated flows, makes up majority of validation time (~85-90%)
             val_sample_data = val_sample_data.to(device)
             val_sample_labels = val_sample_labels.to(device)
             output = model(val_sample_data)

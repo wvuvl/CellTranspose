@@ -210,23 +210,19 @@ class TrainCellTransposeData(CellTransposeData):
 
         return patch_data, patch_label
     
-    # Augmentations and tiling applied to input data (for training and adaptation) -
-    # separated from DataLoader to allow for possibility of running only once or once per epoch
+    # Augmentations and tiling applied to input data - separated from DataLoader to allow
+    # for possibility of running only once or once per epoch
     # NOTE: ltf takes ~50% of time; generating patches and concatenating takes nearly as long
     # TODO: Save generated training data? Massively increase time to train
     def process_training_data(self, index, crop_size, has_flows=False):
-        #self.data_samples = tensor([])
-        #self.label_samples = tensor([])
         samples_generated = []
         data, labels = self.data[index], self.labels[index]
-        
-        # for (data, labels) in tzip(self.data, self.labels, desc='Processing {} Dataset...'.format(self.split_name)):
+
         try:
             data, labels, dim = self.resize(data, labels, random_scale=random.uniform(0.75, 1.25))
             data, labels = random_horizontal_flip(data, labels)
             # data, labels = random_rotate(data, labels)
-            
-            # print(data.shape," ",labels.shape)
+
             data, labels = self.train_generate_rand_crop(unsqueeze(data, 0), labels, crop=crop_size, lbl_flows=has_flows)
 
             if labels.ndim == 3:

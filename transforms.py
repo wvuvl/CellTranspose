@@ -191,7 +191,6 @@ def followflows(flows):
         cellprob = flow[0].cpu().numpy()
         dP = flow[1:].cpu().numpy()
         p = follow_flows(-1 * dP * (cellprob > cellprob_threshold) / 5., niter, interp, use_gpu)
-        # p = follow_flows(-1 * dP * (cellprob > cellprob_threshold), niter, interp, use_gpu)
 
         maski = get_masks(p, iscell=(cellprob > cellprob_threshold), flows=dP, threshold=flow_threshold)
         maski = fill_holes_and_remove_small_masks(maski, min_size=min_size)
@@ -213,18 +212,15 @@ def generate_patches(data, label=None, patch=(96, 96), min_overlap=(64, 64), lbl
     else:
         patch_label = torch.empty((label.shape[0] * num_x_patches * num_y_patches, patch[0], patch[1]))
 
-    # for b in range(data.shape[0]):
     for i in range(num_x_patches):
         for j in range(num_y_patches):
             d_patch = data[0, :, y_patches[j]:y_patches[j] + patch[1], x_patches[i]:x_patches[i] + patch[0]]
-            # patch_data[(0 * num_y_patches * num_x_patches) + (num_y_patches * i + j)] = d_patch
             patch_data[num_y_patches * i + j] = d_patch
             if lbl_flows:
                 l_patch = label[:, y_patches[j]:y_patches[j] + patch[1], x_patches[i]:x_patches[i] + patch[0]]
             else:
                 l_patch = label[0, y_patches[j]:y_patches[j] + patch[1], x_patches[i]:x_patches[i] + patch[0]]
             patch_label[num_y_patches * i + j] = l_patch
-            # patch_label[(0 * num_y_patches * num_x_patches) + (num_y_patches * i + j)] = l_patch
 
     return patch_data, patch_label
 

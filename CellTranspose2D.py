@@ -7,9 +7,6 @@ which can be found via the Cellpose github repository: https://github.com/MouseL
 import torch
 from torch import nn
 
-import matplotlib.pyplot as plt
-
-
 # Standard Cellpose class loss
 class ClassLoss:
     def __init__(self, class_loss):
@@ -28,7 +25,6 @@ class FlowLoss:
         self.loss = flow_loss
 
     def __call__(self, g, y):
-        # flow_pred = 5. * g[:, 1:]
         flow_pred = g[:, 1:]
         flow_y = 5. * y[:, 1:]
         flow_loss = self.loss(flow_pred, flow_y)
@@ -74,7 +70,7 @@ class UpBlock(nn.Module):
         super().__init__()
         self.upsample = upsample
         if self.upsample:
-            self.upsample_image = nn.Upsample(scale_factor=2)  # mode='nearest'
+            self.upsample_image = nn.Upsample(scale_factor=2)
             self.out_features = in_features // 2
         else:
             self.out_features = in_features
@@ -151,33 +147,7 @@ class SizeModel(nn.Module):
         super().__init__()
         self.linear1 = nn.Linear(256, 512)
         self.linear2 = nn.Linear(512, 1)
-        # self.linear = nn.Linear(256, 1)
 
     def forward(self, x):
         x = self.linear1(x)
         return self.linear2(x)
-
-
-if __name__ == '__main__':
-    from torchsummary import summary
-
-    # db = DownBlock(3, 32, down_sample=1)
-    # data = torch.zeros((8, 3, 96, 96))
-    # zeros = torch.zeros((8, 32, 96, 96))
-    # out = db(data)
-    mc = CellTranspose(3)
-    summary(mc, (3, 168, 168))
-    # data = torch.rand((8, 3, 8, 8))
-    # out = mc(data)
-    print('test')
-    # ub = UpBlock(128, 64)
-    # data = torch.rand((8, 128, 8, 8))
-    # fm = torch.rand((8, 64, 16, 16))
-    # style = torch.rand((8, 256))
-    # out = ub(data, fm, style)
-
-    # ub = UpBlock(256, 256, upsample=False)
-    # data = torch.rand((8,256,4,4))
-    # fm = torch.rand((8,256,4,4))
-    # style = torch.rand((8,256))
-    # out = ub(data, fm, style)
