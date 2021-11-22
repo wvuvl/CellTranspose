@@ -6,6 +6,7 @@ which can be found via the Cellpose github repository: https://github.com/MouseL
 
 import torch
 from torch import nn
+from numpy import pi
 
 import matplotlib.pyplot as plt
 
@@ -57,8 +58,8 @@ class SASClassLoss:
 
         source_class_loss = (1-gamma_1) * self.class_loss(g_source, lbl_source)
 
-        loss = torch.mean(sa_loss + s_loss) + source_class_loss
-        return loss
+        class_loss = torch.mean(sa_loss + s_loss) + source_class_loss
+        return class_loss
 
 
 class ContrastiveFlowLoss:
@@ -92,35 +93,42 @@ class ContrastiveFlowLoss:
                 pos[b][c] = torch.take(z_source[b][c], p_i[b])
         # Numerator: temperature-modified exponent of the normalized dot product
         # of the target output and selected positive sample for each pixel
-        num = torch.sum(torch.mul(z_target, pos), dim=1)
-        num = torch.exp(num)
+        p_sim = torch.sum(torch.mul(z_target, pos), dim=1)
+        num = torch.exp(p_sim / temperature)
         # num = torch.where(mask_target == 0, num, torch.tensor(0.0).to('cuda'))
         # num = torch.mul(num, mask_target)
 
         # Denominator: similar to numerator, but summed across each target output
         # pixel to ALL sample pixels in source output
-        smpls = torch.matmul(torch.transpose(torch.flatten(z_target, 2, -1), 1, 2),
-                                 torch.flatten(z_source, 2, -1)).view(-1, 112, 112, 112 * 112)
-        # smpls = torch.sigmoid((smpls - hardness_thresh) * 100)
-        smpls = torch.where(smpls < hardness_thresh, smpls, torch.tensor(0.0).to('cuda'))
-        top_n = torch.topk(smpls, k, dim=-1).values
-        # smpls = torch.where(smpls < 0.9, smpls, torch.tensor(0.0).to('cuda'))
-        # smpls = torch.where(smpls > hardness_thresh and smpls < 0.9, smpls, torch.tensor(0.0).to('cuda'))
+        icos = torch.acos(p_sim)
+        thresh = torch.cos(icos + (pi / 12)).unsqueeze(-1)
+        z_match = torch.matmul(torch.transpose(torch.flatten(pos, 2, -1), 1, 2),
+                               torch.flatten(z_source, 2, -1)).view(-1, 112, 112, 112 * 112)
+        z_match = torch.where(z_match < thresh, z_match, torch.tensor(0.0).to('cuda'))
+        top_n = torch.topk(z_match, k, dim=-1).values
+
+        # z_match = torch.matmul(torch.transpose(torch.flatten(z_target, 2, -1), 1, 2),
+        #                          torch.flatten(z_source, 2, -1)).view(-1, 112, 112, 112 * 112)
+        # # z_match = torch.sigmoid((z_match - hardness_thresh) * 100)
+        # z_match = torch.where(z_match < hardness_thresh, z_match, torch.tensor(0.0).to('cuda'))
+        # top_n = torch.topk(z_match, k, dim=-1).values
+        # z_match = torch.where(z_match < 0.9, z_match, torch.tensor(0.0).to('cuda'))
+        # z_match = torch.where(z_match > hardness_thresh and z_match < 0.9, z_match, torch.tensor(0.0).to('cuda'))
         # den = torch.sum(torch.exp(top_n / temperature), dim=-1)
-        top_n = torch.exp(top_n)
+
+        top_n = torch.exp(top_n / temperature)
         den = torch.cat((torch.unsqueeze(num, -1), top_n), dim=-1)
         den = torch.sum(den, dim=-1)
         # NOTE: CONCAT NUM TO DEN IF NOT INCLUDED
         # den = torch.mul(den, mask_target)
-        loss = torch.div(num, den)
-        # loss = -torch.log(loss)
-        loss = torch.where(mask_target == 1, -torch.log(loss), torch.tensor(0.0).detach().to('cuda'))
-        # loss = torch.where(loss > 0, -torch.log(loss), torch.tensor(0.0).to('cuda'))
+        adaptive_flow_loss = torch.div(num, den)
+        # adaptive_flow_loss = -torch.log(adaptive_flow_loss)
+        adaptive_flow_loss = torch.where(mask_target == 1, -torch.log(adaptive_flow_loss), torch.tensor(0.0).detach().to('cuda'))
 
         source_flow_loss = self.flow_loss(z_source, flow_source)
 
-        loss = lmbda * torch.mean(loss) + (1 - lmbda) * source_flow_loss
-        return loss
+        adaptive_flow_loss = lmbda * torch.mean(adaptive_flow_loss) + (1 - lmbda) * source_flow_loss
+        return adaptive_flow_loss
 
 
 def conv_block(in_feat, out_feat):
