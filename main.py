@@ -75,11 +75,15 @@ args = parser.parse_args()
 
 print(args.results_dir)
 
-assert not os.path.exists(args.results_dir),\
-    'Results folder {} currently exists; please specify new location to save results.'.format(args.results_dir)
-os.mkdir(args.results_dir)
-os.mkdir(os.path.join(args.results_dir, 'tiff_results'))
-os.mkdir(os.path.join(args.results_dir, 'raw_predictions_tiffs'))
+# assert not os.path.exists(args.results_dir),\
+#     'Results folder {} currently exists; please specify new location to save results.'.format(args.results_dir)
+
+if not os.path.exists(args.results_dir):
+    os.mkdir(args.results_dir)
+if not os.path.exists(os.path.join(args.results_dir, 'tiff_results')):
+    os.mkdir(os.path.join(args.results_dir, 'tiff_results'))
+if not os.path.exists(os.path.join(args.results_dir, 'raw_predictions_tiffs')):
+    os.mkdir(os.path.join(args.results_dir, 'raw_predictions_tiffs'))
 assert not (args.train_only and args.eval_only), 'Cannot pass in "train-only" and "eval-only" arguments simultaneously.'
 num_workers = device_count()
 device = device('cuda' if is_available() else 'cpu')
@@ -96,17 +100,17 @@ if args.test_overlap is not None:
 else:
     args.test_overlap = args.min_overlap
 
-if not (args.val_use_labels and args.test_use_labels) or (args.train_only and not args.val_use_labels) or \
-        (args.eval_only and not args.test_use_labels):
+if (args.val_use_labels and args.test_use_labels) or (args.train_only and args.val_use_labels) or \
+        (args.eval_only and args.test_use_labels):
+    gen_cellpose = None
+    gen_size_model = None
+else:
     gen_cellpose = CellTranspose(channels=1, device='cuda:0')
     gen_cellpose = nn.DataParallel(gen_cellpose, device_ids=[0])
     gen_cellpose.load_state_dict(load(args.cellpose_model))
 
     gen_size_model = SizeModel().to('cuda:0')
     gen_size_model.load_state_dict(load(args.size_model))
-else:
-    gen_cellpose = None
-    gen_size_model = None
 
 model = CellTranspose(channels=args.n_chan, device=device)
 model = nn.DataParallel(model)
