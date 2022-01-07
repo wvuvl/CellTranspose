@@ -1,0 +1,36 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Python: Current File",
+            "type": "python",
+            "request": "launch",
+            "program": "${file}",
+            "console": "integratedTerminal",
+            "args": ["--learning-rate", "0.005",
+                "--momentum", "0.9",
+                "--weight-decay", "1e-5", 
+                "--batch-size", "16", 
+                "--epochs", "30", 
+                "--median-diams", "60",
+                "--patch-size", "224",
+                "--min-overlap", "56", 
+                "--test-overlap", "168",
+                "--n-chan", "2",
+                "--dataset-name", "BBBC0024",
+                "--results-dir", "C:\\Users\\jthra\\Documents\\data\\cellpose_results\\Cellpose_results_2", 
+                "--train-dataset", "C:\\Users\\jthra\\Documents\\data\\BBBC024_v1_raw_tiff_combined_split_rescaled_0.5\\train",
+                "--train-from-3D",
+                "--val-dataset", "C:\\Users\\jthra\\Documents\\data\\BBBC024_v1_raw_tiff_combined_split_rescaled_0.5\\val",
+                "--val-from-3D", 
+                "--val-use-labels",
+                "--test-dataset", "C:\\Users\\jthra\\Documents\\data\\BBBC024_v1_raw_tiff_combined_split_rescaled_0.5\\test",
+                "--test-from-3D", 
+                "--test-use-labels", 
+                "--calculate-ap"]
+        }
+    ]
+}

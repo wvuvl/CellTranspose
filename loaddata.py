@@ -81,23 +81,33 @@ class CellTransposeData(Dataset):
         self.data = []
         self.labels = []
         self.original_dims = []
+
+        #NOTE: I don't think we need do_3D here if we are doing a similar implementation
+        #to the original cellpose one
         if do_3D:  # and from_3D
             for ind in tqdm(range(len(self.d_list)), desc='Loading {} Dataset...'.format(split_name)):
                 ext = os.path.splitext(self.d_list[ind])[-1]
+
+                #Read file and load tensor
                 if ext == '.tif' or ext == '.tiff':
                     new_data = as_tensor(list(tifffile.imread(self.d_list[ind]).astype('float')))
                     new_label = as_tensor(list(tifffile.imread(self.l_list[ind])).astype('int16'))
                 else:
                     new_data = as_tensor(list(cv2.imread(self.d_list[ind], -1).astype('float')))
                     new_label = as_tensor(list(cv2.imread(self.l_list[ind], -1).astype('int16')))
+
+                #Reformat to [1, x, y, z] and normalize
                 new_data = reformat(new_data, n_chan, do_3D=True)
                 new_data = normalize1stto99th(new_data)
                 new_label = reformat(new_label, do_3D=True)
+
+                #Handle precalulcated flows
                 if pf_dirs is not None:
                     new_pf = as_tensor(list(tifffile.imread(self.pf_list[ind])))
                     new_pf = reformat(new_pf, is_pf=True, do_3D=True)  # TODO: May/may not need updated to reflect do_3D loading
                 else:
                     new_pf = None
+
                 if resize is not None:
                     new_data, new_label, new_pf, original_dim = resize(new_data, new_label, new_pf)
                     self.original_dims.append(original_dim)
@@ -109,23 +119,36 @@ class CellTransposeData(Dataset):
                 # Note: majority of bottleneck caused by reading and normalizing data
                 for ind in tqdm(range(len(self.d_list)), desc='Loading {} Dataset...'.format(split_name)):
                     ext = os.path.splitext(self.d_list[ind])[-1]
+
+                    #Read files
                     if ext == '.tif' or ext == '.tiff':
                         raw_data_vol = tifffile.imread(self.d_list[ind]).astype('float')
                         raw_label_vol = tifffile.imread(self.l_list[ind]).astype('int16')
                     else:
                         raw_data_vol = cv2.imread(self.d_list[ind], -1).astype('float')
                         raw_label_vol = cv2.imread(self.l_list[ind], -1).astype('int16')
+                    
+                    #It looks like reformat with do_3D=False is going to remove the Z axis entirely
+                    #Maybe here we "rotate" the image s.t. the dim we want to train on falls on the X and Y axis
+                    #So for yz: [x, y, z] -> [y, z, x]? But then do we need to consider zy ebing [z, y, x]
+                    #That might be slow though hmm. Maybe it would be better to pass in the dimensions to reformat
+
+                    #Reformat to [n_chan, x, y] and normalize
                     raw_data_vol = [reformat(as_tensor(raw_data_vol[i]), n_chan) for i in range(len(raw_data_vol))]
                     raw_data_vol = [normalize1stto99th(raw_data_vol[i]) for i in range(len(raw_data_vol))]
                     raw_label_vol = [reformat(as_tensor(raw_label_vol[i])) for i in range(len(raw_label_vol))]
+
+                    #Handle precaluclated flows if available
+                    new_data = []
+                    new_label = []
                     if pf_dirs is not None:  # Not currently handled
                         print('Add this later')
                         # if resize is not None:
                         #     *do_resize_here*
                     else:
                         if resize is not None:
-                            new_data = []
-                            new_label = []
+                            # new_data = []
+                            # new_label = []
                             original_dim = []
                             for i in range(len(raw_data_vol)):
                                 nd, nl, _, od = resize(raw_data_vol[i], raw_label_vol[i])
