@@ -133,22 +133,20 @@ class CellTransposeData(Dataset):
                     #So for yz: [x, y, z] -> [y, z, x]? But then do we need to consider zy ebing [z, y, x]
                     #That might be slow though hmm. Maybe it would be better to pass in the dimensions to reformat
 
-                    #Reformat to [n_chan, x, y] and normalize
+                    #Reformat to [x, n_chan, y, z] and normalize
                     raw_data_vol = [reformat(as_tensor(raw_data_vol[i]), n_chan) for i in range(len(raw_data_vol))]
                     raw_data_vol = [normalize1stto99th(raw_data_vol[i]) for i in range(len(raw_data_vol))]
                     raw_label_vol = [reformat(as_tensor(raw_label_vol[i])) for i in range(len(raw_label_vol))]
 
                     #Handle precaluclated flows if available
-                    new_data = []
-                    new_label = []
                     if pf_dirs is not None:  # Not currently handled
                         print('Add this later')
                         # if resize is not None:
                         #     *do_resize_here*
                     else:
                         if resize is not None:
-                            # new_data = []
-                            # new_label = []
+                            new_data = []
+                            new_label = []
                             original_dim = []
                             for i in range(len(raw_data_vol)):
                                 nd, nl, _, od = resize(raw_data_vol[i], raw_label_vol[i])
