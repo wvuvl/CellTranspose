@@ -16,7 +16,6 @@ from transforms import reformat, normalize1stto99th, Resize, random_horizontal_f
 
 import matplotlib.pyplot as plt
 
-
 class CellTransposeData(Dataset):
     """
     Dataset subclass for loading in any tiff data, where the dataset follows the following format:
@@ -34,7 +33,7 @@ class CellTransposeData(Dataset):
 
     # Currently, set to load in volumes upfront to cpu memory (via __init__())
     # rather than one at a time via gpu memory (via __getitem__())
-    def __init__(self, split_name, data_dirs, n_chan, pf_dirs=None, do_3D=False, from_3D=False, evaluate=False, batch_size = 1,
+    def __init__(self, split_name, data_dirs, n_chan, pf_dirs=None, do_3D=False, from_3D=False, plane='yz', evaluate=False, batch_size = 1,
                  resize: Resize = None):
         """"
         Args:
@@ -128,16 +127,20 @@ class CellTransposeData(Dataset):
                         raw_data_vol = cv2.imread(self.d_list[ind], -1).astype('float')
                         raw_label_vol = cv2.imread(self.l_list[ind], -1).astype('int16')
                     
-                    #It looks like reformat with do_3D=False is going to remove the Z axis entirely
-                    #Maybe here we "rotate" the image s.t. the dim we want to train on falls on the X and Y axis
-                    #So for yz: [x, y, z] -> [y, z, x]? But then do we need to consider zy ebing [z, y, x]
-                    #That might be slow though hmm. Maybe it would be better to pass in the dimensions to reformat
+                    #Swap axes to load different planes
+                    if plane == 'xy' or plane == 'yx':
+                        raw_data_vol = raw_data_vol.swapaxes(0, 2) #(x, y, z) -> (z, y, x)
+                    elif plane == 'xz' or plane == 'zx':
+                        raw_data_vol = raw_data_vol.swapaxes(0, 1) #(x, y, z) -> (y, x, z)
+                    #else continue (default)
 
                     #Reformat to [x, n_chan, y, z] and normalize
                     raw_data_vol = [reformat(as_tensor(raw_data_vol[i]), n_chan) for i in range(len(raw_data_vol))]
                     raw_data_vol = [normalize1stto99th(raw_data_vol[i]) for i in range(len(raw_data_vol))]
                     raw_label_vol = [reformat(as_tensor(raw_label_vol[i])) for i in range(len(raw_label_vol))]
 
+                    new_data = raw_data_vol
+                    new_label = raw_label_vol
                     #Handle precaluclated flows if available
                     if pf_dirs is not None:  # Not currently handled
                         print('Add this later')
@@ -271,9 +274,9 @@ class TrainCellTransposeData(CellTransposeData):
 
 
 class ValTestCellTransposeData(CellTransposeData):
-    def __init__(self, split_name, data_dirs, n_chan, pf_dirs=None, do_3D=False, from_3D=False, evaluate=False,
+    def __init__(self, split_name, data_dirs, n_chan, pf_dirs=None, do_3D=False, from_3D=False, plane='yz', evaluate=False,
                  resize: Resize = None):
-        super().__init__(split_name, data_dirs, n_chan, pf_dirs=pf_dirs, do_3D=do_3D, from_3D=from_3D,
+        super().__init__(split_name, data_dirs, n_chan, pf_dirs=pf_dirs, do_3D=do_3D, from_3D=from_3D, plane=plane,
                          evaluate=evaluate, resize=resize)
 
     # Generates patches for validation dataset - only happens once

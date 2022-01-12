@@ -124,7 +124,7 @@ model = CellTranspose(channels=args.n_chan, device=device)
 model = nn.DataParallel(model)
 model.to(device)
 if args.pretrained_model is not None:
-    model.load_state_dict(load(args.pretrained_model))
+    model.load_state_dict(load(args.pretrained_model, map_location=device)) #TODO: Remove map_location from load
 
 if not args.eval_only:
     class_loss = ClassLoss(nn.BCEWithLogitsLoss(reduction='mean'))
@@ -206,17 +206,57 @@ if not args.eval_only:
 
 if not args.train_only:
     start_eval = time.time()
-    test_dataset = ValTestCellTransposeData('Test', args.test_dataset, args.n_chan, do_3D=args.do_3D,
-                                            from_3D=args.test_from_3D, evaluate=True,
-                                            resize=Resize(args.median_diams, args.patch_size, args.test_overlap,
-                                                          use_labels=args.test_use_labels, refine=True,
-                                                          gc_model=gen_cellpose, sz_model=gen_size_model,
-                                                          device=device, patch_per_batch=args.batch_size))
 
-    eval_dl = DataLoader(test_dataset, batch_size=1, shuffle=False)
+    if not args.test_from_3D:
+        test_dataset = ValTestCellTransposeData('Test', args.test_dataset, args.n_chan, do_3D=args.do_3D,
+                                                from_3D=args.test_from_3D, evaluate=True,
+                                                resize=Resize(args.median_diams, args.patch_size, args.test_overlap,
+                                                            use_labels=args.test_use_labels, refine=True,
+                                                            gc_model=gen_cellpose, sz_model=gen_size_model,
+                                                            device=device, patch_per_batch=args.batch_size))
 
-    masks, prediction_list, label_list = eval_network(model, eval_dl, device, patch_per_batch=args.batch_size,
+        #Do this 3 times, once for xy, yx, xz
+        eval_dl = DataLoader(test_dataset, batch_size=1, shuffle=False)
+
+        masks, prediction_list, label_list = eval_network(model, eval_dl, device, patch_per_batch=args.batch_size,
                                                       patch_size=args.patch_size, min_overlap=args.test_overlap)
+
+    else:
+        test_dataset_xy = ValTestCellTransposeData('Test', args.test_dataset, args.n_chan, do_3D=args.do_3D,
+                                                from_3D=args.test_from_3D, plane='xy', evaluate=True,
+                                                resize=Resize(args.median_diams, args.patch_size, args.test_overlap,
+                                                            use_labels=args.test_use_labels, refine=True,
+                                                            gc_model=gen_cellpose, sz_model=gen_size_model,
+                                                            device=device, patch_per_batch=args.batch_size))
+        
+        test_dataset_yz = ValTestCellTransposeData('Test', args.test_dataset, args.n_chan, do_3D=args.do_3D,
+                                                from_3D=args.test_from_3D, plane='yz', evaluate=True,
+                                                resize=Resize(args.median_diams, args.patch_size, args.test_overlap,
+                                                            use_labels=args.test_use_labels, refine=True,
+                                                            gc_model=gen_cellpose, sz_model=gen_size_model,
+                                                            device=device, patch_per_batch=args.batch_size))
+        
+        test_dataset_xz = ValTestCellTransposeData('Test', args.test_dataset, args.n_chan, do_3D=args.do_3D,
+                                                from_3D=args.test_from_3D, plane='xz', evaluate=True,
+                                                resize=Resize(args.median_diams, args.patch_size, args.test_overlap,
+                                                            use_labels=args.test_use_labels, refine=True,
+                                                            gc_model=gen_cellpose, sz_model=gen_size_model,
+                                                            device=device, patch_per_batch=args.batch_size))
+
+        eval_dl_xy = DataLoader(test_dataset_xy, batch_size=1, shuffle=False)
+        eval_dl_yz = DataLoader(test_dataset_yz, batch_size=1, shuffle=False)
+        eval_dl_xz = DataLoader(test_dataset_xz, batch_size=1, shuffle=False)
+
+        masks_xy, prediction_list_xy, label_list_xy = eval_network(model, eval_dl_xy, device, patch_per_batch=args.batch_size,
+                                                      patch_size=args.patch_size, min_overlap=args.test_overlap)
+        masks_yz, prediction_list_yz, label_list_yz = eval_network(model, eval_dl_yz, device, patch_per_batch=args.batch_size,
+                                                      patch_size=args.patch_size, min_overlap=args.test_overlap)
+        masks_xz, prediction_list_xz, label_list_xz = eval_network(model, eval_dl_xz, device, patch_per_batch=args.batch_size,
+                                                      patch_size=args.patch_size, min_overlap=args.test_overlap)
+
+        #TODO:Stiching function goes here
+
+    
 
     for i in range(len(masks)):
         masks[i] = masks[i].astype('int32')

@@ -193,6 +193,8 @@ def eval_network(model: nn.Module, data_loader: DataLoader, device, patch_per_ba
                 predictions = cat((predictions, p))
 
             predictions = recombine_patches(predictions, resized_dims, min_overlap)
+
+            
             sample_mask = followflows(predictions)
             sample_mask = np.transpose(sample_mask.numpy(), (1, 2, 0))
             if padding:
