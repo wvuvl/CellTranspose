@@ -122,7 +122,7 @@ class CellTransposeData(Dataset):
                     #Read files
                     if ext == '.tif' or ext == '.tiff':
                         raw_data_vol = tifffile.imread(self.d_list[ind]).astype('float')
-                        raw_label_vol = tifffile.imread(self.l_list[ind]).astype('int16')
+                        raw_label_vol = tifffile.imread(self.l_list[ind]).astype('float')
                     else:
                         raw_data_vol = cv2.imread(self.d_list[ind], -1).astype('float')
                         raw_label_vol = cv2.imread(self.l_list[ind], -1).astype('int16')
@@ -130,8 +130,10 @@ class CellTransposeData(Dataset):
                     #Swap axes to load different planes
                     if plane == 'xy' or plane == 'yx':
                         raw_data_vol = raw_data_vol.swapaxes(0, 2) #(x, y, z) -> (z, y, x)
+                        raw_label_vol = raw_label_vol.swapaxes(0, 2)
                     elif plane == 'xz' or plane == 'zx':
                         raw_data_vol = raw_data_vol.swapaxes(0, 1) #(x, y, z) -> (y, x, z)
+                        raw_label_vol = raw_label_vol.swapaxes(0, 1)
                     #else continue (default)
 
                     #Reformat to [x, n_chan, y, z] and normalize
@@ -148,13 +150,14 @@ class CellTransposeData(Dataset):
                         #     *do_resize_here*
                     else:
                         if resize is not None:
-                            new_data = []
-                            new_label = []
+                        #     new_data = []
+                        #     new_label = []
                             original_dim = []
                             for i in range(len(raw_data_vol)):
-                                nd, nl, _, od = resize(raw_data_vol[i], raw_label_vol[i])
-                                new_data.append(nd)
-                                new_label.append(nl)
+                        #         nd, nl, _, od = resize(raw_data_vol[i], raw_label_vol[i])
+                        #         new_data.append(nd)
+                        #         new_label.append(nl)
+                                od = raw_label_vol[2], raw_label_vol[3]
                                 original_dim.append(od)
                             self.original_dims.extend(original_dim)
                     self.data.extend(new_data)
