@@ -5,7 +5,7 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "3D Data",
+            "name": "WIN_BBBC024_rescaled",
             "type": "python",
             "request": "launch",
             "program": "${file}",
@@ -50,7 +50,7 @@
             ]
         },
         {
-            "name": "3D Data Eval Only",
+            "name": "WIN_BBBC024_rescaled_evalonly",
             "type": "python",
             "request": "launch",
             "program": "${file}",
@@ -79,6 +79,41 @@
                 "--val-use-labels",
                 "--test-dataset",
                 "C:/Users/jthra/Documents/data/BBBC024_v1_raw_tiff_combined_split_rescaled_0.5/test",
+                "--test-use-labels",
+                "--calculate-ap",
+                "--test-from-3D"
+            ]
+        },
+        {
+            "name": "LIN_BBBC024_evalonly",
+            "type": "python",
+            "request": "launch",
+            "program": "${file}",
+            "console": "integratedTerminal",
+            "args": [
+                "--batch-size",
+                "256",
+                "--median-diams",
+                "30",
+                "--patch-size",
+                "112",
+                "--test-overlap",
+                "56",
+                "--n-chan",
+                "2",
+                "--eval-only",
+                "--dataset-name",
+                "Cellpose Specialized Dataset",
+                "--results-dir",
+                "~/Documents/data/cellpose_results/Cellpose_results",
+                "--pretrained-model",
+                "~/Documents/data/cellpose_results/trained_model.pt",
+                "--val-dataset",
+                "~/Documents/data/BBBC024_v1_raw_tiff_combined_split/val",
+                "--val-from-3D",
+                "--val-use-labels",
+                "--test-dataset",
+                "~/Documents/data/BBBC024_v1_raw_tiff_combined_split/test",
                 "--test-use-labels",
                 "--calculate-ap",
                 "--test-from-3D"

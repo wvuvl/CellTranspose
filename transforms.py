@@ -8,7 +8,7 @@ from cellpose_src.utils import diameters, fill_holes_and_remove_small_masks
 from cellpose_src.transforms import _taper_mask
 import random
 import torchvision.transforms.functional as TF
-from utils.Calc_extents import diam_range
+from my_utils.Calc_extents import diam_range
 
 import matplotlib.pyplot as plt
 

@@ -150,16 +150,15 @@ class CellTransposeData(Dataset):
                         #     *do_resize_here*
                     else:
                         if resize is not None:
-                        #     new_data = []
-                        #     new_label = []
+                            new_data = []
+                            new_label = []
                             original_dim = []
                             for i in range(len(raw_data_vol)):
-                        #         nd, nl, _, od = resize(raw_data_vol[i], raw_label_vol[i])
-                        #         new_data.append(nd)
-                        #         new_label.append(nl)
+                                nd, nl, _, od = resize(raw_data_vol[i], raw_label_vol[i])
+                                new_data.append(nd)
+                                new_label.append(nl)
                                 od = raw_label_vol[2], raw_label_vol[3]
                                 original_dim.append(od)
-                            self.original_dims.extend(original_dim)
                     self.data.extend(new_data)
                     self.labels.extend(new_label)
 
