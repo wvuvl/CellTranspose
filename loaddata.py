@@ -141,6 +141,9 @@ class CellTransposeData(Dataset):
                     raw_data_vol = [normalize1stto99th(raw_data_vol[i]) for i in range(len(raw_data_vol))]
                     raw_label_vol = [reformat(as_tensor(raw_label_vol[i])) for i in range(len(raw_label_vol))]
 
+                    #Drop empty labels
+
+
                     new_data = raw_data_vol
                     new_label = raw_label_vol
                     #Handle precaluclated flows if available
@@ -154,7 +157,7 @@ class CellTransposeData(Dataset):
                             new_label = []
                             original_dim = []
                             for i in range(len(raw_data_vol)):
-                                nd, nl, _, od = resize(raw_data_vol[i], raw_label_vol[i])
+                                nd, nl, od = resize(raw_data_vol[i], raw_label_vol[i])
                                 new_data.append(nd)
                                 new_label.append(nl)
                                 od = raw_label_vol[2], raw_label_vol[3]

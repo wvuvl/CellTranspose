@@ -247,14 +247,15 @@ if not args.train_only:
         eval_dl_yz = DataLoader(test_dataset_yz, batch_size=1, shuffle=False)
         eval_dl_xz = DataLoader(test_dataset_xz, batch_size=1, shuffle=False)
 
-        masks_xy, prediction_list_xy, label_list_xy = eval_network(model, eval_dl_xy, device, patch_per_batch=args.batch_size,
+        _, prediction_list_xy, label_list_xy = eval_network(model, eval_dl_xy, device, patch_per_batch=args.batch_size,
                                                       patch_size=args.patch_size, min_overlap=args.test_overlap)
-        masks_yz, prediction_list_yz, label_list_yz = eval_network(model, eval_dl_yz, device, patch_per_batch=args.batch_size,
+        _, prediction_list_yz, label_list_yz = eval_network(model, eval_dl_yz, device, patch_per_batch=args.batch_size,
                                                       patch_size=args.patch_size, min_overlap=args.test_overlap)
-        masks_xz, prediction_list_xz, label_list_xz = eval_network(model, eval_dl_xz, device, patch_per_batch=args.batch_size,
+        _, prediction_list_xz, label_list_xz = eval_network(model, eval_dl_xz, device, patch_per_batch=args.batch_size,
                                                       patch_size=args.patch_size, min_overlap=args.test_overlap)
 
-        #TODO:Stiching function goes here
+        #TODO:Stitching function goes here
+        #TODO:Add from_3D flag to eval_network to ignore mask generation
 
     
 
