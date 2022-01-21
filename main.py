@@ -15,7 +15,7 @@ import time
 from transforms import Resize, reformat
 from loaddata import TrainCellTransposeData, ValTestCellTransposeData
 from CellTranspose2D import CellTranspose, SizeModel, ClassLoss, FlowLoss, SASClassLoss, ContrastiveFlowLoss
-from train_eval import train_network, adapt_network, eval_network
+from train_eval import train_network, adapt_network, eval_network, eval_network_3D
 from cellpose_src.metrics import average_precision
 from misc_utils import produce_logfile
 
@@ -222,21 +222,21 @@ if not args.train_only:
                                                       patch_size=args.patch_size, min_overlap=args.test_overlap)
 
     else:
-        test_dataset_xy = ValTestCellTransposeData('Test', args.test_dataset, args.n_chan, do_3D=args.do_3D,
+        test_dataset_xy = ValTestCellTransposeData('Test_xy', args.test_dataset, args.n_chan, do_3D=args.do_3D,
                                                 from_3D=args.test_from_3D, plane='xy', evaluate=True,
                                                 resize=Resize(args.median_diams, args.patch_size, args.test_overlap,
                                                             use_labels=args.test_use_labels, refine=True,
                                                             gc_model=gen_cellpose, sz_model=gen_size_model,
                                                             device=device, patch_per_batch=args.batch_size))
         
-        test_dataset_yz = ValTestCellTransposeData('Test', args.test_dataset, args.n_chan, do_3D=args.do_3D,
+        test_dataset_yz = ValTestCellTransposeData('Test_yz', args.test_dataset, args.n_chan, do_3D=args.do_3D,
                                                 from_3D=args.test_from_3D, plane='yz', evaluate=True,
                                                 resize=Resize(args.median_diams, args.patch_size, args.test_overlap,
                                                             use_labels=args.test_use_labels, refine=True,
                                                             gc_model=gen_cellpose, sz_model=gen_size_model,
                                                             device=device, patch_per_batch=args.batch_size))
         
-        test_dataset_xz = ValTestCellTransposeData('Test', args.test_dataset, args.n_chan, do_3D=args.do_3D,
+        test_dataset_xz = ValTestCellTransposeData('Test_xz', args.test_dataset, args.n_chan, do_3D=args.do_3D,
                                                 from_3D=args.test_from_3D, plane='xz', evaluate=True,
                                                 resize=Resize(args.median_diams, args.patch_size, args.test_overlap,
                                                             use_labels=args.test_use_labels, refine=True,
@@ -247,11 +247,11 @@ if not args.train_only:
         eval_dl_yz = DataLoader(test_dataset_yz, batch_size=1, shuffle=False)
         eval_dl_xz = DataLoader(test_dataset_xz, batch_size=1, shuffle=False)
 
-        _, prediction_list_xy, label_list_xy = eval_network(model, eval_dl_xy, device, patch_per_batch=args.batch_size,
+        prediction_list_xy, label_list_xy = eval_network_3D(model, eval_dl_xy, device, patch_per_batch=args.batch_size,
                                                       patch_size=args.patch_size, min_overlap=args.test_overlap)
-        _, prediction_list_yz, label_list_yz = eval_network(model, eval_dl_yz, device, patch_per_batch=args.batch_size,
+        prediction_list_yz, label_list_yz = eval_network_3D(model, eval_dl_yz, device, patch_per_batch=args.batch_size,
                                                       patch_size=args.patch_size, min_overlap=args.test_overlap)
-        _, prediction_list_xz, label_list_xz = eval_network(model, eval_dl_xz, device, patch_per_batch=args.batch_size,
+        prediction_list_xz, label_list_xz = eval_network_3D(model, eval_dl_xz, device, patch_per_batch=args.batch_size,
                                                       patch_size=args.patch_size, min_overlap=args.test_overlap)
 
         #TODO:Stitching function goes here

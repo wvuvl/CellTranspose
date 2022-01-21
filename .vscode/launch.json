@@ -109,11 +109,11 @@
                 "--pretrained-model",
                 "~/Documents/data/cellpose_results/trained_model.pt",
                 "--val-dataset",
-                "~/Documents/data/BBBC024_v1_raw_tiff_combined_split/val",
+                "~/Documents/data/BBBC024_single/val",
                 "--val-from-3D",
                 "--val-use-labels",
                 "--test-dataset",
-                "~/Documents/data/BBBC024_v1_raw_tiff_combined_split/test",
+                "~/Documents/data/BBBC024_single/test",
                 "--test-use-labels",
                 "--calculate-ap",
                 "--test-from-3D"

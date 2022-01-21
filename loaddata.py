@@ -141,7 +141,6 @@ class CellTransposeData(Dataset):
                     raw_data_vol = [normalize1stto99th(raw_data_vol[i]) for i in range(len(raw_data_vol))]
                     raw_label_vol = [reformat(as_tensor(raw_label_vol[i])) for i in range(len(raw_label_vol))]
 
-                    #Drop empty labels
 
 
                     new_data = raw_data_vol
@@ -160,10 +159,12 @@ class CellTransposeData(Dataset):
                                 nd, nl, od = resize(raw_data_vol[i], raw_label_vol[i])
                                 new_data.append(nd)
                                 new_label.append(nl)
-                                od = raw_label_vol[2], raw_label_vol[3]
                                 original_dim.append(od)
-                    self.data.extend(new_data)
-                    self.labels.extend(new_label)
+
+                #Add all cross sections as list
+                self.original_dims.extend([original_dim])
+                self.data.extend([new_data])
+                self.labels.extend([new_label])
 
             else:
                 for ind in tqdm(range(len(self.d_list)), desc='Loading {} Dataset...'.format(split_name)):
