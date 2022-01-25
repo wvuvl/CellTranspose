@@ -219,39 +219,45 @@ def eval_network_3D(model: nn.Module, data_loader: DataLoader, device, patch_per
     with no_grad():
         label_list = []
         pred_list = []
-        for (sample_data, sample_labels, label_files, original_dims) in tqdm(data_loader,
-                                                                             desc='Evaluating Test Dataset'):
-            resized_dims = (sample_data.shape[2], sample_data.shape[3])
-            padding = sample_data.shape[2] < patch_size[0] or sample_data.shape[3] < patch_size[1]
-            # Add padding if image is smaller than patch size in at least one dimension
-            if padding:
-                unpadded_dims = resized_dims
-                sd = zeros((sample_data.shape[0], sample_data.shape[1], max(patch_size[0], sample_data.shape[2]),
-                            max(patch_size[1], sample_data.shape[3])))
-                sl = zeros((sample_labels.shape[0], sample_labels.shape[1], max(patch_size[0], sample_data.shape[2]),
-                            max(patch_size[1], sample_labels.shape[3])))
-                set_corner = (max(0, (patch_size[0] - sample_data.shape[2]) // 2),
-                              max(0, (patch_size[1] - sample_data.shape[3]) // 2))
-                sd[:, :, set_corner[0]:set_corner[0] + sample_data.shape[2],
-                   set_corner[1]:set_corner[1] + sample_data.shape[3]] = sample_data
-                sl[:, :, set_corner[0]:set_corner[0] + sample_labels.shape[2],
-                   set_corner[1]:set_corner[1] + sample_labels.shape[3]] = sample_labels
-                sample_data = sd
-                sample_labels = sl
+        for (sample_data_obj, sample_labels_obj, label_files, original_dims) in tqdm(data_loader,
+                                                                             desc='Evaluating Test Dataset'):       
+            pred_list_slices = []
+            label_list_slices = []
+            for sample_data, sample_labels in sample_data_obj, sample_labels_obj:
                 resized_dims = (sample_data.shape[2], sample_data.shape[3])
-            sample_data, _ = generate_patches(sample_data, squeeze(sample_labels, dim=0), patch=patch_size,
-                                              min_overlap=min_overlap, lbl_flows=False)
-            predictions = tensor([]).to(device)
+                padding = sample_data.shape[2] < patch_size[0] or sample_data.shape[3] < patch_size[1]
+                # Add padding if image is smaller than patch size in at least one dimension
+                if padding:
+                    unpadded_dims = resized_dims
+                    sd = zeros((sample_data.shape[0], sample_data.shape[1], max(patch_size[0], sample_data.shape[2]),
+                                max(patch_size[1], sample_data.shape[3])))
+                    sl = zeros((sample_labels.shape[0], sample_labels.shape[1], max(patch_size[0], sample_data.shape[2]),
+                                max(patch_size[1], sample_labels.shape[3])))
+                    set_corner = (max(0, (patch_size[0] - sample_data.shape[2]) // 2),
+                                max(0, (patch_size[1] - sample_data.shape[3]) // 2))
+                    sd[:, :, set_corner[0]:set_corner[0] + sample_data.shape[2],
+                    set_corner[1]:set_corner[1] + sample_data.shape[3]] = sample_data
+                    sl[:, :, set_corner[0]:set_corner[0] + sample_labels.shape[2],
+                    set_corner[1]:set_corner[1] + sample_labels.shape[3]] = sample_labels
+                    sample_data = sd
+                    sample_labels = sl
+                    resized_dims = (sample_data.shape[2], sample_data.shape[3])
+                sample_data, _ = generate_patches(sample_data, squeeze(sample_labels, dim=0), patch=patch_size,
+                                                min_overlap=min_overlap, lbl_flows=False)
+                predictions = tensor([]).to(device)
 
-            for patch_ind in range(0, len(sample_data), patch_per_batch):
-                sample_data_patches = sample_data[patch_ind:patch_ind + patch_per_batch].float().to(device)
-                p = model(sample_data_patches)
-                predictions = cat((predictions, p))
+                for patch_ind in range(0, len(sample_data), patch_per_batch):
+                    sample_data_patches = sample_data[patch_ind:patch_ind + patch_per_batch].float().to(device)
+                    p = model(sample_data_patches)
+                    predictions = cat((predictions, p))
 
-            predictions = recombine_patches(predictions, resized_dims, min_overlap)
-            pred_list.append(predictions.cpu().numpy()[0])
-            for i in range(len(label_files)):
-                    label_list.append(label_files[i][label_files[i].rfind('/')+1: label_files[i].rfind('.')])
+                predictions = recombine_patches(predictions, resized_dims, min_overlap)
+                pred_list_slices.append(predictions.cpu().numpy()[0])
+                for i in range(len(label_files)):
+                        label_list_slices.append(label_files[i][label_files[i].rfind('/')+1: label_files[i].rfind('.')])
+
+            #Generate masks between each object
+            #Add 3D masks to pred_list, label_list
 
             
     return pred_list, label_list
