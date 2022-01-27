@@ -223,7 +223,9 @@ def eval_network_3D(model: nn.Module, data_loader: DataLoader, device, patch_per
                                                                              desc='Evaluating Test Dataset'):       
             pred_list_slices = []
             label_list_slices = []
-            for sample_data, sample_labels in sample_data_obj, sample_labels_obj:
+            for i in range(len(sample_data_obj)):
+                sample_data, sample_labels = sample_data_obj[i], sample_labels_obj[i]
+
                 resized_dims = (sample_data.shape[2], sample_data.shape[3])
                 padding = sample_data.shape[2] < patch_size[0] or sample_data.shape[3] < patch_size[1]
                 # Add padding if image is smaller than patch size in at least one dimension
@@ -256,8 +258,27 @@ def eval_network_3D(model: nn.Module, data_loader: DataLoader, device, patch_per
                 for i in range(len(label_files)):
                         label_list_slices.append(label_files[i][label_files[i].rfind('/')+1: label_files[i].rfind('.')])
 
-            #Generate masks between each object
-            #Add 3D masks to pred_list, label_list
-
+                pred_list.append(pred_list_slices)
+                label_list.append(label_list_slices)
             
     return pred_list, label_list
+
+def create_3D_masks(pred_xy, pred_yz, pred_xz, label_xy, label_yz, label_xz):
+        masks = []
+        #Iterate though list of 3D objects
+        for i in range(len(pred_xy)):
+            obj_xy = pred_xy[i]
+            obj_yz = pred_yz[i]
+            obj_xz = pred_xz[i]
+
+            #Average predictions from each slice
+            x_avg = pred_xy
+
+            #Predict call probability of each slice. Average across 3 estimates for each pixel
+
+            #Threshold probability at 0.5 and multiply by flows
+            #Assemble tensor and call followflows
+
+            #resize and add to list
+
+    # return

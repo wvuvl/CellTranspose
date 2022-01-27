@@ -15,7 +15,7 @@ import time
 from transforms import Resize, reformat
 from loaddata import TrainCellTransposeData, ValTestCellTransposeData
 from CellTranspose2D import CellTranspose, SizeModel, ClassLoss, FlowLoss, SASClassLoss, ContrastiveFlowLoss
-from train_eval import train_network, adapt_network, eval_network, eval_network_3D
+from train_eval import train_network, adapt_network, eval_network, eval_network_3D, create_3D_masks
 from cellpose_src.metrics import average_precision
 from misc_utils import produce_logfile
 
@@ -247,15 +247,15 @@ if not args.train_only:
         eval_dl_yz = DataLoader(test_dataset_yz, batch_size=1, shuffle=False)
         eval_dl_xz = DataLoader(test_dataset_xz, batch_size=1, shuffle=False)
 
-        prediction_list_xy, label_list_xy = eval_network_3D(model, eval_dl_xy, device, patch_per_batch=args.batch_size,
+        pred_list_xy, label_list_xy = eval_network_3D(model, eval_dl_xy, device, patch_per_batch=args.batch_size,
                                                       patch_size=args.patch_size, min_overlap=args.test_overlap)
-        prediction_list_yz, label_list_yz = eval_network_3D(model, eval_dl_yz, device, patch_per_batch=args.batch_size,
+        pred_list_yz, label_list_yz = eval_network_3D(model, eval_dl_yz, device, patch_per_batch=args.batch_size,
                                                       patch_size=args.patch_size, min_overlap=args.test_overlap)
-        prediction_list_xz, label_list_xz = eval_network_3D(model, eval_dl_xz, device, patch_per_batch=args.batch_size,
+        pred_list_xz, label_list_xz = eval_network_3D(model, eval_dl_xz, device, patch_per_batch=args.batch_size,
                                                       patch_size=args.patch_size, min_overlap=args.test_overlap)
 
-        #TODO:Stitching function goes here
-        #TODO:Add from_3D flag to eval_network to ignore mask generation
+        create_3D_masks(pred_list_xy, pred_list_yz, pred_list_xz, label_list_xy, label_list_yz, label_list_xz)
+        
 
     
 

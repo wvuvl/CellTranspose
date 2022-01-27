@@ -129,7 +129,10 @@ class CellTransposeData(Dataset):
                     
                     #Swap axes to load different planes
                     if plane == 'xy' or plane == 'yx':
-                        raw_data_vol = raw_data_vol.swapaxes(0, 2) #(x, y, z) -> (z, y, x)
+                        raw_data_vol = raw_data_vol.swapaxes(0, 1) #(x, y, z) -> (y, x, z)
+                        raw_data_vol = raw_data_vol.swapaxes(0, 2) #(y, x, z) -> (z, x, y)
+
+                        raw_label_vol = raw_label_vol.swapaxes(0, 1)
                         raw_label_vol = raw_label_vol.swapaxes(0, 2)
                     elif plane == 'xz' or plane == 'zx':
                         raw_data_vol = raw_data_vol.swapaxes(0, 1) #(x, y, z) -> (y, x, z)
