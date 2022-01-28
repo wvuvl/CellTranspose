@@ -258,27 +258,29 @@ def eval_network_3D(model: nn.Module, data_loader: DataLoader, device, patch_per
                 for i in range(len(label_files)):
                         label_list_slices.append(label_files[i][label_files[i].rfind('/')+1: label_files[i].rfind('.')])
 
-                pred_list.append(pred_list_slices)
-                label_list.append(label_list_slices)
+            pred_list.append(pred_list_slices)
+            label_list.append(label_list_slices)
             
     return pred_list, label_list
 
 def create_3D_masks(pred_xy, pred_yz, pred_xz, label_xy, label_yz, label_xz):
-        masks = []
-        #Iterate though list of 3D objects
-        for i in range(len(pred_xy)):
-            obj_xy = pred_xy[i]
-            obj_yz = pred_yz[i]
-            obj_xz = pred_xz[i]
+    flows = []
+    masks = []
+    #Iterate though list of 3D objects
+    for i in range(len(pred_xy)):
+        obj_xy = pred_xy[i]
+        obj_yz = pred_yz[i]
+        obj_xz = pred_xz[i]
 
-            #Average predictions from each slice
-            x_avg = pred_xy
+        #Average predictions from each slice
+        x_pred = [(x1+x2) / 2 for x1, x2 in zip(obj_xy[0, :, 0], obj_xz[0, :, 0])]
+        y_pred = [(y1+y2) / 2 for y1, y2 in zip(obj_xy[0, 0, :], obj_yz[0, :, 0])]
+        z_pred = [(z1+z2) / 2 for z1, z2 in zip(obj_yz[0, 0, :], obj_xz[0, 0, :])]
 
-            #Predict call probability of each slice. Average across 3 estimates for each pixel
+        flows.append(tensor([x_pred, y_pred, z_pred]))
+    
+    masks = followflows(tensor([x_pred, y_pred, z_pred])) #???
+    #resize
 
-            #Threshold probability at 0.5 and multiply by flows
-            #Assemble tensor and call followflows
-
-            #resize and add to list
-
-    # return
+    return masks
+        

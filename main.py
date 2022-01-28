@@ -11,6 +11,7 @@ import matplotlib.pyplot as plt
 import tifffile
 import cv2
 import time
+import gc
 
 from transforms import Resize, reformat
 from loaddata import TrainCellTransposeData, ValTestCellTransposeData
@@ -228,6 +229,14 @@ if not args.train_only:
                                                             use_labels=args.test_use_labels, refine=True,
                                                             gc_model=gen_cellpose, sz_model=gen_size_model,
                                                             device=device, patch_per_batch=args.batch_size))
+
+        eval_dl_xy = DataLoader(test_dataset_xy, batch_size=1, shuffle=False)
+        pred_list_xy, label_list_xy = eval_network_3D(model, eval_dl_xy, device, patch_per_batch=args.batch_size,
+                                                      patch_size=args.patch_size, min_overlap=args.test_overlap)
+        del test_dataset_xy
+        del eval_dl_xy
+        gc.collect()
+
         
         test_dataset_yz = ValTestCellTransposeData('Test_yz', args.test_dataset, args.n_chan, do_3D=args.do_3D,
                                                 from_3D=args.test_from_3D, plane='yz', evaluate=True,
@@ -235,6 +244,13 @@ if not args.train_only:
                                                             use_labels=args.test_use_labels, refine=True,
                                                             gc_model=gen_cellpose, sz_model=gen_size_model,
                                                             device=device, patch_per_batch=args.batch_size))
+
+        eval_dl_yz = DataLoader(test_dataset_yz, batch_size=1, shuffle=False)
+        pred_list_yz, label_list_yz = eval_network_3D(model, eval_dl_yz, device, patch_per_batch=args.batch_size,
+                                                      patch_size=args.patch_size, min_overlap=args.test_overlap)
+        del test_dataset_yz
+        del eval_dl_yz
+        gc.collect()
         
         test_dataset_xz = ValTestCellTransposeData('Test_xz', args.test_dataset, args.n_chan, do_3D=args.do_3D,
                                                 from_3D=args.test_from_3D, plane='xz', evaluate=True,
@@ -242,18 +258,15 @@ if not args.train_only:
                                                             use_labels=args.test_use_labels, refine=True,
                                                             gc_model=gen_cellpose, sz_model=gen_size_model,
                                                             device=device, patch_per_batch=args.batch_size))
-
-        eval_dl_xy = DataLoader(test_dataset_xy, batch_size=1, shuffle=False)
-        eval_dl_yz = DataLoader(test_dataset_yz, batch_size=1, shuffle=False)
+        
         eval_dl_xz = DataLoader(test_dataset_xz, batch_size=1, shuffle=False)
-
-        pred_list_xy, label_list_xy = eval_network_3D(model, eval_dl_xy, device, patch_per_batch=args.batch_size,
-                                                      patch_size=args.patch_size, min_overlap=args.test_overlap)
-        pred_list_yz, label_list_yz = eval_network_3D(model, eval_dl_yz, device, patch_per_batch=args.batch_size,
-                                                      patch_size=args.patch_size, min_overlap=args.test_overlap)
         pred_list_xz, label_list_xz = eval_network_3D(model, eval_dl_xz, device, patch_per_batch=args.batch_size,
                                                       patch_size=args.patch_size, min_overlap=args.test_overlap)
+        del test_dataset_xz
+        del eval_dl_xz
+        gc.collect()
 
+                                                      
         create_3D_masks(pred_list_xy, pred_list_yz, pred_list_xz, label_list_xy, label_list_yz, label_list_xz)
         
 
