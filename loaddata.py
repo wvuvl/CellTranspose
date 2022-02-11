@@ -12,6 +12,7 @@ from tqdm.contrib import tzip
 import tifffile
 import cv2
 import random
+import numpy as np
 from transforms import reformat, normalize1stto99th, Resize, random_horizontal_flip, labels_to_flows, generate_patches
 
 import matplotlib.pyplot as plt
@@ -33,21 +34,33 @@ class CellTransposeData(Dataset):
 
     # Currently, set to load in volumes upfront to cpu memory (via __init__())
     # rather than one at a time via gpu memory (via __getitem__())
-    def __init__(self, split_name, data_dirs, n_chan, pf_dirs=None, do_3D=False, from_3D=False, plane='yz', evaluate=False, batch_size = 1,
+    def __init__(self, split_name, data_dirs, n_chan, pf_dirs=None, do_3D=False, from_3D=False, plane=None, evaluate=False, batch_size = 1,
                  resize: Resize = None):
-        """"
-        Args:
+        """
+        Parameters
+        ------------------------------------------------------------------------------------------------
+        
             split_name: name corresponding to the split (i.e. train, validation, test, target)
+            
             n_chan: Maximum number of channels in input images (i.e. 2 for cytoplasm + nuclei images)
+            
             data_dirs: root directory/directories of the dataset, containing 'data' and 'labels' folders
+            
             pf_dirs: root directory/directories of pre-calculated flows, if they exist
+            
             do_3D: whether or not to train 3D CellTranspose model (requires that from_3d is true)
+            
             from_3D: whether input samples are 2D images (False) or 3D volumes (True)
+            
             evaluate: if set to true, returns additional information when calling __getitem__()
+            
             resize: Resize object containing parameters by which to resize input samples accordingly
         """
         self.split_name = split_name
         self.evaluate = evaluate
+        self.d_list_3D = []
+        self.l_list_3D = []
+        
         if isinstance(data_dirs, list):  # TODO: Determine how to not treat input as list (if necessary)
             self.d_list = []
             self.l_list = []
@@ -115,7 +128,8 @@ class CellTransposeData(Dataset):
 
         else:
             if from_3D:
-                # Note: majority of bottleneck caused by reading and normalizing data
+                
+                # Note: majority of bottleneck caused by reading and normalizing data 
                 for ind in tqdm(range(len(self.d_list)), desc='Loading {} Dataset...'.format(split_name)):
                     ext = os.path.splitext(self.d_list[ind])[-1]
 
@@ -127,7 +141,14 @@ class CellTransposeData(Dataset):
                         raw_data_vol = cv2.imread(self.d_list[ind], -1).astype('float')
                         raw_label_vol = cv2.imread(self.l_list[ind], -1).astype('int16')
                     
-                    #Swap axes to load different planes
+                                          
+                    #Reformat to [z,chan, y, x] and normalize
+                    raw_data_vol = [reformat(as_tensor(raw_data_vol[i]), n_chan) for i in range(len(raw_data_vol))]
+                    raw_data_vol = [normalize1stto99th(raw_data_vol[i]) for i in range(len(raw_data_vol))]
+                    raw_label_vol = [reformat(as_tensor(raw_label_vol[i])) for i in range(len(raw_label_vol))]
+                    
+                    """
+                    TODO: Swap axes to load different planes
                     if plane == 'xy' or plane == 'yx':
                         raw_data_vol = raw_data_vol.swapaxes(0, 1) #(x, y, z) -> (y, x, z)
                         raw_data_vol = raw_data_vol.swapaxes(0, 2) #(y, x, z) -> (z, x, y)
@@ -137,17 +158,9 @@ class CellTransposeData(Dataset):
                     elif plane == 'xz' or plane == 'zx':
                         raw_data_vol = raw_data_vol.swapaxes(0, 1) #(x, y, z) -> (y, x, z)
                         raw_label_vol = raw_label_vol.swapaxes(0, 1)
+                    
                     #else continue (default)
-
-                    #Reformat to [x, n_chan, y, z] and normalize
-                    raw_data_vol = [reformat(as_tensor(raw_data_vol[i]), n_chan) for i in range(len(raw_data_vol))]
-                    raw_data_vol = [normalize1stto99th(raw_data_vol[i]) for i in range(len(raw_data_vol))]
-                    raw_label_vol = [reformat(as_tensor(raw_label_vol[i])) for i in range(len(raw_label_vol))]
-
-
-
-                    new_data = raw_data_vol
-                    new_label = raw_label_vol
+                    """
                     #Handle precaluclated flows if available
                     if pf_dirs is not None:  # Not currently handled
                         print('Add this later')
@@ -163,6 +176,8 @@ class CellTransposeData(Dataset):
                                 new_data.append(nd)
                                 new_label.append(nl)
                                 original_dim.append(od)
+                                self.d_list_3D.append(self.d_list[ind])
+                                self.l_list_3D.append(self.l_list[ind])
 
                 #Add all cross sections as list
                 self.original_dims.extend([original_dim])
@@ -202,9 +217,11 @@ class CellTransposeData(Dataset):
         self.data_samples = self.data
         self.label_samples = self.labels
         print(len(self.data))
+        
     def __len__(self):
         return len(self.data) #return len(self.data_samples)
-
+    
+                     
 
 class TrainCellTransposeData(CellTransposeData):
     def __init__(self, split_name, data_dirs, n_chan, pf_dirs=None, do_3D=False, from_3D=False, evaluate=False,
@@ -212,6 +229,7 @@ class TrainCellTransposeData(CellTransposeData):
         self.resize = resize
         self.crop_size = crop_size
         self.has_flows = has_flows
+        self.from_3D= from_3D
         super().__init__(split_name, data_dirs, n_chan, pf_dirs=pf_dirs, do_3D=do_3D,
                          from_3D=from_3D, evaluate=evaluate, batch_size=batch_size, resize=None)
 
@@ -250,6 +268,7 @@ class TrainCellTransposeData(CellTransposeData):
 
         return patch_data, patch_label
     
+
     # Augmentations and tiling applied to input data (for training and adaptation) -
     # separated from DataLoader to allow for possibility of running only once or once per epoch
     # NOTE: ltf takes ~50% of time; generating patches and concatenating takes nearly as long
@@ -285,6 +304,7 @@ class TrainCellTransposeData(CellTransposeData):
 class ValTestCellTransposeData(CellTransposeData):
     def __init__(self, split_name, data_dirs, n_chan, pf_dirs=None, do_3D=False, from_3D=False, plane='yz', evaluate=False,
                  resize: Resize = None):
+        self.from_3D = from_3D
         super().__init__(split_name, data_dirs, n_chan, pf_dirs=pf_dirs, do_3D=do_3D, from_3D=from_3D, plane=plane,
                          evaluate=evaluate, resize=resize)
 
@@ -310,7 +330,9 @@ class ValTestCellTransposeData(CellTransposeData):
         self.original_dims = new_original_dims
 
     def __getitem__(self, index):
-        if self.evaluate:
+        if self.evaluate or not self.from_3D:
             return self.data_samples[index], self.label_samples[index], self.l_list[index], self.original_dims[index]
+        elif self.from_3D:
+            return self.data_samples[index], self.label_samples[index], self.d_list_3D[index], self.l_list_3D[index], self.original_dims[index]
         else:
             return self.data_samples[index], self.label_samples[index]

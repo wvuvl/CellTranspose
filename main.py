@@ -141,6 +141,7 @@ if not args.eval_only:
                                             resize=Resize(args.median_diams, args.patch_size, args.min_overlap,
                                                    use_labels=True, patch_per_batch=args.batch_size))
         #train_dataset.process_training_data(args.patch_size, args.min_overlap, has_flows=False)
+    
     if args.save_dataset:
         print('Saving Training Dataset... ', end='')
         save(train_dataset, args.save_dataset)

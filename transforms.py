@@ -29,6 +29,7 @@ def reformat(x, n_chan=1, is_pf=False, do_3D=False):
             if x.dim() == 2:
                 x = x.view(1, x.shape[0], x.shape[1])
                 x = torch.cat((x, torch.zeros((n_chan - 1, x.shape[1], x.shape[2]))))
+            
             # Currently transforms multi-channel input to greyscale
             elif x.dim() == 3:
                 # TODO: copying Cellpose implementation, find a cleaner method for solving this
@@ -50,7 +51,7 @@ def reformat(x, n_chan=1, is_pf=False, do_3D=False):
                         zeros = torch.zeros((n_chan - x.shape[0]), x.shape[1], x.shape[2])
                         x = torch.cat((x, zeros))
                     # raise ValueError('Data is not 2D; if intending to use 3D volumes, pass in "--do-3D" argument.')
-        # else:
+        #else
     return x
 
 
