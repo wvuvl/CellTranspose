@@ -263,6 +263,13 @@ def eval_network_3D(model: nn.Module, data_loader: DataLoader, device, patch_per
             
     return pred_list, label_list
 
+
+def stitch_2D_masks(z_masks,y_masks,x_masks):
+    masks = 0
+    
+    return masks
+    
+    
 def create_3D_masks(pred_xy, pred_yz, pred_xz, label_xy, label_yz, label_xz):
     flows = []
     masks = []

@@ -2,8 +2,10 @@
 Data Loader implementation, specifically designed for in-house datasets. Code will be designed to reflect flexibility in
 custom dataloaders for new data.
 """
+import torch
+from torchvision.transforms import ToTensor, Lambda
 from torch.utils.data import Dataset
-from torch import empty, as_tensor, tensor, cat, unsqueeze, float32
+from torch import dtype, empty, as_tensor, tensor, cat, unsqueeze, float32
 import torch.nn.functional as F
 import os
 import math
@@ -97,7 +99,7 @@ class CellTransposeData(Dataset):
         #NOTE: I don't think we need do_3D here if we are doing a similar implementation
         #to the original cellpose one
         if do_3D:  # and from_3D
-            for ind in tqdm(range(len(self.d_list)), desc='Loading {} Dataset...'.format(split_name)):
+            """for ind in tqdm(range(len(self.d_list)), desc='Loading {} Dataset...'.format(split_name)):
                 ext = os.path.splitext(self.d_list[ind])[-1]
 
                 #Read file and load tensor
@@ -124,43 +126,44 @@ class CellTransposeData(Dataset):
                     new_data, new_label, new_pf, original_dim = resize(new_data, new_label, new_pf)
                     self.original_dims.append(original_dim)
                 self.data.extend(new_data)
-                self.labels.extend(new_label)
+                self.labels.extend(new_label)"""
 
         else:
             if from_3D:
                 
-                # Note: majority of bottleneck caused by reading and normalizing data 
+                """# Note: majority of bottleneck caused by reading and normalizing data 
                 for ind in tqdm(range(len(self.d_list)), desc='Loading {} Dataset...'.format(split_name)):
                     ext = os.path.splitext(self.d_list[ind])[-1]
 
                     #Read files
                     if ext == '.tif' or ext == '.tiff':
                         raw_data_vol = tifffile.imread(self.d_list[ind]).astype('float')
-                        raw_label_vol = tifffile.imread(self.l_list[ind]).astype('float')
+                        raw_label_vol = tifffile.imread(self.l_list[ind]).astype('int16')
                     else:
                         raw_data_vol = cv2.imread(self.d_list[ind], -1).astype('float')
                         raw_label_vol = cv2.imread(self.l_list[ind], -1).astype('int16')
                     
                                           
+                    
+                    
+                    
+                    #TODO: Swap axes to load different planes
+                    if plane == 'xz' or plane == 'zx':
+                        raw_data_vol = raw_data_vol.swapaxes(0, 1) #(z,y,x) -> (y,z,x)
+                        raw_label_vol = raw_label_vol.swapaxes(0, 1)
+                       
+                    elif plane == 'yz' or plane == 'zy':
+                        raw_data_vol = raw_data_vol.swapaxes(0, 2) #(z, y, x) -> (x, y, z)
+                        raw_label_vol = raw_label_vol.swapaxes(0, 2)
+                       
+                    #else continue (default)
+                    
+                    
                     #Reformat to [z,chan, y, x] and normalize
                     raw_data_vol = [reformat(as_tensor(raw_data_vol[i]), n_chan) for i in range(len(raw_data_vol))]
                     raw_data_vol = [normalize1stto99th(raw_data_vol[i]) for i in range(len(raw_data_vol))]
                     raw_label_vol = [reformat(as_tensor(raw_label_vol[i])) for i in range(len(raw_label_vol))]
                     
-                    """
-                    TODO: Swap axes to load different planes
-                    if plane == 'xy' or plane == 'yx':
-                        raw_data_vol = raw_data_vol.swapaxes(0, 1) #(x, y, z) -> (y, x, z)
-                        raw_data_vol = raw_data_vol.swapaxes(0, 2) #(y, x, z) -> (z, x, y)
-
-                        raw_label_vol = raw_label_vol.swapaxes(0, 1)
-                        raw_label_vol = raw_label_vol.swapaxes(0, 2)
-                    elif plane == 'xz' or plane == 'zx':
-                        raw_data_vol = raw_data_vol.swapaxes(0, 1) #(x, y, z) -> (y, x, z)
-                        raw_label_vol = raw_label_vol.swapaxes(0, 1)
-                    
-                    #else continue (default)
-                    """
                     #Handle precaluclated flows if available
                     if pf_dirs is not None:  # Not currently handled
                         print('Add this later')
@@ -182,7 +185,7 @@ class CellTransposeData(Dataset):
                 #Add all cross sections as list
                 self.original_dims.extend([original_dim])
                 self.data.extend([new_data])
-                self.labels.extend([new_label])
+                self.labels.extend([new_label])"""
 
             else:
                 for ind in tqdm(range(len(self.d_list)), desc='Loading {} Dataset...'.format(split_name)):
@@ -330,9 +333,88 @@ class ValTestCellTransposeData(CellTransposeData):
         self.original_dims = new_original_dims
 
     def __getitem__(self, index):
-        if self.evaluate or not self.from_3D:
+        if self.evaluate and not self.from_3D:
             return self.data_samples[index], self.label_samples[index], self.l_list[index], self.original_dims[index]
-        elif self.from_3D:
-            return self.data_samples[index], self.label_samples[index], self.d_list_3D[index], self.l_list_3D[index], self.original_dims[index]
+        #elif self.from_3D:
+        #    return self.data_samples[index], self.label_samples[index], self.d_list_3D[index], self.l_list_3D[index], self.original_dims[index]
         else:
             return self.data_samples[index], self.label_samples[index]
+
+class ValTestCellTransposeData3D(Dataset):
+    def __init__(self, data, n_chan,label, pf_dirs=None, do_3D=False, from_3D=False, plane='xy', evaluate=False,
+                 resize: Resize = None):
+        
+        
+        self.label_path = label
+        ext = os.path.splitext(data)[-1]
+            
+        #Read files
+        if ext == '.tif' or ext == '.tiff':
+            raw_data_vol = tifffile.imread(data).astype('float')
+            raw_label_vol = tifffile.imread(label).astype('int16')
+        else:
+            raw_data_vol = cv2.imread(data, -1).astype('float')
+            raw_label_vol = cv2.imread(data, -1).astype('int16')
+        
+        if plane == 'xz' or plane == 'zx':
+            raw_data_vol = raw_data_vol.swapaxes(0, 1) #(z,y,x) -> (y,z,x)
+            raw_label_vol = raw_label_vol.swapaxes(0, 1)
+            
+        elif plane == 'yz' or plane == 'zy':
+            raw_data_vol = raw_data_vol.swapaxes(0, 2) #(z, y, x) -> (x, y, z)
+            raw_label_vol = raw_label_vol.swapaxes(0, 2)
+                
+            #else continue (default)
+            
+            
+        #Reformat to [z,chan, y, x] and normalize
+        raw_data_vol = [reformat(as_tensor(raw_data_vol[i]), n_chan) for i in range(len(raw_data_vol))]
+        raw_data_vol = [normalize1stto99th(raw_data_vol[i]) for i in range(len(raw_data_vol))]
+        raw_label_vol = [reformat(as_tensor(raw_label_vol[i])) for i in range(len(raw_label_vol))]
+        
+        self.data = []
+        self.labels = []
+        self.original_dim = []
+                
+        #Handle precaluclated flows if available
+        if pf_dirs is not None:  # Not currently handled
+            print('Add this later')
+            # if resize is not None:
+            #     *do_resize_here*
+        else:
+            if resize is not None:
+                
+                for i in range(len(raw_data_vol)):
+                    nd, nl, od = resize(raw_data_vol[i], raw_label_vol[i])
+                    self.data.append(nd)
+                    self.labels.append(nl)
+                    self.original_dim.append(od)
+
+    def __len__(self):
+        return len(self.data)
+    
+    def __getitem__(self, index):
+        self.data[index], ToTensor(self.labels[index]), self.label_path,self.original_dim[index]
+
+def path_iterator(data_dirs):
+    if isinstance(data_dirs, list):  # TODO: Determine how to not treat input as list (if necessary)
+        d_list = []
+        l_list = []
+        for dir_i in data_dirs:
+            d_list = d_list + sorted([dir_i + os.sep + 'data' + os.sep + f for f in
+                                                os.listdir(os.path.join(dir_i, 'data')) if f.lower()
+                                                .endswith('.tiff') or f.lower().endswith('.tif')
+                                                or f.lower().endswith('.png')])
+            l_list = l_list + sorted([dir_i + os.sep + 'labels' + os.sep + f for f in
+                                                os.listdir(os.path.join(dir_i, 'labels')) if f.lower()
+                                                .endswith('.tiff') or f.lower().endswith('.tif')
+                                                or f.lower().endswith('.png')])
+    else:
+        d_list = sorted([data_dirs + os.sep + 'data' + os.sep + f for f in os.listdir(os.path.join(
+            data_dirs, 'data')) if f.lower().endswith('.tiff') or f.lower().endswith('.tif')
+                                or f.lower().endswith('.png')])
+        l_list = sorted([data_dirs + os.sep + 'labels' + os.sep + f for f in os.listdir(os.path.join(
+            data_dirs, 'labels')) if f.lower().endswith('.tiff') or f.lower().endswith('.tif')
+                                or f.lower().endswith('.png')])
+    
+    return d_list,l_list
