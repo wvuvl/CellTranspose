@@ -367,7 +367,7 @@ class ValTestCellTransposeData3D(Dataset):
             #else continue (default)
             
         
-        
+        dim = raw_data_vol.shape
         
         #Reformat to [z,chan, y, x] and normalize
         raw_data_vol = [reformat(as_tensor(raw_data_vol[i]), n_chan) for i in range(len(raw_data_vol))]
@@ -389,8 +389,9 @@ class ValTestCellTransposeData3D(Dataset):
             if resize is not None:
                 
                 for i in range(len(raw_data_vol)):
-                    original_dims = raw_label_vol[i].shape[1], raw_label_vol[i].shape[2]
-                    nd, nl, od = raw_data_vol[i], raw_label_vol[i], original_dims
+                    #original_dims = raw_label_vol[i].shape[1], raw_label_vol[i].shape[2]
+                    #dim of 3d image to use it in 3d evaluation
+                    nd, nl, od = raw_data_vol[i], raw_label_vol[i], dim
                     #TODO: resize implementation for 3d due
                     #nd, nl, od = resize(raw_data_vol[i], raw_label_vol[i])
                     print(nd.shape)

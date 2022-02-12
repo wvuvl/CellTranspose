@@ -223,6 +223,7 @@ def eval_network_3D(model: nn.Module, data_loader: DataLoader, device, patch_per
     with no_grad():
         label_list = []
         pred_list = []
+        original_dims_list = []
         for (sample_data_obj, sample_labels_obj, label_files, original_dims) in tqdm(data_loader,
                                                                              desc='Evaluating Test Dataset'):       
             pred_list_slices = []
@@ -264,12 +265,32 @@ def eval_network_3D(model: nn.Module, data_loader: DataLoader, device, patch_per
 
             pred_list.append(pred_list_slices)
             label_list.append(label_list_slices)
+            original_dims_list.append(original_dims)
             
-    return pred_list, label_list
+    return pred_list, label_list, original_dims_list
 
 
-def stitch_2D_masks(z_masks,y_masks,x_masks):
+#adapted from cellpose original implementation
+#TODO: does not work for patch size smaller than at least one image dimension, padding required
+def run_3D_masks(pred_xy, pred_yz, pred_xz,dim, n_chan):
     masks = 0
+    
+    pred_yz_xy = pred_yz.swapaxes(0,2)
+    pred_xz_xy = pred_xz.swapaxes(0,1)
+    
+    #['YX', 'ZY', 'ZX']
+    yf = np.zeros((3, n_chan, dim[0], dim[1], dim[2]), np.float32)
+    
+    dP = np.stack((yf[1][0] + yf[2][0], yf[0][0] + yf[2][1], yf[0][1] + yf[1][1]),
+                          axis=0) # (dZ, dY, dX)
+    
+    dP = np.stack((pred_yz_xy + pred_xz_xy, pred_xy + pred_yz_xy, pred_xy + pred_xz_xy),axis=0) # (dZ, dY, dX)
+    
+    sample_mask = followflows(pred_xy)
+    sample_mask = np.transpose(sample_mask.numpy(), (1, 2, 0))
+    
+    sample_mask = cv2.resize(sample_mask, (original_dims[1].item(), original_dims[0].item()),
+                            interpolation=cv2.INTER_NEAREST)
     
     return masks
     
