@@ -201,6 +201,7 @@ def followflows(flows):
     niter = 400; interp = True; use_gpu = True; cellprob_threshold = 0.0; flow_threshold = 0.4; min_size=15  # min_size=15
     masks = torch.zeros((flows.shape[0], flows.shape[-2], flows.shape[-1]))
     for i, flow in enumerate(flows):
+        print(flow.shape)
         cellprob = flow[0].cpu().numpy()
         dP = flow[1:].cpu().numpy()
         p = follow_flows(-1 * dP * (cellprob > cellprob_threshold) / 5., niter, interp, use_gpu)
@@ -209,7 +210,9 @@ def followflows(flows):
         maski = get_masks(p, iscell=(cellprob > cellprob_threshold), flows=dP, threshold=flow_threshold)
         maski = fill_holes_and_remove_small_masks(maski, min_size=min_size)
         masks[i] = torch.tensor(maski)
+    
     return masks
+
 
 
 # Generate patches of input to be passed into model. Currently set to 64x64 patches with at least 32x32 overlap

@@ -289,13 +289,14 @@ def run_3D_masks(pred_xy, pred_yz, pred_xz,dim, n_chan):
     #dP = np.stack((yf[1][0] + yf[2][0], yf[0][0] + yf[2][1], yf[0][1] + yf[1][1]),axis=0) # (dZ, dY, dX)
     
     pred = np.stack((pred_yz_xy + pred_xz_xy, pred_xy + pred_yz_xy, pred_xy + pred_xz_xy),axis=0) # (dZ, dY, dX)
-    print(pred.shape)
     
-    """sample_mask = followflows(pred)
-    sample_mask = np.transpose(sample_mask.numpy(), (1, 2, 0))
-    sample_mask = cv2.resize(sample_mask, (original_dims[1].item(), original_dims[0].item()),
-                            interpolation=cv2.INTER_NEAREST)"""
-    
+    sample_mask = followflows(tensor(pred))
+    #sample_mask = np.transpose(sample_mask.numpy(), (1, 2, 0))
+    #sample_mask = cv2.resize(sample_mask, (original_dims[1].item(), original_dims[0].item()),
+    #                        interpolation=cv2.INTER_NEAREST)
+    print(sample_mask.shape)
+    masks = sample_mask.squeeze()
+    print(masks.shape)
     return masks
     
     
