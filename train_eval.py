@@ -165,6 +165,9 @@ def eval_network(model: nn.Module, data_loader: DataLoader, device, patch_per_ba
         pred_list = []
         for (sample_data, sample_labels, label_files, original_dims) in tqdm(data_loader,
                                                                              desc='Evaluating Test Dataset'):
+            
+            #print(sample_data.shape)
+            
             resized_dims = (sample_data.shape[2], sample_data.shape[3])
             padding = sample_data.shape[2] < patch_size[0] or sample_data.shape[3] < patch_size[1]
             # Add padding if image is smaller than patch size in at least one dimension
@@ -206,6 +209,7 @@ def eval_network(model: nn.Module, data_loader: DataLoader, device, patch_per_ba
                                     interpolation=cv2.INTER_NEAREST)
             masks.append(sample_mask)
 
+            
             
     return masks, pred_list, label_list
 

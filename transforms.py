@@ -97,6 +97,10 @@ class Resize(object):
 
 def resize_from_labels(x, y, default_med, pf=None, random_scale=1.0):
     # calculate diameters using only full cells in image - remove cut off cells during median diameter calculation
+    
+    unq = torch.unique(y)
+    if len(unq) == 1 and unq == 0: return x,y
+    
     y_cf = copy.deepcopy(torch.squeeze(y, dim=0))
     y_cf = remove_cut_cells(y_cf)
     med = diam_range(y_cf)*random_scale

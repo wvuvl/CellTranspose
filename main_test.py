@@ -232,34 +232,30 @@ if not args.train_only:
         for d,l in zip(d_list,l_list):
             
             test_dataset_xy = ValTestCellTransposeData3D( d, args.n_chan, l, do_3D=args.do_3D,
-                                                from_3D=args.test_from_3D, plane='xy', evaluate=True,
+                                                from_3D=args.test_from_3D, plane='yz', evaluate=True,
                                                 resize=Resize(args.median_diams, args.patch_size, args.test_overlap,
                                                             use_labels=args.test_use_labels, refine=True,
                                                             gc_model=gen_cellpose, sz_model=gen_size_model,
                                                             device=device, patch_per_batch=args.batch_size))
-
+            
             eval_dl_xy = DataLoader(test_dataset_xy, batch_size=1, shuffle=False)
             
-            masks, prediction_list, _ = eval_network(model, eval_dl_xy, device, patch_per_batch=args.batch_size,
+            masks, prediction_list, label_list = eval_network(model, eval_dl_xy, device, patch_per_batch=args.batch_size,
                                                       patch_size=args.patch_size, min_overlap=args.test_overlap)
-            
-            
+  
+            masks = np.array(masks,dtype='int32')
+            with open(os.path.join(args.results_dir, label_list[0] + '_predicted_labels.pkl'), 'wb') as m_pkl:
+                pickle.dump(masks, m_pkl)
+            tifffile.imwrite(os.path.join(args.results_dir, 'tiff_results', label_list[0] + '.tif'),
+                            masks)
+            with open(os.path.join(args.results_dir, label_list[0] + '_raw_masks_flows.pkl'), 'wb') as rmf_pkl:
+                pickle.dump(prediction_list, rmf_pkl)
+            tifffile.imwrite(os.path.join(args.results_dir, 'raw_predictions_tiffs', label_list[0] + '.tif'),
+                                prediction_list)
             
             del test_dataset_xy
             del eval_dl_xy
             gc.collect()
-
-            
-            
-            masks = masks.astype('int32')
-            with open(os.path.join(args.results_dir, l + '_predicted_labels.pkl'), 'wb') as m_pkl:
-                pickle.dump(masks, m_pkl)
-            tifffile.imwrite(os.path.join(args.results_dir, 'tiff_results', l + '.tif'),
-                            masks)
-            with open(os.path.join(args.results_dir, l + '_raw_masks_flows.pkl'), 'wb') as rmf_pkl:
-                pickle.dump(prediction_list, rmf_pkl)
-            tifffile.imwrite(os.path.join(args.results_dir, 'raw_predictions_tiffs', l + '.tif'),
-                                prediction_list)
             #TODO: perform evaluation
 
 if args.test_from_3D == False:

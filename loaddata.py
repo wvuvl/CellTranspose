@@ -366,11 +366,15 @@ class ValTestCellTransposeData3D(Dataset):
                 
             #else continue (default)
             
-            
+        
+        
+        
         #Reformat to [z,chan, y, x] and normalize
         raw_data_vol = [reformat(as_tensor(raw_data_vol[i]), n_chan) for i in range(len(raw_data_vol))]
         raw_data_vol = [normalize1stto99th(raw_data_vol[i]) for i in range(len(raw_data_vol))]
         raw_label_vol = [reformat(as_tensor(raw_label_vol[i])) for i in range(len(raw_label_vol))]
+        
+       
         
         self.data = []
         self.labels = []
@@ -385,16 +389,22 @@ class ValTestCellTransposeData3D(Dataset):
             if resize is not None:
                 
                 for i in range(len(raw_data_vol)):
-                    nd, nl, od = resize(raw_data_vol[i], raw_label_vol[i])
+                    original_dims = raw_label_vol[i].shape[1], raw_label_vol[i].shape[2]
+                    nd, nl, od = raw_data_vol[i], raw_label_vol[i], original_dims
+                    #TODO: resize implementation for 3d due
+                    #nd, nl, od = resize(raw_data_vol[i], raw_label_vol[i])
+                    print(nd.shape)
+                    
                     self.data.append(nd)
                     self.labels.append(nl)
                     self.original_dim.append(od)
 
+        
     def __len__(self):
         return len(self.data)
     
     def __getitem__(self, index):
-        self.data[index], ToTensor(self.labels[index]), self.label_path,self.original_dim[index]
+        return self.data[index], self.labels[index], self.label_path,self.original_dim[index]
 
 def path_iterator(data_dirs):
     if isinstance(data_dirs, list):  # TODO: Determine how to not treat input as list (if necessary)

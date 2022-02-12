@@ -15,7 +15,5 @@ def diam_range(masks, percentile=75):
         y_ranges.append(np.amax(inds[0]) - np.amin(inds[0]))
         diams.append(int(math.sqrt(x_ranges[-1] * y_ranges[-1])))
     #print(diams)
-    if diams:
-        return np.percentile(np.array(diams), percentile)
-    else:
-        return -1
+    return np.percentile(np.array(diams), percentile)
+
