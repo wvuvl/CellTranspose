@@ -394,8 +394,7 @@ class ValTestCellTransposeData3D(Dataset):
                     nd, nl, od = raw_data_vol[i], raw_label_vol[i], dim
                     #TODO: resize implementation for 3d due
                     #nd, nl, od = resize(raw_data_vol[i], raw_label_vol[i])
-                    print(nd.shape)
-                    
+                                    
                     self.data.append(nd)
                     self.labels.append(nl)
                     self.original_dim.append(od)

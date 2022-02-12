@@ -238,7 +238,7 @@ if not args.train_only:
             
             eval_dl_xy = DataLoader(test_dataset_xy, batch_size=1, shuffle=False)
             
-            prediction_list_xy, label_list_xy, dim_list_xy = eval_network_3D(model, eval_dl_xy, device, patch_per_batch=args.batch_size,
+            _, prediction_list_xy, label_list_xy, dim_list_xy = eval_network(model, eval_dl_xy, device, patch_per_batch=args.batch_size,
                                                       patch_size=args.patch_size, min_overlap=args.test_overlap)
 
             
@@ -251,7 +251,7 @@ if not args.train_only:
             
             eval_dl_yz = DataLoader(test_dataset_yz, batch_size=1, shuffle=False)
             
-            prediction_list_yz, label_list_yz, dim_list_yz = eval_network_3D(model, eval_dl_yz, device, patch_per_batch=args.batch_size,
+            _, prediction_list_yz, label_list_yz, dim_list_yz = eval_network(model, eval_dl_yz, device, patch_per_batch=args.batch_size,
                                                       patch_size=args.patch_size, min_overlap=args.test_overlap)
             
             test_dataset_xz = ValTestCellTransposeData3D( d, args.n_chan, l, do_3D=args.do_3D,
@@ -263,15 +263,17 @@ if not args.train_only:
             
             eval_dl_xz = DataLoader(test_dataset_xz, batch_size=1, shuffle=False)
             
-            prediction_list_xz, label_list_xz, dim_list_xz = eval_network_3D(model, eval_dl_xz, device, patch_per_batch=args.batch_size,
+            _, prediction_list_xz, label_list_xz, dim_list_xz = eval_network(model, eval_dl_xz, device, patch_per_batch=args.batch_size,
                                                       patch_size=args.patch_size, min_overlap=args.test_overlap)
             
             
             
-            
+            prediction_list_xy = np.array(prediction_list_xy)
+            prediction_list_yz = np.array(prediction_list_yz)
+            prediction_list_xz = np.array(prediction_list_xz)
             masks = run_3D_masks(prediction_list_xy,prediction_list_yz,prediction_list_xz,dim_list_xy[0],args.n_chan)
             
-            masks = np.array(masks,dtype='int32')
+            """masks = np.array(masks,dtype='int32')
             with open(os.path.join(args.results_dir, label_list_xy[0] + '_predicted_labels.pkl'), 'wb') as m_pkl:
                 pickle.dump(masks, m_pkl)
             tifffile.imwrite(os.path.join(args.results_dir, 'tiff_results', label_list_xy[0] + '.tif'),
@@ -279,7 +281,7 @@ if not args.train_only:
             with open(os.path.join(args.results_dir, label_list_xy[0] + '_raw_masks_flows.pkl'), 'wb') as rmf_pkl:
                 pickle.dump(prediction_list, rmf_pkl)
             tifffile.imwrite(os.path.join(args.results_dir, 'raw_predictions_tiffs', label_list_xy[0] + '.tif'),
-                                prediction_list)
+                                prediction_list)"""
             
             del test_dataset_xy
             del eval_dl_xy

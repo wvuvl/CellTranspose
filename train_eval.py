@@ -163,6 +163,7 @@ def eval_network(model: nn.Module, data_loader: DataLoader, device, patch_per_ba
         masks = []
         label_list = []
         pred_list = []
+        original_dims_list = []
         for (sample_data, sample_labels, label_files, original_dims) in tqdm(data_loader,
                                                                              desc='Evaluating Test Dataset'):
             
@@ -208,10 +209,11 @@ def eval_network(model: nn.Module, data_loader: DataLoader, device, patch_per_ba
             sample_mask = cv2.resize(sample_mask, (original_dims[1].item(), original_dims[0].item()),
                                     interpolation=cv2.INTER_NEAREST)
             masks.append(sample_mask)
+            original_dims_list.append(original_dims)
 
             
             
-    return masks, pred_list, label_list
+    return masks, pred_list, label_list, original_dims_list
 
 # Evaluation - due to image size mismatches, must currently be run one image at a time
 def eval_network_3D(model: nn.Module, data_loader: DataLoader, device, patch_per_batch, patch_size, min_overlap):
@@ -275,22 +277,24 @@ def eval_network_3D(model: nn.Module, data_loader: DataLoader, device, patch_per
 def run_3D_masks(pred_xy, pred_yz, pred_xz,dim, n_chan):
     masks = 0
     
-    pred_yz_xy = pred_yz.swapaxes(0,2)
-    pred_xz_xy = pred_xz.swapaxes(0,1)
+    pred_xy = pred_xy.transpose(1,0,2,3)
+    pred_yz_xy = pred_yz.transpose(1,3,2,0) #swapaxes(0,2)
+    pred_xz_xy = pred_xz.transpose(1,2,0,3) #swapaxes(0,1)
+    
+    
     
     #['YX', 'ZY', 'ZX']
-    yf = np.zeros((3, n_chan, dim[0], dim[1], dim[2]), np.float32)
+    #yf = np.zeros((3, n_chan, dim[0], dim[1], dim[2]), np.float32)
     
-    dP = np.stack((yf[1][0] + yf[2][0], yf[0][0] + yf[2][1], yf[0][1] + yf[1][1]),
-                          axis=0) # (dZ, dY, dX)
+    #dP = np.stack((yf[1][0] + yf[2][0], yf[0][0] + yf[2][1], yf[0][1] + yf[1][1]),axis=0) # (dZ, dY, dX)
     
-    dP = np.stack((pred_yz_xy + pred_xz_xy, pred_xy + pred_yz_xy, pred_xy + pred_xz_xy),axis=0) # (dZ, dY, dX)
+    pred = np.stack((pred_yz_xy + pred_xz_xy, pred_xy + pred_yz_xy, pred_xy + pred_xz_xy),axis=0) # (dZ, dY, dX)
+    print(pred.shape)
     
-    sample_mask = followflows(pred_xy)
+    """sample_mask = followflows(pred)
     sample_mask = np.transpose(sample_mask.numpy(), (1, 2, 0))
-    
     sample_mask = cv2.resize(sample_mask, (original_dims[1].item(), original_dims[0].item()),
-                            interpolation=cv2.INTER_NEAREST)
+                            interpolation=cv2.INTER_NEAREST)"""
     
     return masks
     
