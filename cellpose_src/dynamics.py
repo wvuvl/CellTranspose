@@ -508,3 +508,34 @@ def get_masks(p, iscell=None, rpad=20, flows=None, threshold=0.4):
         # plt.show()
 
     return M0
+
+
+#taken from the original cellpose implementation
+def compute_masks(dP, cellprob, bd=None, p=None, inds=None, niter=200, mask_threshold=0.0, diam_threshold=12.,
+                   flow_threshold=0.4, interp=True, do_3D=False, 
+                   min_size=15, resize=None, verbose=False,
+                   use_gpu=False,device=None,nclasses=3):
+    """ compute masks using dynamics from dP, cellprob, and boundary """
+        
+    cp_mask = cellprob > mask_threshold # analog to original iscell=(cellprob>cellprob_threshold)
+
+    if np.any(cp_mask): #mask at this point is a cell cluster binary map, not labels     
+        # follow flows
+        if p is None:
+            p = follow_flows(dP * cp_mask / 5., niter=niter, interp=interp, use_gpu=use_gpu)
+        
+        mask = get_masks(p, iscell=cp_mask, flows=dP,threshold=flow_threshold)
+               
+        #TODO: resize yet to be implemented
+        mask = mask.astype(np.uint16)
+
+    else: # nothing to compute, just make it compatible
+        
+        shape = resize if resize is not None else cellprob.shape
+        mask = np.zeros(shape, np.uint16)
+        return mask
+    
+    mask = utils.fill_holes_and_remove_small_masks(mask, min_size=min_size)
+
+
+    return mask

@@ -5,6 +5,13 @@
     "version": "0.2.0",
     "configurations": [
         {
+            "name": "prediction_calc",
+            "type": "python",
+            "request": "launch",
+            "program": "prediction_calc.py",
+            "console": "integratedTerminal"
+        },
+        {
             "name": "LIN_RAM_BBBC24_3D_TEST_2D_MODEL_V3",
             "type": "python",
             "request": "launch",
@@ -42,7 +49,8 @@
                 "--test-from-3D",
                 "--calculate-ap",
                 "--eval-only",
-                "--pretrained-model", "/media/ramzaveri/5400C9CC66E778B9/Ram/work/cell analysis/datasets/datasets/BBBC024_v1_2D_raw_tiff_combined_split/results_2D/trained_model.pt"
+                "--pretrained-model",
+                "/media/ramzaveri/5400C9CC66E778B9/Ram/work/cell analysis/datasets/datasets/BBBC024_v1_2D_raw_tiff_combined_split/results_2D/trained_model.pt"
             ]
         },
         {
@@ -83,7 +91,8 @@
                 "--test-from-3D",
                 "--calculate-ap",
                 "--eval-only",
-                "--pretrained-model", "/media/ramzaveri/5400C9CC66E778B9/Ram/work/cell analysis/datasets/datasets/BBBC024_v1_2D_raw_tiff_combined_split/results_2D/trained_model.pt"
+                "--pretrained-model",
+                "/media/ramzaveri/5400C9CC66E778B9/Ram/work/cell analysis/datasets/datasets/BBBC024_v1_2D_raw_tiff_combined_split/results_2D/trained_model.pt"
             ]
         },
         {
@@ -123,7 +132,8 @@
                 "--test-use-labels",
                 "--calculate-ap",
                 "--eval-only",
-                "--pretrained-model", "/media/ramzaveri/5400C9CC66E778B9/Ram/work/cell analysis/datasets/datasets/BBBC024_v1_2D_raw_tiff_combined_split/results_2D/trained_model.pt"
+                "--pretrained-model",
+                "/media/ramzaveri/5400C9CC66E778B9/Ram/work/cell analysis/datasets/datasets/BBBC024_v1_2D_raw_tiff_combined_split/results_2D/trained_model.pt"
             ]
         },
         {
@@ -164,7 +174,8 @@
                 "--test-from-3D",
                 "--calculate-ap",
                 "--eval-only",
-                "--pretrained-model", "/media/ramzaveri/5400C9CC66E778B9/Ram/work/cell analysis/datasets/datasets/BBBC024_v1_2D_raw_tiff_combined_split/results_2D/trained_model.pt"
+                "--pretrained-model",
+                "/media/ramzaveri/5400C9CC66E778B9/Ram/work/cell analysis/datasets/datasets/BBBC024_v1_2D_raw_tiff_combined_split/results_2D/trained_model.pt"
             ]
         },
         {

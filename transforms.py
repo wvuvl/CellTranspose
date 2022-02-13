@@ -3,7 +3,7 @@ import torch
 import cv2
 import numpy as np
 import copy
-from cellpose_src.dynamics import masks_to_flows, follow_flows, get_masks
+from cellpose_src.dynamics import masks_to_flows, follow_flows, get_masks, compute_masks
 from cellpose_src.utils import diameters, fill_holes_and_remove_small_masks
 from cellpose_src.transforms import _taper_mask
 import random
@@ -204,6 +204,7 @@ def followflows(flows):
         print(flow.shape)
         cellprob = flow[0].cpu().numpy()
         dP = flow[1:].cpu().numpy()
+        
         p = follow_flows(-1 * dP * (cellprob > cellprob_threshold) / 5., niter, interp, use_gpu)
         # p = follow_flows(-1 * dP * (cellprob > cellprob_threshold), niter, interp, use_gpu)
 
@@ -213,7 +214,15 @@ def followflows(flows):
     
     return masks
 
-
+def followflows3D(dP,cellprob):
+    """
+    Combines follow_flows, get_masks, and fill_holes_and_remove_small_masks from Cellpose implementation
+    """
+    niter = 200; interp = True; use_gpu = True; cellprob_threshold = 0.0; flow_threshold = 0.4; min_size=15  # min_size=15
+       
+    masks= compute_masks(dP,cellprob,niter=niter,interp=interp,use_gpu=use_gpu,mask_threshold=cellprob_threshold,flow_threshold=flow_threshold,min_size=min_size)
+    
+    return masks
 
 # Generate patches of input to be passed into model. Currently set to 64x64 patches with at least 32x32 overlap
 # - image should also already be resized such that median cell diameter is 32

@@ -277,10 +277,17 @@ def eval_network_3D(model: nn.Module, data_loader: DataLoader, device, patch_per
 def run_3D_masks(pred_xy, pred_yz, pred_xz,dim, n_chan):
     masks = 0
     
+    print(pred_xy.shape)
+    print(pred_yz.shape)
+    print(pred_xz.shape)
+    
     pred_xy = pred_xy.transpose(1,0,2,3)
     pred_yz_xy = pred_yz.transpose(1,3,2,0) #swapaxes(0,2)
     pred_xz_xy = pred_xz.transpose(1,2,0,3) #swapaxes(0,1)
     
+    print(pred_xy.shape)
+    print(pred_yz_xy.shape)
+    print(pred_xz_xy.shape)
     
     
     #['YX', 'ZY', 'ZX']
@@ -290,13 +297,19 @@ def run_3D_masks(pred_xy, pred_yz, pred_xz,dim, n_chan):
     
     pred = np.stack((pred_yz_xy + pred_xz_xy, pred_xy + pred_yz_xy, pred_xy + pred_xz_xy),axis=0) # (dZ, dY, dX)
     
-    sample_mask = followflows(tensor(pred))
+    
+    cellprob = pred[0][-1] + pred[1][-1] + pred[2][-1]
+    
+    print(cellprob)
+    print(cellprob.shape)
+    
+    #sample_mask = followflows(tensor(pred))
     #sample_mask = np.transpose(sample_mask.numpy(), (1, 2, 0))
     #sample_mask = cv2.resize(sample_mask, (original_dims[1].item(), original_dims[0].item()),
     #                        interpolation=cv2.INTER_NEAREST)
-    print(sample_mask.shape)
-    masks = sample_mask.squeeze()
-    print(masks.shape)
+    #print(sample_mask.shape)
+    #masks = sample_mask.squeeze()
+    #print(masks.shape)
     return masks
     
     
