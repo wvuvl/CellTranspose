@@ -12,6 +12,8 @@ from my_utils.Calc_extents import diam_range
 
 import matplotlib.pyplot as plt
 
+import cellpose
+from cellpose import dynamics
 
 # TODO: Need to update to work for all situations
 #  (currently only for when 1-channel 2D image doesn't include channel dim)
@@ -201,25 +203,38 @@ def followflows(flows):
     niter = 400; interp = True; use_gpu = True; cellprob_threshold = 0.0; flow_threshold = 0.4; min_size=15  # min_size=15
     masks = torch.zeros((flows.shape[0], flows.shape[-2], flows.shape[-1]))
     for i, flow in enumerate(flows):
-        print(flow.shape)
+        
         cellprob = flow[0].cpu().numpy()
         dP = flow[1:].cpu().numpy()
-        
+        print(dP.shape)
         p = follow_flows(-1 * dP * (cellprob > cellprob_threshold) / 5., niter, interp, use_gpu)
         # p = follow_flows(-1 * dP * (cellprob > cellprob_threshold), niter, interp, use_gpu)
-
+        print(p.shape)
         maski = get_masks(p, iscell=(cellprob > cellprob_threshold), flows=dP, threshold=flow_threshold)
         maski = fill_holes_and_remove_small_masks(maski, min_size=min_size)
         masks[i] = torch.tensor(maski)
     
     return masks
 
+def followflows2D(flow):
+    """
+    Combines follow_flows, get_masks, and fill_holes_and_remove_small_masks from Cellpose implementation
+    """
+    niter = 200; interp = True; use_gpu = True; cellprob_threshold = 0.0; flow_threshold = 0.4; min_size=15  # min_size=15
+    cellprob = flow[0].cpu().numpy()
+    dP = flow[1:].cpu().numpy()
+    p = follow_flows(-1 * dP * (cellprob > cellprob_threshold) / 5., niter, interp, use_gpu)
+    mask = get_masks(p, iscell=(cellprob > cellprob_threshold), flows=dP, threshold=flow_threshold)
+    mask = fill_holes_and_remove_small_masks(mask, min_size=min_size)
+    
+    return mask
+
 def followflows3D(dP,cellprob):
     """
     Combines follow_flows, get_masks, and fill_holes_and_remove_small_masks from Cellpose implementation
     """
     niter = 200; interp = True; use_gpu = True; cellprob_threshold = 0.0; flow_threshold = 0.4; min_size=15  # min_size=15
-       
+     
     masks= compute_masks(dP,cellprob,niter=niter,interp=interp,use_gpu=use_gpu,mask_threshold=cellprob_threshold,flow_threshold=flow_threshold,min_size=min_size)
     
     return masks

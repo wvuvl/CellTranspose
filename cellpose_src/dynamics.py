@@ -11,6 +11,8 @@ import tifffile
 from tqdm import trange
 from numba import njit, float32, int32, vectorize
 from cellpose_src import utils, metrics
+import cellpose
+from cellpose import dynamics
 
 try:
     import torch
@@ -434,15 +436,18 @@ def get_masks(p, iscell=None, rpad=20, flows=None, threshold=0.4):
 
     h, _ = np.histogramdd(tuple(pflows), bins=edges)
     hmax = h.copy()
+    
+    
     for i in range(dims):
         hmax = maximum_filter1d(hmax, 5, axis=i)
 
     seeds = np.nonzero(np.logical_and(h - hmax > -1e-6, h > 10))
     Nmax = h[seeds]
     isort = np.argsort(Nmax)[::-1]
+    
     for s in seeds:
         s = s[isort]
-
+    
     pix = list(np.array(seeds).T)
 
     shape = h.shape
@@ -450,9 +455,11 @@ def get_masks(p, iscell=None, rpad=20, flows=None, threshold=0.4):
         expand = np.nonzero(np.ones((3, 3, 3)))
     else:
         expand = np.nonzero(np.ones((3, 3)))
+    
     for e in expand:
         e = np.expand_dims(e, 1)
 
+  
     for iter in range(5):
         for k in range(len(pix)):
             if iter == 0:
@@ -474,6 +481,7 @@ def get_masks(p, iscell=None, rpad=20, flows=None, threshold=0.4):
             if iter == 4:
                 pix[k] = tuple(pix[k])
 
+            
     M = np.zeros(h.shape, np.int32)
     for k in range(len(pix)):
         M[pix[k]] = 1 + k
@@ -517,15 +525,22 @@ def compute_masks(dP, cellprob, bd=None, p=None, inds=None, niter=200, mask_thre
                    use_gpu=False,device=None,nclasses=3):
     """ compute masks using dynamics from dP, cellprob, and boundary """
         
-    cp_mask = cellprob > mask_threshold # analog to original iscell=(cellprob>cellprob_threshold)
+    
 
+   
+    cp_mask = cellprob > mask_threshold # analog to original iscell=(cellprob>cellprob_threshold)
+    
+    
+    
     if np.any(cp_mask): #mask at this point is a cell cluster binary map, not labels     
         # follow flows
-        if p is None:
-            p = follow_flows(dP * cp_mask / 5., niter=niter, interp=interp, use_gpu=use_gpu)
         
-        mask = get_masks(p, iscell=cp_mask, flows=dP,threshold=flow_threshold)
-               
+        print("dP shape: ", dP.shape)
+        if p is None:
+            p = dynamics.follow_flows(dP * cp_mask / 5., niter=niter, interp=interp, use_gpu=use_gpu)
+        print("p shape: ", p.shape)
+        mask = dynamics.get_masks(p, iscell=cp_mask, flows=dP,threshold=flow_threshold)
+        print("mask shape: ", mask.shape)
         #TODO: resize yet to be implemented
         mask = mask.astype(np.uint16)
 

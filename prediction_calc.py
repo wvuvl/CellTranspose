@@ -1,6 +1,6 @@
 import argparse
 from torch.utils.data import DataLoader, RandomSampler, BatchSampler
-from torch import nn, device, load, save, squeeze, as_tensor
+from torch import nn, device, load, save, squeeze, as_tensor, tensor
 from torch.cuda import is_available, device_count, empty_cache
 from torch.optim import SGD
 from torch.optim.lr_scheduler import CosineAnnealingLR, StepLR
@@ -13,13 +13,13 @@ import cv2
 import time
 import gc
 
-from transforms import Resize, reformat,followflows3D
+from transforms import Resize, reformat,followflows3D,followflows2D
 from loaddata import TrainCellTransposeData, ValTestCellTransposeData, ValTestCellTransposeData3D, path_iterator
 from CellTranspose2D import CellTranspose, SizeModel, ClassLoss, FlowLoss, SASClassLoss, ContrastiveFlowLoss
 from train_eval import train_network, adapt_network, eval_network, eval_network_3D, create_3D_masks, run_3D_masks
 from cellpose_src.metrics import average_precision
 from misc_utils import produce_logfile
-
+from tqdm import tqdm
 
 with open(os.path.join('/media/ramzaveri/5400C9CC66E778B9/Ram/work/cell analysis/datasets/datasets/BBBC024_3D_test/results_v1/results_xy', 'BBBC024_v1_c00_highSNR_images_TIFF-image-labels_0005_raw_masks_flows.pkl'), 'rb') as rmf_pkl:
     pred_xy = np.array(pickle.load(rmf_pkl))
@@ -54,19 +54,27 @@ cellprob =yf[0][-1] + yf[1][-1] + yf[2][-1]
 dP = np.stack((yf[1][0] + yf[2][0], yf[0][0] + yf[2][1], yf[0][1] + yf[1][1]),
                           axis=0) # (dZ, dY, dX)
 
-del pred_xy
-del pred_xz
-del pred_yz
-del pred_yz_xy
-del pred_xz_xy
-del yf
 
 print("cellprob: ",cellprob.shape)
 print("dP shape:", dP.shape)
 
-masks = followflows3D(dP,cellprob)
+print(dP.dtype)
+print(dP.size)
+
+print(cellprob.dtype)
+
+print(cellprob.size)
+
+print(dP)
+
+tifffile.imwrite(os.path.join('/media/ramzaveri/5400C9CC66E778B9/Ram/work/cell analysis/datasets/datasets/BBBC024_3D_test/results','dP' + '.tif'),
+                            dP)
+
+"""masks = np.array(followflows3D(dP,cellprob))
 
 print("masks: ", masks.shape)
 
 tifffile.imwrite(os.path.join('/media/ramzaveri/5400C9CC66E778B9/Ram/work/cell analysis/datasets/datasets/BBBC024_3D_test/results','3D_mask' + '.tif'),
-                            masks)
+                            masks)"""
+                            
+        

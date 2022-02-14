@@ -5,7 +5,7 @@ from tqdm import tqdm
 import cv2
 import numpy as np
 from statistics import mean
-from transforms import followflows, generate_patches, recombine_patches
+from transforms import followflows, followflows3D, generate_patches, recombine_patches
 
 import matplotlib.pyplot as plt
 
@@ -280,14 +280,28 @@ def run_3D_masks(pred_xy, pred_yz, pred_xz,dim, n_chan):
     print(pred_xy.shape)
     print(pred_yz.shape)
     print(pred_xz.shape)
-    
+
     pred_xy = pred_xy.transpose(1,0,2,3)
     pred_yz_xy = pred_yz.transpose(1,3,2,0) #swapaxes(0,2)
     pred_xz_xy = pred_xz.transpose(1,2,0,3) #swapaxes(0,1)
-    
+
     print(pred_xy.shape)
     print(pred_yz_xy.shape)
     print(pred_xz_xy.shape)
+
+
+    yf = np.zeros((3, 3, dim[-3], dim[-2], dim[-1]), np.float32)
+
+    yf[0] = pred_xy
+    yf[1] = pred_yz_xy
+    yf[2] = pred_xz_xy
+
+
+            
+    cellprob =yf[0][-1] + yf[1][-1] + yf[2][-1]
+    dP = np.stack((yf[1][0] + yf[2][0], yf[0][0] + yf[2][1], yf[0][1] + yf[1][1]),
+                            axis=0) # (dZ, dY, dX)
+    
     
     
     #['YX', 'ZY', 'ZX']
@@ -295,21 +309,16 @@ def run_3D_masks(pred_xy, pred_yz, pred_xz,dim, n_chan):
     
     #dP = np.stack((yf[1][0] + yf[2][0], yf[0][0] + yf[2][1], yf[0][1] + yf[1][1]),axis=0) # (dZ, dY, dX)
     
-    pred = np.stack((pred_yz_xy + pred_xz_xy, pred_xy + pred_yz_xy, pred_xy + pred_xz_xy),axis=0) # (dZ, dY, dX)
-    
-    
-    cellprob = pred[0][-1] + pred[1][-1] + pred[2][-1]
-    
-    print(cellprob)
     print(cellprob.shape)
+    print(dP.shape)
     
-    #sample_mask = followflows(tensor(pred))
+    sample_mask = followflows3D(dP,cellprob)
     #sample_mask = np.transpose(sample_mask.numpy(), (1, 2, 0))
     #sample_mask = cv2.resize(sample_mask, (original_dims[1].item(), original_dims[0].item()),
     #                        interpolation=cv2.INTER_NEAREST)
-    #print(sample_mask.shape)
-    #masks = sample_mask.squeeze()
-    #print(masks.shape)
+    print(sample_mask.shape)
+    masks = sample_mask.squeeze()
+    print(masks.shape)
     return masks
     
     
