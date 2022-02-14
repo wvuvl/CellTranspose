@@ -1,9 +1,11 @@
+import imp
 import math
 import torch
 import cv2
 import numpy as np
 import copy
-from cellpose_src.dynamics import masks_to_flows, follow_flows, get_masks, compute_masks
+from cellpose_src.dynamics import masks_to_flows, follow_flows, get_masks
+from cellpose_src.new_3D_dynamics import compute_masks
 from cellpose_src.utils import diameters, fill_holes_and_remove_small_masks
 from cellpose_src.transforms import _taper_mask
 import random

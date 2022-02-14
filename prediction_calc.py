@@ -21,7 +21,7 @@ from cellpose_src.metrics import average_precision
 from misc_utils import produce_logfile
 from tqdm import tqdm
 
-with open(os.path.join('/media/ramzaveri/5400C9CC66E778B9/Ram/work/cell analysis/datasets/datasets/BBBC024_3D_test/results_v1/results_xy', 'BBBC024_v1_c00_highSNR_images_TIFF-image-labels_0005_raw_masks_flows.pkl'), 'rb') as rmf_pkl:
+"""with open(os.path.join('/media/ramzaveri/5400C9CC66E778B9/Ram/work/cell analysis/datasets/datasets/BBBC024_3D_test/results_v1/results_xy', 'BBBC024_v1_c00_highSNR_images_TIFF-image-labels_0005_raw_masks_flows.pkl'), 'rb') as rmf_pkl:
     pred_xy = np.array(pickle.load(rmf_pkl))
 with open(os.path.join('/media/ramzaveri/5400C9CC66E778B9/Ram/work/cell analysis/datasets/datasets/BBBC024_3D_test/results_v1/results_yz', 'BBBC024_v1_c00_highSNR_images_TIFF-image-labels_0005_raw_masks_flows.pkl'), 'rb') as rmf_pkl:
     pred_yz = np.array(pickle.load(rmf_pkl))
@@ -69,12 +69,26 @@ print(dP)
 
 tifffile.imwrite(os.path.join('/media/ramzaveri/5400C9CC66E778B9/Ram/work/cell analysis/datasets/datasets/BBBC024_3D_test/results','dP' + '.tif'),
                             dP)
+tifffile.imwrite(os.path.join('/media/ramzaveri/5400C9CC66E778B9/Ram/work/cell analysis/datasets/datasets/BBBC024_3D_test/results','cellprob' + '.tif'),
+                            cellprob)"""
 
-"""masks = np.array(followflows3D(dP,cellprob))
+with open(os.path.join('/media/ramzaveri/5400C9CC66E778B9/Ram/work/cell analysis/datasets/datasets/BBBC024_3D_test/results','dP' + '.tif'), 'rb') as rmf_pkl:
+    dP = np.array(pickle.load(rmf_pkl))
+with open(os.path.join('/media/ramzaveri/5400C9CC66E778B9/Ram/work/cell analysis/datasets/datasets/BBBC024_3D_test/results','cellprob' + '.tif'), 'rb') as rmf_pkl:
+    cellprob = np.array(pickle.load(rmf_pkl))
+
+
+print(dP.shape)
+print(cellprob.shape)
+
+#dP = tifffile.imread(os.path.join('/media/ramzaveri/5400C9CC66E778B9/Ram/work/cell analysis/datasets/datasets/BBBC024_3D_test/results','dP' + '.tif'))
+#cellprob = tifffile.imread(os.path.join('/media/ramzaveri/5400C9CC66E778B9/Ram/work/cell analysis/datasets/datasets/BBBC024_3D_test/results','cellprob' + '.tif'))
+
+masks = np.array(followflows3D(dP,cellprob))
 
 print("masks: ", masks.shape)
 
 tifffile.imwrite(os.path.join('/media/ramzaveri/5400C9CC66E778B9/Ram/work/cell analysis/datasets/datasets/BBBC024_3D_test/results','3D_mask' + '.tif'),
-                            masks)"""
+                            masks)
                             
         
