@@ -208,10 +208,10 @@ def followflows(flows):
         
         cellprob = flow[0].cpu().numpy()
         dP = flow[1:].cpu().numpy()
-        print(dP.shape)
+        
         p = follow_flows(-1 * dP * (cellprob > cellprob_threshold) / 5., niter, interp, use_gpu)
         # p = follow_flows(-1 * dP * (cellprob > cellprob_threshold), niter, interp, use_gpu)
-        print(p.shape)
+        
         maski = get_masks(p, iscell=(cellprob > cellprob_threshold), flows=dP, threshold=flow_threshold)
         maski = fill_holes_and_remove_small_masks(maski, min_size=min_size)
         masks[i] = torch.tensor(maski)
