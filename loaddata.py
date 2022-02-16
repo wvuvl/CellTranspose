@@ -357,18 +357,21 @@ class ValTestCellTransposeData3D(Dataset):
             raw_label_vol = cv2.imread(data, -1).astype('int16')
         
         if plane == 'xz' or plane == 'zx':
-            raw_data_vol = raw_data_vol.swapaxes(0, 1) #(z,y,x) -> (y,z,x)
-            raw_label_vol = raw_label_vol.swapaxes(0, 1)
+            raw_data_vol = raw_data_vol.transpose(1,0,2) #(z,y,x) -> (y,z,x)
+            raw_label_vol = raw_label_vol.transpose(1,0,2)
+            print(">>>processing 3D data on zx planes in y direction: ", raw_data_vol.shape)
             
         elif plane == 'yz' or plane == 'zy':
-            raw_data_vol = raw_data_vol.swapaxes(0, 2) #(z, y, x) -> (x, y, z)
-            raw_label_vol = raw_label_vol.swapaxes(0, 2)
+            raw_data_vol = raw_data_vol.transpose(2,0,1) #(z, y, x) -> (x, z, y)
+            raw_label_vol = raw_label_vol.transpose(2,0,1)
+            print(">>>processing 3D data on zy planes in x direction: ", raw_data_vol.shape)
                 
-            #else continue (default)
+        else:
+            print(">>>processing 3D data on xy planes in z direction: ", raw_data_vol.shape)
             
         
         dim = raw_data_vol.shape
-        
+        print(dim)
         #Reformat to [z,chan, y, x] and normalize
         raw_data_vol = [reformat(as_tensor(raw_data_vol[i]), n_chan) for i in range(len(raw_data_vol))]
         raw_data_vol = [normalize1stto99th(raw_data_vol[i]) for i in range(len(raw_data_vol))]
@@ -391,7 +394,7 @@ class ValTestCellTransposeData3D(Dataset):
                 for i in range(len(raw_data_vol)):
                     #original_dims = raw_label_vol[i].shape[1], raw_label_vol[i].shape[2]
                     #dim of 3d image to use it in 3d evaluation
-                    nd, nl, od = raw_data_vol[i], raw_label_vol[i], dim
+                    nd, nl, od = raw_data_vol[i], raw_label_vol[i], (dim[-2],dim[-1])
                     #TODO: resize implementation for 3d due
                     #nd, nl, od = resize(raw_data_vol[i], raw_label_vol[i])
                                     

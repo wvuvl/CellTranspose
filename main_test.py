@@ -230,7 +230,7 @@ if not args.train_only:
         for d,l in zip(d_list,l_list):
             
             test_dataset_xy = ValTestCellTransposeData3D( d, args.n_chan, l, do_3D=args.do_3D,
-                                                from_3D=args.test_from_3D, plane='yz', evaluate=True,
+                                                from_3D=args.test_from_3D, plane='zy', evaluate=True,
                                                 resize=Resize(args.median_diams, args.patch_size, args.test_overlap,
                                                             use_labels=args.test_use_labels, refine=True,
                                                             gc_model=gen_cellpose, sz_model=gen_size_model,
@@ -238,7 +238,7 @@ if not args.train_only:
             
             eval_dl_xy = DataLoader(test_dataset_xy, batch_size=1, shuffle=False)
             
-            masks,prediction_list, label_list = eval_network(model, eval_dl_xy, device, patch_per_batch=args.batch_size,
+            masks,prediction_list, label_list,_ = eval_network(model, eval_dl_xy, device, patch_per_batch=args.batch_size,
                                                       patch_size=args.patch_size, min_overlap=args.test_overlap)
 
             

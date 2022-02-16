@@ -212,7 +212,7 @@ def eval_network(model: nn.Module, data_loader: DataLoader, device, patch_per_ba
             original_dims_list.append(original_dims)
 
             
-            
+    #TODO: Ram: remember to remove original_dims_list before merging 
     return masks, pred_list, label_list, original_dims_list
 
 # Evaluation - due to image size mismatches, must currently be run one image at a time

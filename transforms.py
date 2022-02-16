@@ -235,7 +235,7 @@ def followflows3D(dP,cellprob):
     """
     Combines follow_flows, get_masks, and fill_holes_and_remove_small_masks from Cellpose implementation
     """
-    niter = 200; interp = True; use_gpu = True; cellprob_threshold = 0.0; flow_threshold = 0.4; min_size=15  # min_size=15
+    niter = 400; interp = True; use_gpu = True; cellprob_threshold = 0.0; flow_threshold = 0.4; min_size=15  # min_size=15
      
     masks= compute_masks(dP,cellprob,niter=niter,interp=interp,use_gpu=use_gpu,mask_threshold=cellprob_threshold,flow_threshold=flow_threshold,min_size=min_size)
     

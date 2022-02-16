@@ -21,47 +21,47 @@ from cellpose_src.metrics import average_precision
 from misc_utils import produce_logfile
 from tqdm import tqdm
 
-with open(os.path.join('/media/ramzaveri/5400C9CC66E778B9/Ram/work/cell analysis/datasets/datasets/BBBC024_3D_test/results_v1/results_xy', 'BBBC024_v1_c00_highSNR_images_TIFF-image-labels_0005_raw_masks_flows.pkl'), 'rb') as rmf_pkl:
+with open(os.path.join('/media/ramzaveri/5400C9CC66E778B9/Ram/work/cell analysis/datasets/datasets/BBBC024_3D_test/results_v2/results_xy', 'BBBC024_v1_c00_highSNR_images_TIFF-image-labels_0005_raw_masks_flows.pkl'), 'rb') as rmf_pkl:
     pred_xy = np.array(pickle.load(rmf_pkl))
-with open(os.path.join('/media/ramzaveri/5400C9CC66E778B9/Ram/work/cell analysis/datasets/datasets/BBBC024_3D_test/results_v1/results_yz', 'BBBC024_v1_c00_highSNR_images_TIFF-image-labels_0005_raw_masks_flows.pkl'), 'rb') as rmf_pkl:
-    pred_yz = np.array(pickle.load(rmf_pkl))
-with open(os.path.join('/media/ramzaveri/5400C9CC66E778B9/Ram/work/cell analysis/datasets/datasets/BBBC024_3D_test/results_v1/results_xz', 'BBBC024_v1_c00_highSNR_images_TIFF-image-labels_0005_raw_masks_flows.pkl'), 'rb') as rmf_pkl:
-    pred_xz = np.array(pickle.load(rmf_pkl))
+with open(os.path.join('/media/ramzaveri/5400C9CC66E778B9/Ram/work/cell analysis/datasets/datasets/BBBC024_3D_test/results_v2/results_zy', 'BBBC024_v1_c00_highSNR_images_TIFF-image-labels_0005_raw_masks_flows.pkl'), 'rb') as rmf_pkl:
+    pred_zy = np.array(pickle.load(rmf_pkl))
+with open(os.path.join('/media/ramzaveri/5400C9CC66E778B9/Ram/work/cell analysis/datasets/datasets/BBBC024_3D_test/results_v2/results_zx', 'BBBC024_v1_c00_highSNR_images_TIFF-image-labels_0005_raw_masks_flows.pkl'), 'rb') as rmf_pkl:
+    pred_zx = np.array(pickle.load(rmf_pkl))
 
 
 print(pred_xy.shape)
-print(pred_yz.shape)
-print(pred_xz.shape)
+print(pred_zy.shape)
+print(pred_zx.shape)
 
 pred = pred_xy
 pred_xy = pred_xy.transpose(1,0,2,3)
-pred_yz_xy = pred_yz.transpose(1,3,2,0) #swapaxes(0,2)
-pred_xz_xy = pred_xz.transpose(1,2,0,3) #swapaxes(0,1)
+pred_zy_xy = pred_zy.transpose(1,2,3,0) #swapaxes(0,2)
+pred_zx_xy = pred_zx.transpose(1,2,0,3) #swapaxes(0,1)
 
 print(pred_xy.shape)
-print(pred_yz_xy.shape)
-print(pred_xz_xy.shape)
+print(pred_zy_xy.shape)
+print(pred_zx_xy.shape)
 
 #(stacks, classes, imgs.shape[0], imgs.shape[1], imgs.shape[2])
 yf = np.zeros((3, 3, 129, 565, 807), np.float32)
 
 yf[0] = pred_xy
-yf[1] = pred_yz_xy
-yf[2] = pred_xz_xy
+yf[1] = pred_zy_xy
+yf[2] = pred_zx_xy
 
 #cellprob = pred_xy[0] + pred_yz_xy[0] + pred_xz_xy[0]
         
-cellprob = yf[0][0] + yf[1][0] + yf[2][0]
+cellprob = (yf[0][0] + yf[1][0] + yf[2][0])/3
 
 #['YX', 'ZY', 'ZX']
 
-#dP = np.stack(((yf[0][0]+ yf[1][0] + yf[2][0])/3, (yf[0][1] + yf[1][1] + yf[2][1])/3, (yf[0][2] + yf[1][2] + yf[2][2])/3),
-#                          axis=0) # (dZ, dY, dX)
+#dP = np.stack((yf[1][0] + yf[2][0], yf[0][0] + yf[2][1], yf[0][1] + yf[1][1]), axis=0) # (dZ, dY, dX)
 
-#dP = np.stack((yf[1][2] + yf[2][2], yf[0][2] + yf[2][1], yf[0][1] + yf[1][1]), axis=0) # (dZ, dY, dX)
-
+#sets perfect dims, but still getting wrong number of masks
 dP = np.stack((yf[1][1] + yf[2][1], yf[0][1] + yf[1][2], yf[0][2] + yf[2][2]), axis=0) # (dZ, dY, dX)
 
+#dP = np.stack((yf[1][1] + yf[2][1], yf[0][2] + yf[2][1], yf[0][2] + yf[1][2]),
+#                          axis=0) # (dZ, dY, dX)
 print("dP shape:", dP.shape)
 print("cellprob: ",cellprob.shape)
 
@@ -103,6 +103,9 @@ mask = np.array(followflows3D(dP,cellprob))
 print(np.unique(mask))
 tifffile.imwrite(os.path.join('/media/ramzaveri/5400C9CC66E778B9/Ram/work/cell analysis/datasets/datasets/BBBC024_3D_test/results','3D_mask' + '.tif'), mask)
 
+
+"""mask_org = tifffile.imread('/media/ramzaveri/5400C9CC66E778B9/Ram/work/cell analysis/datasets/datasets/BBBC024_3D_test/labels/BBBC024_v1_c00_highSNR_images_TIFF-image-labels_0005.tif')
+print(np.unique(mask_org))"""
 
 """masks_xy = []
 masks_yz = []
