@@ -300,9 +300,13 @@ def run_3D_masks(pred_yx, pred_zy, pred_zx,label_name,results_dir):
     
     print(">>>Masks found in this 3D image: ",np.unique(mask))
     
-    with open(os.path.join(results_dir, label_name[0] + '_raw_masks_flows.pkl'), 'wb') as rmf_pkl:
+    label_list = []
+    for i in range(len(label_name)):
+        label_list.append(label_name[i][label_name[i].rfind('/')+1: label_name[i].rfind('.')])
+                    
+    with open(os.path.join(results_dir, label_list[0] + '_raw_masks_flows.pkl'), 'wb') as rmf_pkl:
             pickle.dump(yf, rmf_pkl)
-    tifffile.imwrite(os.path.join(results_dir, 'tiff_results', label_name[0] + '.tif'),
+    tifffile.imwrite(os.path.join(results_dir, 'tiff_results', label_list[0] + '.tif'),
                             mask)
             
     return mask, yf
