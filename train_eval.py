@@ -165,7 +165,7 @@ def eval_network(model: nn.Module, data_loader: DataLoader, device, patch_per_ba
         masks = []
         label_list = []
         pred_list = []
-        original_dims_list = []
+        #original_dims_list = []
         for (sample_data, sample_labels, label_files, original_dims) in tqdm(data_loader,
                                                                              desc='Evaluating Test Dataset'):
             
@@ -211,11 +211,11 @@ def eval_network(model: nn.Module, data_loader: DataLoader, device, patch_per_ba
             sample_mask = cv2.resize(sample_mask, (original_dims[1].item(), original_dims[0].item()),
                                     interpolation=cv2.INTER_NEAREST)
             masks.append(sample_mask)
-            original_dims_list.append(original_dims)
+            #original_dims_list.append(original_dims)
 
             
     #TODO: Ram: remember to remove original_dims_list before merging 
-    return masks, pred_list, label_list, original_dims_list
+    return masks, pred_list, label_list #, original_dims_list
 
 # Evaluation - due to image size mismatches, must currently be run one image at a time
 def eval_network_3D(model: nn.Module, data_loader: DataLoader, device, patch_per_batch, patch_size, min_overlap,results_dir):
