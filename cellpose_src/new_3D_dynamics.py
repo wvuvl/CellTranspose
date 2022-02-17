@@ -760,7 +760,7 @@ def compute_masks(dP, cellprob, bd=None, p=None, inds=None, niter=200, mask_thre
             p , inds, tr = follow_flows(dP * cp_mask / 5., mask=cp_mask, inds=inds, niter=niter, interp=interp, 
                                             use_gpu=use_gpu, device=device)
             
-            print("p shape in compute_masks: ", p.shape)
+            #print("p shape in compute_masks: ", p.shape)
             
             if inds.ndim < 2 or inds.shape[0] < 5:
                 shape = resize if resize is not None else cellprob.shape
@@ -774,7 +774,7 @@ def compute_masks(dP, cellprob, bd=None, p=None, inds=None, niter=200, mask_thre
         #calculate masks
         mask = get_masks(p, iscell=cp_mask, flows=dP, use_gpu=use_gpu)
         
-        print("mask shape in compute_masks: ", mask.shape)
+        #print("mask shape in compute_masks: ", mask.shape)
         
         
         if resize is not None:

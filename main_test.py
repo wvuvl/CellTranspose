@@ -14,7 +14,7 @@ import time
 import gc
 
 from transforms import Resize, reformat
-from loaddata import TrainCellTransposeData, ValTestCellTransposeData, ValTestCellTransposeData3D, path_iterator
+from loaddata import TrainCellTransposeData, ValTestCellTransposeData, ValTestCellTransposeData3D, ValTestCellTransposeData3D_Final, path_iterator
 from CellTranspose2D import CellTranspose, SizeModel, ClassLoss, FlowLoss, SASClassLoss, ContrastiveFlowLoss
 from train_eval import train_network, adapt_network, eval_network, eval_network_3D, create_3D_masks, run_3D_masks
 from cellpose_src.metrics import average_precision
@@ -225,37 +225,18 @@ if not args.train_only:
 
     else:
         
-        d_list,l_list = path_iterator(args.test_dataset)
+        start = time.time()
+        test_dataset_3D = ValTestCellTransposeData3D_Final('3D_test',args.test_dataset,args.n_chan,do_3D=args.do_3D,
+                                                        from_3D=args.test_from_3D, evaluate=True,
+                                                        )
+        eval_dl_3D = DataLoader(test_dataset_3D,batch_size=1,shuffle=False)
+        eval_network_3D(model,eval_dl_3D,device,patch_per_batch=args.batch_size,
+                        patch_size=args.patch_size,min_overlap=args.test_overlap,results_dir=args.results_dir)
         
-        for d,l in zip(d_list,l_list):
-            
-            test_dataset_xy = ValTestCellTransposeData3D( d, args.n_chan, l, do_3D=args.do_3D,
-                                                from_3D=args.test_from_3D, plane='zy', evaluate=True,
-                                                resize=Resize(args.median_diams, args.patch_size, args.test_overlap,
-                                                            use_labels=args.test_use_labels, refine=True,
-                                                            gc_model=gen_cellpose, sz_model=gen_size_model,
-                                                            device=device, patch_per_batch=args.batch_size))
-            
-            eval_dl_xy = DataLoader(test_dataset_xy, batch_size=1, shuffle=False)
-            
-            masks,prediction_list, label_list,_ = eval_network(model, eval_dl_xy, device, patch_per_batch=args.batch_size,
-                                                      patch_size=args.patch_size, min_overlap=args.test_overlap)
-
-            
-            masks = np.array(masks,dtype='int32')
-            with open(os.path.join(args.results_dir, label_list[0] + '_predicted_labels.pkl'), 'wb') as m_pkl:
-                pickle.dump(masks, m_pkl)
-            tifffile.imwrite(os.path.join(args.results_dir, 'tiff_results', label_list[0] + '.tif'),
-                            masks)
-            with open(os.path.join(args.results_dir, label_list[0] + '_raw_masks_flows.pkl'), 'wb') as rmf_pkl:
-                pickle.dump(prediction_list, rmf_pkl)
-            tifffile.imwrite(os.path.join(args.results_dir, 'raw_predictions_tiffs', label_list[0] + '.tif'),
-                                prediction_list)
-            
-            del test_dataset_xy
-            del eval_dl_xy
-            gc.collect()
-            #TODO: perform evaluation
+        end = time.time() - start
+        
+        print(">>>Time taken: ", end)
+        #TODO: perform evaluation
 
 if args.test_from_3D == False:
     for i in range(len(masks)):

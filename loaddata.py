@@ -38,6 +38,9 @@ class CellTransposeData(Dataset):
     # rather than one at a time via gpu memory (via __getitem__())
     def __init__(self, split_name, data_dirs, n_chan, pf_dirs=None, do_3D=False, from_3D=False, plane=None, evaluate=False, batch_size = 1,
                  resize: Resize = None):
+        
+        self.do_3D = do_3D
+        self.from_3D = from_3D
         """
         Parameters
         ------------------------------------------------------------------------------------------------
@@ -130,7 +133,7 @@ class CellTransposeData(Dataset):
 
         else:
             if from_3D:
-                
+                print(">>>Implementing 2D model on 3D...")
                 """# Note: majority of bottleneck caused by reading and normalizing data 
                 for ind in tqdm(range(len(self.d_list)), desc='Loading {} Dataset...'.format(split_name)):
                     ext = os.path.splitext(self.d_list[ind])[-1]
@@ -210,7 +213,7 @@ class CellTransposeData(Dataset):
                     self.data.append(new_data)
                     self.labels.append(new_label)
 
-        if self.split_name.lower() == 'target' and len(self.data) < batch_size:
+        if self.split_name.lower() == 'target' and len(self.data) < batch_size and not from_3D and not do_3D:
             ds = self.data
             ls = self.labels
             for _ in range(1, math.ceil(batch_size / len(self.data))):
@@ -219,10 +222,10 @@ class CellTransposeData(Dataset):
         
         self.data_samples = self.data
         self.label_samples = self.labels
-        print(len(self.data))
+        
         
     def __len__(self):
-        return len(self.data) #return len(self.data_samples)
+        return len(self.d_list) if (self.do_3D or self.from_3D) else len(self.data) #return len(self.data_samples)
     
                      
 
@@ -345,6 +348,7 @@ class ValTestCellTransposeData3D(Dataset):
                  resize: Resize = None):
         
         
+        
         self.label_path = label
         ext = os.path.splitext(data)[-1]
             
@@ -402,13 +406,60 @@ class ValTestCellTransposeData3D(Dataset):
                     self.labels.append(nl)
                     self.original_dim.append(od)
 
-        
     def __len__(self):
         return len(self.data)
     
     def __getitem__(self, index):
         return self.data[index], self.labels[index], self.label_path,self.original_dim[index]
 
+class ValTestCellTransposeData3D_Final(CellTransposeData):
+    def __init__(self,split_name, data_dirs, n_chan, pf_dirs=None, do_3D=False, from_3D=False, plane='xy', evaluate=False,
+                 resize: Resize = None):
+        self.pf_dirs = pf_dirs
+        self.resize = resize
+        self.n_chan = n_chan
+        
+        super().__init__(split_name,data_dirs, n_chan, pf_dirs=pf_dirs, do_3D=do_3D, from_3D=from_3D, plane=plane,
+                         evaluate=evaluate, resize=resize)
+    
+    def processing(self,index):   
+        
+        ext = os.path.splitext(self.d_list[index])[-1]
+            
+        #Read files
+        if ext == '.tif' or ext == '.tiff':
+            raw_data_vol = tifffile.imread(self.d_list[index]).astype('float')
+            raw_label_vol = tifffile.imread(self.l_list[index]).astype('int16')
+        else:
+            raw_data_vol = cv2.imread(self.d_list[index], -1).astype('float')
+            raw_label_vol = cv2.imread(self.l_list[index], -1).astype('int16')
+        
+        X = ('Z','Y','X')
+        dX = ('YX', 'ZX', 'ZY')
+        TP = [(0,1,2),(1,0,2),(2,0,1)]
+        
+        data_vol = []
+        label_vol = []
+        original_dim = []
+        for ind in range(len(dX)):
+            new_data_vol = raw_data_vol.transpose(TP[ind])
+            new_label_vol = raw_label_vol.transpose(TP[ind])
+            
+            print(f">>>Processing 3D data on {dX[ind]} planes in {X[ind]} direction...")
+                      
+            #Reformat to [z,chan, y, x] and normalize
+            new_data_vol = [reformat(as_tensor(new_data_vol[i]), self.n_chan) for i in range(len(new_data_vol))]
+            data_vol.append([normalize1stto99th(new_data_vol[i]) for i in range(len(new_data_vol))])
+            label_vol.append([reformat(as_tensor(new_label_vol[i])) for i in range(len(new_label_vol))])
+            original_dim.append((new_data_vol[1],new_data_vol[2]))
+        
+        
+        return data_vol, label_vol, self.l_list[index], X, dX, original_dim
+        
+    
+    def __getitem__(self, index):
+        return self.processing(index) #self.data[index], self.labels[index], self.label_path,self.original_dim[index]
+    
 def path_iterator(data_dirs):
     if isinstance(data_dirs, list):  # TODO: Determine how to not treat input as list (if necessary)
         d_list = []
