@@ -14,7 +14,7 @@ import time
 import gc
 
 from transforms import Resize, reformat
-from loaddata import TrainCellTransposeData, ValTestCellTransposeData, ValTestCellTransposeData3D, ValTestCellTransposeData3D_Final, path_iterator
+from loaddata import TrainCellTransposeData, ValTestCellTransposeData, ValTestCellTransposeData3D_Final, path_iterator
 from CellTranspose2D import CellTranspose, SizeModel, ClassLoss, FlowLoss, SASClassLoss, ContrastiveFlowLoss
 from train_eval import train_network, adapt_network, eval_network, eval_network_3D, create_3D_masks, run_3D_masks
 from cellpose_src.metrics import average_precision
