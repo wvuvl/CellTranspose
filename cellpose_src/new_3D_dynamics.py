@@ -701,6 +701,7 @@ def get_masks(p, iscell=None, rpad=20, flows=None, threshold=0.4, use_gpu=False,
         expand = np.nonzero(np.ones((3,3,3)))
     else:
         expand = np.nonzero(np.ones((3,3)))
+    
     for e in expand:
         e = np.expand_dims(e,1)
 
@@ -773,10 +774,7 @@ def compute_masks(dP, cellprob, bd=None, p=None, inds=None, niter=200, mask_thre
         
         #calculate masks
         mask = get_masks(p, iscell=cp_mask, flows=dP, use_gpu=use_gpu)
-        
-        #print("mask shape in compute_masks: ", mask.shape)
-        
-        
+       
         if resize is not None:
             #if verbose:
             #    dynamics_logger.info(f'resizing output with resize = {resize}')
@@ -809,50 +807,4 @@ def compute_masks(dP, cellprob, bd=None, p=None, inds=None, niter=200, mask_thre
 
     return mask
 
-def compute_masks_temp():
-    """ compute masks using dynamics from dP, cellprob, and boundary """
-    
-    
-    """with open(os.path.join('/media/ramzaveri/5400C9CC66E778B9/Ram/work/cell analysis/datasets/datasets/BBBC024_3D_test/results','dP' + '.tif'), 'wb') as rmf_pkl:
-        pickle.dump(dP,rmf_pkl)
-    
-    with open(os.path.join('/media/ramzaveri/5400C9CC66E778B9/Ram/work/cell analysis/datasets/datasets/BBBC024_3D_test/results','cellprob' + '.tif'), 'wb') as rmf_pkl:
-        pickle.dump(cellprob,rmf_pkl)"""
-    
-    
-    with open(os.path.join('/media/ramzaveri/5400C9CC66E778B9/Ram/work/cell analysis/datasets/datasets/BBBC024_3D_test/results','dP' + '.tif'), 'rb') as rmf_pkl:
-        dP = np.array(pickle.load(rmf_pkl))
-    with open(os.path.join('/media/ramzaveri/5400C9CC66E778B9/Ram/work/cell analysis/datasets/datasets/BBBC024_3D_test/results','cellprob' + '.tif'), 'rb') as rmf_pkl:
-        cellprob = np.array(pickle.load(rmf_pkl))
-            
-    """    
-    tifffile.imwrite(os.path.join('/media/ramzaveri/5400C9CC66E778B9/Ram/work/cell analysis/datasets/datasets/BBBC024_3D_test/results','dP' + '.tif'),
-                            dP)
-    tifffile.imwrite(os.path.join('/media/ramzaveri/5400C9CC66E778B9/Ram/work/cell analysis/datasets/datasets/BBBC024_3D_test/results','cellprob' + '.tif'),
-                            cellprob)"""
 
-    #dP = tifffile.imread(os.path.join('/media/ramzaveri/5400C9CC66E778B9/Ram/work/cell analysis/datasets/datasets/BBBC024_3D_test/results','dP' + '.tif'))
-    #cellprob = tifffile.imread(os.path.join('/media/ramzaveri/5400C9CC66E778B9/Ram/work/cell analysis/datasets/datasets/BBBC024_3D_test/results','cellprob' + '.tif'))
-    
-    cp_mask = cellprob > 0.0 # analog to original iscell=(cellprob>cellprob_threshold)
-    
-    if np.any(cp_mask): #mask at this point is a cell cluster binary map, not labels     
-        # follow flows
-        p , inds, tr = follow_flows(dP * cp_mask / 5., mask=cp_mask, inds=None, niter=200, interp=True)
-            
-        print("p shape in compute_masks: ", p.shape)
-        
-        
-        
-        #calculate masks
-        mask = get_masks(p, iscell=cp_mask, flows=dP)
-        
-        print("mask shape in compute_masks: ", mask.shape)
-        
-        mask = mask.astype(np.uint16)
-
-
-        return mask
-
-
-    return mask

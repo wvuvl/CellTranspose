@@ -378,6 +378,9 @@ def fill_holes_and_remove_small_masks(masks, min_size=30):
         raise ValueError('masks_to_outlines takes 2D or 3D array, not %dD array' % masks.ndim)
 
     slices = find_objects(masks)
+    
+    print(">>>mask uniques in fill_holes_and_remove_small_masks", np.unique(masks))
+    
     j = 0
     for i, slc in enumerate(slices):
         if slc is not None:

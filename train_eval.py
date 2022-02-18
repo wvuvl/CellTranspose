@@ -308,8 +308,12 @@ def run_3D_masks(pred_yx, pred_zy, pred_zx,label_name,results_dir):
             pickle.dump(yf, rmf_pkl)
     tifffile.imwrite(os.path.join(results_dir, 'tiff_results', label_list[0] + '.tif'),
                             mask)
-            
-    return mask, yf
+    
+    del yf
+    del dP
+    del cellprob
+    del mask       
+    #return mask, yf
     
     
 def create_3D_masks(pred_xy, pred_yz, pred_xz, label_xy, label_yz, label_xz):

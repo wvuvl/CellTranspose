@@ -1,25 +1,9 @@
-import argparse
-from torch.utils.data import DataLoader, RandomSampler, BatchSampler
-from torch import nn, device, load, save, squeeze, as_tensor, tensor
-from torch.cuda import is_available, device_count, empty_cache
-from torch.optim import SGD
-from torch.optim.lr_scheduler import CosineAnnealingLR, StepLR
+
 import os
 import pickle
 import numpy as np
-import matplotlib.pyplot as plt
-import tifffile
-import cv2
-import time
-import gc
-
 from transforms import Resize, reformat,followflows3D,followflows2D
-from loaddata import TrainCellTransposeData, ValTestCellTransposeData, ValTestCellTransposeData3D, path_iterator
-from CellTranspose2D import CellTranspose, SizeModel, ClassLoss, FlowLoss, SASClassLoss, ContrastiveFlowLoss
-from train_eval import train_network, adapt_network, eval_network, eval_network_3D, create_3D_masks, run_3D_masks
-from cellpose_src.metrics import average_precision
-from misc_utils import produce_logfile
-from tqdm import tqdm
+
 
 with open(os.path.join('/media/ramzaveri/5400C9CC66E778B9/Ram/work/cell analysis/datasets/datasets/BBBC024_3D_test/results_v2/results_xy', 'BBBC024_v1_c00_highSNR_images_TIFF-image-labels_0005_raw_masks_flows.pkl'), 'rb') as rmf_pkl:
     pred_xy = np.array(pickle.load(rmf_pkl))
@@ -101,7 +85,7 @@ print(np.unique(cp_mask_cellpose,return_counts=True))
 
 mask = np.array(followflows3D(dP,cellprob))
 print(np.unique(mask))
-tifffile.imwrite(os.path.join('/media/ramzaveri/5400C9CC66E778B9/Ram/work/cell analysis/datasets/datasets/BBBC024_3D_test/results','3D_mask' + '.tif'), mask)
+#tifffile.imwrite(os.path.join('/media/ramzaveri/5400C9CC66E778B9/Ram/work/cell analysis/datasets/datasets/BBBC024_3D_test/results','3D_mask' + '.tif'), mask)
 
 
 """mask_org = tifffile.imread('/media/ramzaveri/5400C9CC66E778B9/Ram/work/cell analysis/datasets/datasets/BBBC024_3D_test/labels/BBBC024_v1_c00_highSNR_images_TIFF-image-labels_0005.tif')
