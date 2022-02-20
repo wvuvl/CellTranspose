@@ -4,6 +4,7 @@ import pickle
 import numpy as np
 from transforms import Resize, reformat,followflows3D,followflows2D
 
+import tifffile
 
 with open(os.path.join('/media/ramzaveri/5400C9CC66E778B9/Ram/work/cell analysis/datasets/datasets/BBBC024_3D_test/results_v2/results_xy', 'BBBC024_v1_c00_highSNR_images_TIFF-image-labels_0005_raw_masks_flows.pkl'), 'rb') as rmf_pkl:
     pred_xy = np.array(pickle.load(rmf_pkl))
@@ -52,6 +53,11 @@ print("cellprob: ",cellprob.shape)
 cp = cellprob > 0.0 
 print(np.unique(cp,return_counts=True))
 
+mask = np.array(followflows3D(dP,cellprob))
+print(np.unique(mask,return_counts=True))
+tifffile.imwrite(os.path.join('/media/ramzaveri/5400C9CC66E778B9/Ram/work/cell analysis/datasets/datasets/BBBC024_3D_test/results','3D_mask' + '.tif'), mask)
+
+
 """
 with open(os.path.join('/media/ramzaveri/5400C9CC66E778B9/Ram/work/cell analysis/datasets/datasets/BBBC024_3D_test/cellpose_results','dP' + '.tif'), 'rb') as rmf_pkl:
     cellpose_dP = np.array(pickle.load(rmf_pkl))
@@ -83,8 +89,7 @@ print(np.unique(cp_mask_cellpose,return_counts=True))
 
 
 
-mask = np.array(followflows3D(dP,cellprob))
-print(np.unique(mask))
+
 #tifffile.imwrite(os.path.join('/media/ramzaveri/5400C9CC66E778B9/Ram/work/cell analysis/datasets/datasets/BBBC024_3D_test/results','3D_mask' + '.tif'), mask)
 
 

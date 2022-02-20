@@ -387,7 +387,7 @@ def reshape_and_normalize_data(train_data, test_data=None, channels=None, normal
 
     return train_data, test_data, run_test
 
-def resize_image(img0, Ly=None, Lx=None, rsz=None, interpolation=cv2.INTER_LINEAR):
+def resize_image(img0, Ly=None, Lx=None, rsz=None, interpolation=cv2.INTER_LINEAR, no_channels = True):
     """ resize image for computing flows / unresize for computing dynamics
 
     Parameters
@@ -419,11 +419,18 @@ def resize_image(img0, Ly=None, Lx=None, rsz=None, interpolation=cv2.INTER_LINEA
         # determine Ly and Lx using rsz
         if not isinstance(rsz, list) and not isinstance(rsz, np.ndarray):
             rsz = [rsz, rsz]
-        Ly = int(img0.shape[-3] * rsz[-2])
-        Lx = int(img0.shape[-2] * rsz[-1])
+        if (img0.ndim>2 and no_channels):
+            Ly = int(img0.shape[-2] * rsz[-2])
+            Lx = int(img0.shape[-1] * rsz[-1])
+        else:
+            Ly = int(img0.shape[-3] * rsz[-2])
+            Lx = int(img0.shape[-2] * rsz[-1])
     
-    if img0.ndim==4:
-        imgs = np.zeros((img0.shape[0], Ly, Lx, img0.shape[-1]), np.float32)
+    if (img0.ndim>2 and no_channels) or (img0.ndim==4 and not no_channels):
+        if no_channels:
+            imgs = np.zeros((img0.shape[0], Ly, Lx), np.float32)
+        else:
+            imgs = np.zeros((img0.shape[0], Ly, Lx, img0.shape[-1]), np.float32)
         for i,img in enumerate(img0):
             imgs[i] = cv2.resize(img, (Lx, Ly), interpolation=interpolation)
     else:

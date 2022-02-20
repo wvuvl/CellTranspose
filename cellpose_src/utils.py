@@ -2,6 +2,7 @@
 Code obtained from original Cellpose project (2/25/21): https://github.com/MouseLand/cellpose/blob/master/cellpose/utils.py
 """
 
+from cmath import pi
 import os, warnings, time, tempfile, datetime, pathlib, shutil, subprocess
 from tqdm import tqdm
 from urllib.request import urlopen
@@ -12,7 +13,7 @@ from scipy.ndimage import find_objects, gaussian_filter, generate_binary_structu
 from scipy.spatial import ConvexHull
 import numpy as np
 import colorsys
-
+import math 
 from . import metrics
 
 
@@ -354,7 +355,7 @@ def process_cells(M0, npix=20):
     return M0
 
 
-def fill_holes_and_remove_small_masks(masks, min_size=30):
+def fill_holes_and_remove_small_masks(masks, min_size=15):
     """ fill holes in masks (2D/3D) and discard masks smaller than min_size (2D)
 
     fill holes in each mask using scipy.ndimage.morphology.binary_fill_holes
@@ -380,6 +381,8 @@ def fill_holes_and_remove_small_masks(masks, min_size=30):
     slices = find_objects(masks)
     
     print(">>>mask uniques in fill_holes_and_remove_small_masks", np.unique(masks))
+    
+    min_size = (4/3)* math.pi * (min_size**3)
     
     j = 0
     for i, slc in enumerate(slices):

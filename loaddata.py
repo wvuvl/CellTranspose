@@ -15,6 +15,8 @@ import tifffile
 import cv2
 import random
 import numpy as np
+
+from cellpose_src import transforms
 from transforms import reformat, normalize1stto99th, Resize, random_horizontal_flip, labels_to_flows, generate_patches
 
 import matplotlib.pyplot as plt
@@ -389,16 +391,21 @@ class ValTestCellTransposeData3D_Final(CellTransposeData):
         label_vol = []
         original_dim = []
         for ind in range(len(dX)):
-            new_data_vol = raw_data_vol.transpose(TP[ind])
-            new_label_vol = raw_label_vol.transpose(TP[ind])
+            new_data = raw_data_vol.transpose(TP[ind])
+            new_label = raw_label_vol.transpose(TP[ind])
             
             print(f">>>Processing 3D data on {dX[ind]} planes in {X[ind]} direction...")
-                      
+            
+            #new_data_vol = transforms.resize_image(new_data,rsz=1.0)
+            #new_label_vol = transforms.resize_image(new_label,rsz=1.0)
+                       
+            
             #Reformat to [z,chan, y, x] and normalize
             new_data_vol = [reformat(as_tensor(new_data_vol[i]), self.n_chan) for i in range(len(new_data_vol))]
             data_vol.append([normalize1stto99th(new_data_vol[i]) for i in range(len(new_data_vol))])
             label_vol.append([reformat(as_tensor(new_label_vol[i])) for i in range(len(new_label_vol))])
             original_dim.append((new_data_vol[1],new_data_vol[2]))
+        
         
         
         return data_vol, label_vol, self.l_list[index], X, dX, original_dim
