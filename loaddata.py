@@ -16,6 +16,7 @@ import cv2
 import random
 import numpy as np
 
+from my_utils.Calc_extents import diam_range_3D
 from cellpose_src import transforms
 from transforms import reformat, normalize1stto99th, Resize, random_horizontal_flip, labels_to_flows, generate_patches
 
@@ -383,6 +384,8 @@ class ValTestCellTransposeData3D_Final(CellTransposeData):
             raw_data_vol = cv2.imread(self.d_list[index], -1).astype('float')
             raw_label_vol = cv2.imread(self.l_list[index], -1).astype('int16')
         
+        diam = diam_range_3D(raw_label_vol)
+        
         X = ('Z','Y','X')
         dX = ('YX', 'ZX', 'ZY')
         TP = [(0,1,2),(1,0,2),(2,0,1)]
@@ -390,6 +393,14 @@ class ValTestCellTransposeData3D_Final(CellTransposeData):
         data_vol = []
         label_vol = []
         original_dim = []
+        
+        if self.pf_dirs is not None:
+            new_pf = tifffile.imread(self.pf_list[ind])
+            new_pf = reformat(new_pf, is_pf=True)
+        else:
+            new_pf = None
+        
+                        
         for ind in range(len(dX)):
             new_data = raw_data_vol.transpose(TP[ind])
             new_label = raw_label_vol.transpose(TP[ind])
@@ -398,14 +409,33 @@ class ValTestCellTransposeData3D_Final(CellTransposeData):
             
             #new_data_vol = transforms.resize_image(new_data,rsz=1.0)
             #new_label_vol = transforms.resize_image(new_label,rsz=1.0)
-                       
+            
+            new_data_vol = []
+            new_label_vol = []
+            new_origin_dim = []
+            for i in range(len(new_data)):
+                d = reformat(as_tensor(new_data[i]), self.n_chan)
+                data = normalize1stto99th(d)
+                label = reformat(as_tensor(new_label[i]))
+                
+                if self.resize is not None:
+                    data, label, dim = self.resize(data, label, new_pf,diameter=diam)
+                else: dim = (data[0],data[1])
+                
+                new_data_vol.append(data)
+                new_label_vol.append(label)
+                new_origin_dim.append(dim)
+                
+            data_vol.append(new_data_vol)
+            label_vol.append(new_label_vol)
+            original_dim.append(new_origin_dim)
+                     
             
             #Reformat to [z,chan, y, x] and normalize
-            new_data_vol = [reformat(as_tensor(new_data_vol[i]), self.n_chan) for i in range(len(new_data_vol))]
-            data_vol.append([normalize1stto99th(new_data_vol[i]) for i in range(len(new_data_vol))])
-            label_vol.append([reformat(as_tensor(new_label_vol[i])) for i in range(len(new_label_vol))])
-            original_dim.append((new_data_vol[1],new_data_vol[2]))
-        
+            #new_data_vol = [reformat(as_tensor(raw_data_vol[i]), self.n_chan) for i in range(len(raw_data_vol))]
+            #data_vol.append([normalize1stto99th(new_data_vol[i]) for i in range(len(new_data_vol))])
+            #label_vol.append([reformat(as_tensor(new_label[i])) for i in range(len(raw_label_vol))])
+            #original_dim.append((new_data_vol[1],new_data_vol[2]))
         
         
         return data_vol, label_vol, self.l_list[index], X, dX, original_dim

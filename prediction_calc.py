@@ -55,7 +55,7 @@ print(np.unique(cp,return_counts=True))
 
 mask = np.array(followflows3D(dP,cellprob))
 print(np.unique(mask,return_counts=True))
-tifffile.imwrite(os.path.join('/media/ramzaveri/5400C9CC66E778B9/Ram/work/cell analysis/datasets/datasets/BBBC024_3D_test/results','3D_mask' + '.tif'), mask)
+#tifffile.imwrite(os.path.join('/media/ramzaveri/5400C9CC66E778B9/Ram/work/cell analysis/datasets/datasets/BBBC024_3D_test/results','3D_mask' + '.tif'), mask)
 
 
 """
@@ -81,7 +81,7 @@ print(cp_mask_cellpose)
 
 print(np.unique(cp_mask,return_counts=True))
 print(np.unique(cp_mask_cellpose,return_counts=True))
-"""
+
 
 #dP = tifffile.imread(os.path.join('/media/ramzaveri/5400C9CC66E778B9/Ram/work/cell analysis/datasets/datasets/BBBC024_3D_test/results','dP' + '.tif'))
 #cellprob = tifffile.imread(os.path.join('/media/ramzaveri/5400C9CC66E778B9/Ram/work/cell analysis/datasets/datasets/BBBC024_3D_test/results','cellprob' + '.tif'))
@@ -93,10 +93,11 @@ print(np.unique(cp_mask_cellpose,return_counts=True))
 #tifffile.imwrite(os.path.join('/media/ramzaveri/5400C9CC66E778B9/Ram/work/cell analysis/datasets/datasets/BBBC024_3D_test/results','3D_mask' + '.tif'), mask)
 
 
-"""mask_org = tifffile.imread('/media/ramzaveri/5400C9CC66E778B9/Ram/work/cell analysis/datasets/datasets/BBBC024_3D_test/labels/BBBC024_v1_c00_highSNR_images_TIFF-image-labels_0005.tif')
+mask_org = tifffile.imread('/media/ramzaveri/5400C9CC66E778B9/Ram/work/cell analysis/datasets/datasets/BBBC024_3D_test/labels/BBBC024_v1_c00_highSNR_images_TIFF-image-labels_0005.tif')
 print(np.unique(mask_org))"""
 
-"""masks_xy = []
+"""
+masks_xy = []
 masks_yz = []
 masks_xz = []
 
@@ -106,9 +107,9 @@ for i in tqdm(pred_xz,desc="processing xz: "): masks_xz.append(np.array(followfl
 
 print("xy: ", np.unique(np.array(masks_xy)))
 print("yz: ", np.unique(np.array(masks_yz)))
-print("xz: ", np.unique(np.array(masks_xz)))"""
+print("xz: ", np.unique(np.array(masks_xz)))
 
-"""import numpy as np
+import numpy as np
 import tifffile
 import os
        
@@ -117,4 +118,8 @@ mask_cellpose = tifffile.imread(os.path.join('/media/ramzaveri/5400C9CC66E778B9/
 
 
 print(np.unique(mask_celltranspose))
-print(np.unique(mask_cellpose))"""
+print(np.unique(mask_cellpose))
+
+import math
+
+print((4/3)(math.pi**(1/2))*(15**(3/2)))"""

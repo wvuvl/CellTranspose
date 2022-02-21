@@ -6,6 +6,7 @@ import cv2
 import numpy as np
 from statistics import mean
 from transforms import followflows, followflows3D, generate_patches, recombine_patches, reformat, normalize1stto99th
+from cellpose_src import transforms
 
 import matplotlib.pyplot as plt
 import os
@@ -236,7 +237,7 @@ def eval_network_3D(model: nn.Module, data_loader: DataLoader, device, patch_per
         
             for index in range(len(dX)): 
 
-                for (sample_data, sample_labels) in tqdm(zip(data_vol[index],label_vol[index]),desc=f'Processing {dX[index]}'):
+                for (sample_data, sample_labels,origin_dim) in tqdm(zip(data_vol[index],label_vol[index],dim[index]),desc=f'Processing {dX[index]}'):
                     resized_dims = (sample_data.shape[2], sample_data.shape[3])
                     padding = sample_data.shape[2] < patch_size[0] or sample_data.shape[3] < patch_size[1]
                     # Add padding if image is smaller than patch size in at least one dimension
@@ -264,11 +265,14 @@ def eval_network_3D(model: nn.Module, data_loader: DataLoader, device, patch_per
                         p = model(sample_data_patches)
                         predictions = cat((predictions, p))
 
-                    predictions = recombine_patches(predictions, resized_dims, min_overlap)
+                    predictions = recombine_patches(predictions, resized_dims, min_overlap).cpu().numpy()[0]
+                    predictions = predictions.transpose(1,2,0)
+                    predictions = transforms.resize_image(predictions, origin_dim[0].item(), origin_dim[1].item())
                     
-                    if index == 0: pred_yx.append(predictions.cpu().numpy()[0])
-                    elif index == 1: pred_zx.append(predictions.cpu().numpy()[0])
-                    else: pred_zy.append(predictions.cpu().numpy()[0])
+                    predictions = predictions.transpose(2,0,1)
+                    if index == 0: pred_yx.append(predictions)
+                    elif index == 1: pred_zx.append(predictions)
+                    else: pred_zy.append(predictions)
 
             pred_yx, pred_zy, pred_zx = np.array(pred_yx),np.array(pred_zy),np.array(pred_zx)
             run_3D_masks(pred_yx,pred_zy,pred_zx,label_files,results_dir)    
@@ -280,25 +284,28 @@ def eval_network_3D(model: nn.Module, data_loader: DataLoader, device, patch_per
 #adapted from cellpose original implementation
 #TODO: does not work for patch size smaller than at least one image dimension, padding required
 def run_3D_masks(pred_yx, pred_zy, pred_zx,label_name,results_dir):
- 
+    
     pred_yx = pred_yx.transpose(1,0,2,3)
     pred_zy_xy = pred_zy.transpose(1,2,3,0)
     pred_zx_xy = pred_zx.transpose(1,2,0,3)
+   
 
     yf = np.zeros((3, 3, 129, 565, 807), np.float32)
 
+    
     yf[0] = pred_yx
     yf[1] = pred_zy_xy
     yf[2] = pred_zx_xy
-
-    cellprob = (yf[0][0] + yf[1][0] + yf[2][0])/3
+    
+    cellprob = yf[0][0] + yf[1][0] + yf[2][0]
     
     #sets perfect dims, but still getting wrong number of masks
     dP = np.stack((yf[1][1] + yf[2][1], yf[0][1] + yf[1][2], yf[0][2] + yf[2][2]), axis=0) # (dZ, dY, dX)
     
+    
     mask = np.array(followflows3D(dP,cellprob))
     
-    print(">>>Masks found in this 3D image: ",np.unique(mask))
+    print(">>>Masks found in this 3D image: ",np.unique(mask,return_counts=True))
     
     label_list = []
     for i in range(len(label_name)):

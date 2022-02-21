@@ -86,11 +86,13 @@ class Resize(object):
                 self.min_overlap = min_overlap
                 self.patch_size = patch_size
 
-    def __call__(self, x, y, pf=None, random_scale=1.0):
+    def __call__(self, x, y, pf=None, random_scale=1.0,diameter=None):
         original_dims = y.shape[1], y.shape[2]
         if self.use_labels:
-            x, y = resize_from_labels(x, y, self.default_med, pf, random_scale=random_scale)
+                       
+            x, y = resize_from_labels(x, y, self.default_med, pf, random_scale=random_scale,diameter=diameter)
             return x, y, original_dims
+        
         else:
             x, y = predict_and_resize(x, y, self.default_med, self.gc_model, self.sz_model)  # TODO: Add pf here
             if self.refine:
@@ -99,7 +101,7 @@ class Resize(object):
             return x, y, original_dims
 
 
-def resize_from_labels(x, y, default_med, pf=None, random_scale=1.0):
+def resize_from_labels(x, y, default_med, pf=None, random_scale=1.0,diameter = None):
     # calculate diameters using only full cells in image - remove cut off cells during median diameter calculation
     
     unq = torch.unique(y)
@@ -107,7 +109,8 @@ def resize_from_labels(x, y, default_med, pf=None, random_scale=1.0):
     
     y_cf = copy.deepcopy(torch.squeeze(y, dim=0))
     y_cf = remove_cut_cells(y_cf)
-    med = diam_range(y_cf)*random_scale
+    
+    med = diam_range(y_cf)*random_scale if diameter is None else diameter
     # med, cts = diameters(y_cf)
     if med > 0:
         rescale_w, rescale_h = default_med[0] / med, default_med[1] / med
@@ -235,7 +238,7 @@ def followflows3D(dP,cellprob):
     """
     Combines follow_flows, get_masks, and fill_holes_and_remove_small_masks from Cellpose implementation
     """
-    niter = 400; interp = True; use_gpu = True; cellprob_threshold = 0.0; flow_threshold = 0.4; min_size=15  # min_size=15
+    niter = 400; interp = True; use_gpu = True; cellprob_threshold = 0.0; flow_threshold = 0.4; min_size=8000  # min_size=15
      
     masks= compute_masks(dP,cellprob,niter=niter,interp=interp,use_gpu=use_gpu,mask_threshold=cellprob_threshold,flow_threshold=flow_threshold,min_size=min_size)
     

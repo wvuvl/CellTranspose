@@ -228,6 +228,10 @@ if not args.train_only:
         start = time.time()
         test_dataset_3D = ValTestCellTransposeData3D_Final('3D_test',args.test_dataset,args.n_chan,do_3D=args.do_3D,
                                                         from_3D=args.test_from_3D, evaluate=True,
+                                                        resize=Resize(args.median_diams, args.patch_size, args.test_overlap,
+                                                            use_labels=args.test_use_labels, refine=True,
+                                                            gc_model=gen_cellpose, sz_model=gen_size_model,
+                                                            device=device, patch_per_batch=args.batch_size)
                                                         )
         eval_dl_3D = DataLoader(test_dataset_3D,batch_size=1,shuffle=False)
         eval_network_3D(model,eval_dl_3D,device,patch_per_batch=args.batch_size,

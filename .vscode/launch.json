@@ -194,7 +194,7 @@
                 "--batch-size",
                 "16",
                 "--epochs",
-                "30",
+                "250",
                 "--median-diams",
                 "60",
                 "--patch-size",

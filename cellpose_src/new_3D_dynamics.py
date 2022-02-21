@@ -470,7 +470,7 @@ def steps3D(p, dP, inds, niter):
         #pi = p.astype(np.int32)
         for j in range(inds.shape[0]):
             z = inds[j,0]
-            y = inds[j,1]
+            y = inds[j,1] 
             x = inds[j,2]
             p0, p1, p2 = int(p[0,z,y,x]), int(p[1,z,y,x]), int(p[2,z,y,x])
             p[0,z,y,x] = min(shape[0]-1, max(0, p[0,z,y,x] + dP[0,p0,p1,p2]))
