@@ -400,12 +400,12 @@ class ValTestCellTransposeData3D_Final(CellTransposeData):
         else:
             new_pf = None
         
-                        
+        print(f">>>Image path: {self.d_list[index]}")   
         for ind in range(len(dX)):
             new_data = raw_data_vol.transpose(TP[ind])
             new_label = raw_label_vol.transpose(TP[ind])
             
-            print(f">>>Processing 3D data on {dX[ind]} planes in {X[ind]} direction...")
+            print(f">>>Processing 3D data on {new_data.shape[0]} on {dX[ind]} planes in {X[ind]} direction...")
             
             #new_data_vol = transforms.resize_image(new_data,rsz=1.0)
             #new_label_vol = transforms.resize_image(new_label,rsz=1.0)

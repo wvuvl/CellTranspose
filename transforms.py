@@ -101,7 +101,7 @@ class Resize(object):
             return x, y, original_dims
 
 
-def resize_from_labels(x, y, default_med, pf=None, random_scale=1.0,diameter = None):
+def resize_from_labels(x, y, default_med, pf=None, random_scale=1.0, diameter=None):
     # calculate diameters using only full cells in image - remove cut off cells during median diameter calculation
     
     unq = torch.unique(y)
@@ -238,7 +238,7 @@ def followflows3D(dP,cellprob):
     """
     Combines follow_flows, get_masks, and fill_holes_and_remove_small_masks from Cellpose implementation
     """
-    niter = 400; interp = True; use_gpu = True; cellprob_threshold = 0.0; flow_threshold = 0.4; min_size=8000  # min_size=15
+    niter = 400; interp = True; use_gpu = True; cellprob_threshold = 0.0; flow_threshold = 0.4; min_size=16000  # min_size=15
      
     masks= compute_masks(dP,cellprob,niter=niter,interp=interp,use_gpu=use_gpu,mask_threshold=cellprob_threshold,flow_threshold=flow_threshold,min_size=min_size)
     
