@@ -396,6 +396,3 @@ def fill_holes_and_remove_small_masks(masks, min_size=15):
                 masks[slc][msk] = (j + 1)
                 j += 1
     return masks
-
-def diam_calc_3D(label):
-    return 
