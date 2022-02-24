@@ -223,28 +223,7 @@ if not args.train_only:
 
         masks, prediction_list, label_list = eval_network(model, eval_dl, device, patch_per_batch=args.batch_size,
                                                       patch_size=args.patch_size, min_overlap=args.test_overlap)
-
-    else:
-        start = time.time()
-        test_dataset_3D = ValTestCellTransposeData3D('3D_test',args.test_dataset,args.n_chan,do_3D=args.do_3D,
-                                                        from_3D=args.test_from_3D, evaluate=True,
-                                                        resize=Resize(args.median_diams, args.patch_size, args.test_overlap,
-                                                            use_labels=args.test_use_labels, refine=True,
-                                                            gc_model=gen_cellpose, sz_model=gen_size_model,
-                                                            device=device, patch_per_batch=args.batch_size)
-                                                        )
-        eval_dl_3D = DataLoader(test_dataset_3D,batch_size=1,shuffle=False)
-        eval_network_3D(model,eval_dl_3D,device,patch_per_batch=args.batch_size,
-                        patch_size=args.patch_size,min_overlap=args.test_overlap,results_dir=args.results_dir)
         
-        end = time.time() - start
-        
-        print(">>>Time taken: ", str(datetime.timedelta(seconds=int(end))))
-        #TODO: perform AP evaluation for 3D
-        
-
-    
-    if args.test_from_3D == False:
         for i in range(len(masks)):
             masks[i] = masks[i].astype('int32')
             with open(os.path.join(args.results_dir, label_list[i] + '_predicted_labels.pkl'), 'wb') as m_pkl:
@@ -297,7 +276,7 @@ if not args.train_only:
                 plt.ylabel('Average Precision')
                 plt.yticks(np.arange(0, 1.01, step=0.2))
                 plt.savefig(os.path.join(args.results_dir, 'AP Results'))
-                #plt.show()
+                plt.show()
                 cc.write('\nAP Results at IoU threshold 0.5: AP = {}\nTrue Postive: {}; False Positive: {}; False Negative:'
                         ' {}\n'.format(ap_overall[51], tp_overall[51], fp_overall[51], fn_overall[51]))
                 print('AP Results at IoU threshold 0.5: AP = {}\nTrue Postive: {}; False Positive: {}; False Negative: {}'
@@ -308,6 +287,30 @@ if not args.train_only:
                 with open(os.path.join(args.results_dir, '{}_AP_Results.pkl'.format(args.dataset_name)), 'wb') as apr:
                     pickle.dump((tau, ap_overall, tp_overall, fp_overall, fn_overall, false_error), apr)
 
+
+    else:
+        
+        test_dataset_3D = ValTestCellTransposeData3D('3D_test',args.test_dataset,args.n_chan,do_3D=args.do_3D,
+                                                        from_3D=args.test_from_3D, evaluate=True,
+                                                        resize=Resize(args.median_diams, args.patch_size, args.test_overlap,
+                                                            use_labels=args.test_use_labels, refine=True,
+                                                            gc_model=gen_cellpose, sz_model=gen_size_model,
+                                                            device=device, patch_per_batch=args.batch_size)
+                                                        )
+        eval_dl_3D = DataLoader(test_dataset_3D,batch_size=1,shuffle=False)
+        eval_network_3D(model,eval_dl_3D,device,patch_per_batch=args.batch_size,
+                        patch_size=args.patch_size,min_overlap=args.test_overlap,results_dir=args.results_dir)
+        
+        end_eval = time.time() - start_eval
+        
+        tte = time.strftime("%H:%M:%S", time.gmtime(end_eval - start_eval))
+        print('Time to evaluate: {}'.format(end_eval))
+        #TODO: perform AP evaluation for 3D
+        
+
+    
+    
+        
 print(args.results_dir)
 
 produce_logfile(args, len(train_losses) if train_losses is not None else None, ttt, tte, num_workers)

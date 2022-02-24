@@ -13,9 +13,6 @@ from utils.Calc_extents import diam_range
 
 import matplotlib.pyplot as plt
 
-import cellpose
-from cellpose import dynamics
-
 # TODO: Need to update to work for all situations
 #  (currently only for when 1-channel 2D image doesn't include channel dim)
 def reformat(x, n_chan=1, is_pf=False, do_3D=False):
