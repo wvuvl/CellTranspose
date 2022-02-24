@@ -2,9 +2,10 @@
 Data Loader implementation, specifically designed for in-house datasets. Code will be designed to reflect flexibility in
 custom dataloaders for new data.
 """
-import numpy as np
+import torch
+from torchvision.transforms import ToTensor, Lambda
 from torch.utils.data import Dataset
-from torch import empty, as_tensor, tensor, cat, unsqueeze, float32
+from torch import dtype, empty, as_tensor, tensor, cat, unsqueeze, float32
 import torch.nn.functional as F
 import os
 import math
@@ -13,10 +14,13 @@ from tqdm.contrib import tzip
 import tifffile
 import cv2
 import random
+import numpy as np
+
+from utils.Calc_extents import diam_range_3D
+from cellpose_src import transforms
 from transforms import reformat, normalize1stto99th, Resize, random_horizontal_flip, labels_to_flows, generate_patches
 
 import matplotlib.pyplot as plt
-
 
 class CellTransposeData(Dataset):
     """
@@ -35,21 +39,36 @@ class CellTransposeData(Dataset):
 
     # Currently, set to load in volumes upfront to cpu memory (via __init__())
     # rather than one at a time via gpu memory (via __getitem__())
-    def __init__(self, split_name, data_dirs, n_chan, pf_dirs=None, do_3D=False, from_3D=False, evaluate=False, batch_size = 1,
+    def __init__(self, split_name, data_dirs, n_chan, pf_dirs=None, do_3D=False, from_3D=False, plane=None, evaluate=False, batch_size = 1,
                  resize: Resize = None):
-        """"
-        Args:
+        
+        self.do_3D = do_3D
+        self.from_3D = from_3D
+        """
+        Parameters
+        ------------------------------------------------------------------------------------------------
+        
             split_name: name corresponding to the split (i.e. train, validation, test, target)
+            
             n_chan: Maximum number of channels in input images (i.e. 2 for cytoplasm + nuclei images)
+            
             data_dirs: root directory/directories of the dataset, containing 'data' and 'labels' folders
+            
             pf_dirs: root directory/directories of pre-calculated flows, if they exist
+            
             do_3D: whether or not to train 3D CellTranspose model (requires that from_3d is true)
+            
             from_3D: whether input samples are 2D images (False) or 3D volumes (True)
+            
             evaluate: if set to true, returns additional information when calling __getitem__()
+            
             resize: Resize object containing parameters by which to resize input samples accordingly
         """
         self.split_name = split_name
         self.evaluate = evaluate
+        self.d_list_3D = []
+        self.l_list_3D = []
+        
         if isinstance(data_dirs, list):  # TODO: Determine how to not treat input as list (if necessary)
             self.d_list = []
             self.l_list = []
@@ -82,60 +101,43 @@ class CellTransposeData(Dataset):
         self.data = []
         self.labels = []
         self.original_dims = []
+
+        #NOTE: I don't think we need do_3D here if we are doing a similar implementation
+        #to the original cellpose one
         if do_3D:  # and from_3D
-            for ind in tqdm(range(len(self.d_list)), desc='Loading {} Dataset...'.format(split_name)):
+            """for ind in tqdm(range(len(self.d_list)), desc='Loading {} Dataset...'.format(split_name)):
                 ext = os.path.splitext(self.d_list[ind])[-1]
+
+                #Read file and load tensor
                 if ext == '.tif' or ext == '.tiff':
                     new_data = as_tensor(list(tifffile.imread(self.d_list[ind]).astype('float')))
                     new_label = as_tensor(list(tifffile.imread(self.l_list[ind])).astype('int16'))
                 else:
                     new_data = as_tensor(list(cv2.imread(self.d_list[ind], -1).astype('float')))
                     new_label = as_tensor(list(cv2.imread(self.l_list[ind], -1).astype('int16')))
+
+                #Reformat to [1, x, y, z] and normalize
                 new_data = reformat(new_data, n_chan, do_3D=True)
                 new_data = normalize1stto99th(new_data)
                 new_label = reformat(new_label, do_3D=True)
+
+                #Handle precalulcated flows
                 if pf_dirs is not None:
                     new_pf = as_tensor(list(tifffile.imread(self.pf_list[ind])))
                     new_pf = reformat(new_pf, is_pf=True, do_3D=True)  # TODO: May/may not need updated to reflect do_3D loading
                 else:
                     new_pf = None
+
                 if resize is not None:
                     new_data, new_label, new_pf, original_dim = resize(new_data, new_label, new_pf)
                     self.original_dims.append(original_dim)
                 self.data.extend(new_data)
-                self.labels.extend(new_label)
+                self.labels.extend(new_label)"""
 
         else:
+            
             if from_3D:
-                # Note: majority of bottleneck caused by reading and normalizing data
-                for ind in tqdm(range(len(self.d_list)), desc='Loading {} Dataset...'.format(split_name)):
-                    ext = os.path.splitext(self.d_list[ind])[-1]
-                    if ext == '.tif' or ext == '.tiff':
-                        raw_data_vol = tifffile.imread(self.d_list[ind]).astype('float')
-                        raw_label_vol = tifffile.imread(self.l_list[ind]).astype('int16')
-                    else:
-                        raw_data_vol = cv2.imread(self.d_list[ind], -1).astype('float')
-                        raw_label_vol = cv2.imread(self.l_list[ind], -1).astype('int16')
-                    raw_data_vol = [reformat(as_tensor(raw_data_vol[i]), n_chan) for i in range(len(raw_data_vol))]
-                    raw_data_vol = [normalize1stto99th(raw_data_vol[i]) for i in range(len(raw_data_vol))]
-                    raw_label_vol = [reformat(as_tensor(raw_label_vol[i])) for i in range(len(raw_label_vol))]
-                    if pf_dirs is not None:  # Not currently handled
-                        print('Add this later')
-                        # if resize is not None:
-                        #     *do_resize_here*
-                    else:
-                        if resize is not None:
-                            new_data = []
-                            new_label = []
-                            original_dim = []
-                            for i in range(len(raw_data_vol)):
-                                nd, nl, _, od = resize(raw_data_vol[i], raw_label_vol[i])
-                                new_data.append(nd)
-                                new_label.append(nl)
-                                original_dim.append(od)
-                            self.original_dims.extend(original_dim)
-                    self.data.extend(new_data)
-                    self.labels.extend(new_label)
+                print(">>>Implementing 2D model on 3D...")
 
             else:
                 for ind in tqdm(range(len(self.d_list)), desc='Loading {} Dataset...'.format(split_name)):
@@ -160,7 +162,7 @@ class CellTransposeData(Dataset):
                     self.data.append(new_data)
                     self.labels.append(new_label)
 
-        if self.split_name.lower() == 'target' and len(self.data) < batch_size:
+        if self.split_name.lower() == 'target' and len(self.data) < batch_size and not from_3D and not do_3D:
             ds = self.data
             ls = self.labels
             for _ in range(1, math.ceil(batch_size / len(self.data))):
@@ -169,9 +171,12 @@ class CellTransposeData(Dataset):
         
         self.data_samples = self.data
         self.label_samples = self.labels
+        
+        
     def __len__(self):
-        return len(self.data) #return len(self.data_samples)
-
+        return len(self.d_list) if (self.do_3D or self.from_3D) else len(self.data) #return len(self.data_samples)
+    
+                     
 
 class TrainCellTransposeData(CellTransposeData):
     def __init__(self, split_name, data_dirs, n_chan, pf_dirs=None, do_3D=False, from_3D=False, evaluate=False,
@@ -179,6 +184,7 @@ class TrainCellTransposeData(CellTransposeData):
         self.resize = resize
         self.crop_size = crop_size
         self.has_flows = has_flows
+        self.from_3D= from_3D
         super().__init__(split_name, data_dirs, n_chan, pf_dirs=pf_dirs, do_3D=do_3D,
                          from_3D=from_3D, evaluate=evaluate, batch_size=batch_size, resize=None)
 
@@ -217,6 +223,7 @@ class TrainCellTransposeData(CellTransposeData):
 
         return patch_data, patch_label
     
+
     # Augmentations and tiling applied to input data (for training and adaptation) -
     # separated from DataLoader to allow for possibility of running only once or once per epoch
     # NOTE: ltf takes ~50% of time; generating patches and concatenating takes nearly as long
@@ -250,9 +257,10 @@ class TrainCellTransposeData(CellTransposeData):
 
 
 class ValTestCellTransposeData(CellTransposeData):
-    def __init__(self, split_name, data_dirs, n_chan, pf_dirs=None, do_3D=False, from_3D=False, evaluate=False,
+    def __init__(self, split_name, data_dirs, n_chan, pf_dirs=None, do_3D=False, from_3D=False, plane='yz', evaluate=False,
                  resize: Resize = None):
-        super().__init__(split_name, data_dirs, n_chan, pf_dirs=pf_dirs, do_3D=do_3D, from_3D=from_3D,
+        self.from_3D = from_3D
+        super().__init__(split_name, data_dirs, n_chan, pf_dirs=pf_dirs, do_3D=do_3D, from_3D=from_3D, plane=plane,
                          evaluate=evaluate, resize=resize)
 
     # Generates patches for validation dataset - only happens once
@@ -277,7 +285,82 @@ class ValTestCellTransposeData(CellTransposeData):
         self.original_dims = new_original_dims
 
     def __getitem__(self, index):
-        if self.evaluate:
+        if self.evaluate and not self.from_3D:
             return self.data_samples[index], self.label_samples[index], self.l_list[index], self.original_dims[index]
+        #elif self.from_3D:
+        #    return self.data_samples[index], self.label_samples[index], self.d_list_3D[index], self.l_list_3D[index], self.original_dims[index]
         else:
             return self.data_samples[index], self.label_samples[index]
+
+
+#final version of 3D validation dataloader
+class ValTestCellTransposeData3D(CellTransposeData):
+    def __init__(self,split_name, data_dirs, n_chan, pf_dirs=None, do_3D=False, from_3D=False, plane='xy', evaluate=False,
+                 resize: Resize = None):
+        self.pf_dirs = pf_dirs
+        self.resize = resize
+        self.n_chan = n_chan
+        
+        super().__init__(split_name,data_dirs, n_chan, pf_dirs=pf_dirs, do_3D=do_3D, from_3D=from_3D, plane=plane,
+                         evaluate=evaluate, resize=resize)
+    
+    def processing(self,index):   
+        
+        ext = os.path.splitext(self.d_list[index])[-1]
+            
+        #Read files
+        if ext == '.tif' or ext == '.tiff':
+            raw_data_vol = tifffile.imread(self.d_list[index]).astype('float')
+            raw_label_vol = tifffile.imread(self.l_list[index]).astype('int16')
+        else:
+            raw_data_vol = cv2.imread(self.d_list[index], -1).astype('float')
+            raw_label_vol = cv2.imread(self.l_list[index], -1).astype('int16')
+        
+        diam = diam_range_3D(raw_label_vol)
+        
+        X = ('Z','Y','X')
+        dX = ('YX', 'ZX', 'ZY')
+        TP = [(0,1,2),(1,0,2),(2,0,1)]
+        
+        data_vol = []
+        label_vol = []
+        original_dim = []
+        
+        if self.pf_dirs is not None:
+            new_pf = tifffile.imread(self.pf_list[ind])
+            new_pf = reformat(new_pf, is_pf=True)
+        else:
+            new_pf = None
+        
+        print(f">>>Image path: {self.d_list[index]}")   
+        for ind in range(len(dX)):
+            new_data = raw_data_vol.transpose(TP[ind])
+            new_label = raw_label_vol.transpose(TP[ind])
+            
+            print(f">>>Processing 3D data on {new_data.shape[0]} {dX[ind]} planes in {X[ind]} direction...")
+                   
+            new_data_vol = []
+            new_label_vol = []
+            new_origin_dim = []
+            for i in range(len(new_data)):
+                d = reformat(as_tensor(new_data[i]), self.n_chan)
+                data = normalize1stto99th(d)
+                label = reformat(as_tensor(new_label[i]))
+                
+                if self.resize is not None:
+                    data, label, dim = self.resize(data, label, new_pf,diameter=diam)
+                else: dim = (data[0],data[1])
+                
+                new_data_vol.append(data)
+                new_label_vol.append(label)
+                new_origin_dim.append(dim)
+                
+            data_vol.append(new_data_vol)
+            label_vol.append(new_label_vol)
+            original_dim.append(new_origin_dim)
+        
+        return data_vol, label_vol, self.l_list[index], X, dX, original_dim
+        
+    
+    def __getitem__(self, index):
+        return self.processing(index)
