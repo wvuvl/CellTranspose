@@ -16,7 +16,7 @@ import cv2
 import random
 import numpy as np
 
-from my_utils.Calc_extents import diam_range_3D
+from utils.Calc_extents import diam_range_3D
 from cellpose_src import transforms
 from transforms import reformat, normalize1stto99th, Resize, random_horizontal_flip, labels_to_flows, generate_patches
 
@@ -292,77 +292,9 @@ class ValTestCellTransposeData(CellTransposeData):
         else:
             return self.data_samples[index], self.label_samples[index]
 
-"""class ValTestCellTransposeData3D(Dataset):
-    def __init__(self, data, n_chan,label, pf_dirs=None, do_3D=False, from_3D=False, plane='xy', evaluate=False,
-                 resize: Resize = None):
-        
-        
-        
-        self.label_path = label
-        ext = os.path.splitext(data)[-1]
-            
-        #Read files
-        if ext == '.tif' or ext == '.tiff':
-            raw_data_vol = tifffile.imread(data).astype('float')
-            raw_label_vol = tifffile.imread(label).astype('int16')
-        else:
-            raw_data_vol = cv2.imread(data, -1).astype('float')
-            raw_label_vol = cv2.imread(data, -1).astype('int16')
-        
-        if plane == 'xz' or plane == 'zx':
-            raw_data_vol = raw_data_vol.transpose(1,0,2) #(z,y,x) -> (y,z,x)
-            raw_label_vol = raw_label_vol.transpose(1,0,2)
-            print(">>>processing 3D data on zx planes in y direction: ", raw_data_vol.shape)
-            
-        elif plane == 'yz' or plane == 'zy':
-            raw_data_vol = raw_data_vol.transpose(2,0,1) #(z, y, x) -> (x, z, y)
-            raw_label_vol = raw_label_vol.transpose(2,0,1)
-            print(">>>processing 3D data on zy planes in x direction: ", raw_data_vol.shape)
-                
-        else:
-            print(">>>processing 3D data on xy planes in z direction: ", raw_data_vol.shape)
-            
-        
-        dim = raw_data_vol.shape
-        print(dim)
-        #Reformat to [z,chan, y, x] and normalize
-        raw_data_vol = [reformat(as_tensor(raw_data_vol[i]), n_chan) for i in range(len(raw_data_vol))]
-        raw_data_vol = [normalize1stto99th(raw_data_vol[i]) for i in range(len(raw_data_vol))]
-        raw_label_vol = [reformat(as_tensor(raw_label_vol[i])) for i in range(len(raw_label_vol))]
-        
-       
-        
-        self.data = []
-        self.labels = []
-        self.original_dim = []
-                
-        #Handle precaluclated flows if available
-        if pf_dirs is not None:  # Not currently handled
-            print('Add this later')
-            # if resize is not None:
-            #     *do_resize_here*
-        else:
-            if resize is not None:
-                
-                for i in range(len(raw_data_vol)):
-                    #original_dims = raw_label_vol[i].shape[1], raw_label_vol[i].shape[2]
-                    #dim of 3d image to use it in 3d evaluation
-                    nd, nl, od = raw_data_vol[i], raw_label_vol[i], (dim[-2],dim[-1])
-                    #TODO: resize implementation for 3d due
-                    #nd, nl, od = resize(raw_data_vol[i], raw_label_vol[i])
-                                    
-                    self.data.append(nd)
-                    self.labels.append(nl)
-                    self.original_dim.append(od)
-
-    def __len__(self):
-        return len(self.data)
-    
-    def __getitem__(self, index):
-        return self.data[index], self.labels[index], self.label_path,self.original_dim[index]"""
 
 #final version of 3D validation dataloader
-class ValTestCellTransposeData3D_Final(CellTransposeData):
+class ValTestCellTransposeData3D(CellTransposeData):
     def __init__(self,split_name, data_dirs, n_chan, pf_dirs=None, do_3D=False, from_3D=False, plane='xy', evaluate=False,
                  resize: Resize = None):
         self.pf_dirs = pf_dirs
@@ -405,11 +337,8 @@ class ValTestCellTransposeData3D_Final(CellTransposeData):
             new_data = raw_data_vol.transpose(TP[ind])
             new_label = raw_label_vol.transpose(TP[ind])
             
-            print(f">>>Processing 3D data on {new_data.shape[0]} on {dX[ind]} planes in {X[ind]} direction...")
-            
-            #new_data_vol = transforms.resize_image(new_data,rsz=1.0)
-            #new_label_vol = transforms.resize_image(new_label,rsz=1.0)
-            
+            print(f">>>Processing 3D data on {new_data.shape[0]} {dX[ind]} planes in {X[ind]} direction...")
+                   
             new_data_vol = []
             new_label_vol = []
             new_origin_dim = []
@@ -429,40 +358,9 @@ class ValTestCellTransposeData3D_Final(CellTransposeData):
             data_vol.append(new_data_vol)
             label_vol.append(new_label_vol)
             original_dim.append(new_origin_dim)
-                     
-            
-            #Reformat to [z,chan, y, x] and normalize
-            #new_data_vol = [reformat(as_tensor(raw_data_vol[i]), self.n_chan) for i in range(len(raw_data_vol))]
-            #data_vol.append([normalize1stto99th(new_data_vol[i]) for i in range(len(new_data_vol))])
-            #label_vol.append([reformat(as_tensor(new_label[i])) for i in range(len(raw_label_vol))])
-            #original_dim.append((new_data_vol[1],new_data_vol[2]))
-        
         
         return data_vol, label_vol, self.l_list[index], X, dX, original_dim
         
     
     def __getitem__(self, index):
-        return self.processing(index) #self.data[index], self.labels[index], self.label_path,self.original_dim[index]
-    
-def path_iterator(data_dirs):
-    if isinstance(data_dirs, list):  # TODO: Determine how to not treat input as list (if necessary)
-        d_list = []
-        l_list = []
-        for dir_i in data_dirs:
-            d_list = d_list + sorted([dir_i + os.sep + 'data' + os.sep + f for f in
-                                                os.listdir(os.path.join(dir_i, 'data')) if f.lower()
-                                                .endswith('.tiff') or f.lower().endswith('.tif')
-                                                or f.lower().endswith('.png')])
-            l_list = l_list + sorted([dir_i + os.sep + 'labels' + os.sep + f for f in
-                                                os.listdir(os.path.join(dir_i, 'labels')) if f.lower()
-                                                .endswith('.tiff') or f.lower().endswith('.tif')
-                                                or f.lower().endswith('.png')])
-    else:
-        d_list = sorted([data_dirs + os.sep + 'data' + os.sep + f for f in os.listdir(os.path.join(
-            data_dirs, 'data')) if f.lower().endswith('.tiff') or f.lower().endswith('.tif')
-                                or f.lower().endswith('.png')])
-        l_list = sorted([data_dirs + os.sep + 'labels' + os.sep + f for f in os.listdir(os.path.join(
-            data_dirs, 'labels')) if f.lower().endswith('.tiff') or f.lower().endswith('.tif')
-                                or f.lower().endswith('.png')])
-    
-    return d_list,l_list
+        return self.processing(index)

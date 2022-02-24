@@ -5,7 +5,7 @@ from tqdm import tqdm
 import cv2
 import numpy as np
 from statistics import mean
-from transforms import followflows, followflows3D, generate_patches, recombine_patches, reformat, normalize1stto99th
+from transforms import followflows, followflows3D, generate_patches, recombine_patches
 from cellpose_src import transforms
 
 import matplotlib.pyplot as plt
@@ -290,7 +290,7 @@ def run_3D_masks(pred_yx, pred_zy, pred_zx,label_name,results_dir):
     pred_zx_xy = pred_zx.transpose(1,2,0,3)
    
 
-    yf = np.zeros((3, 3, 129, 565, 807), np.float32)
+    yf = np.zeros((3, 3, pred_yx.shape[1], pred_yx.shape[2], pred_yx.shape[3]), np.float32)
 
     
     yf[0] = pred_yx
@@ -305,7 +305,7 @@ def run_3D_masks(pred_yx, pred_zy, pred_zx,label_name,results_dir):
     
     mask = np.array(followflows3D(dP,cellprob))
     
-    print(">>>Masks found in this 3D image: ",np.unique(mask,return_counts=True))
+    print(f">>>Total masks found in this 3D image: ",len(np.unique(mask))-1)
     
     label_list = []
     for i in range(len(label_name)):
@@ -322,25 +322,4 @@ def run_3D_masks(pred_yx, pred_zy, pred_zx,label_name,results_dir):
     del mask       
     #return mask, yf
     
-    
-def create_3D_masks(pred_xy, pred_yz, pred_xz, label_xy, label_yz, label_xz):
-    flows = []
-    masks = []
-    #Iterate though list of 3D objects
-    for i in range(len(pred_xy)):
-        obj_xy = pred_xy[i]
-        obj_yz = pred_yz[i]
-        obj_xz = pred_xz[i]
-
-        #Average predictions from each slice
-        x_pred = [(x1+x2) / 2 for x1, x2 in zip(obj_xy[0, :, 0], obj_xz[0, :, 0])]
-        y_pred = [(y1+y2) / 2 for y1, y2 in zip(obj_xy[0, 0, :], obj_yz[0, :, 0])]
-        z_pred = [(z1+z2) / 2 for z1, z2 in zip(obj_yz[0, 0, :], obj_xz[0, 0, :])]
-
-        flows.append(tensor([x_pred, y_pred, z_pred]))
-    
-    masks = followflows(tensor([x_pred, y_pred, z_pred])) #???
-    #resize
-
-    return masks
         

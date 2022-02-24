@@ -4,13 +4,12 @@ import torch
 import cv2
 import numpy as np
 import copy
-from cellpose_src.dynamics import masks_to_flows, follow_flows, get_masks
-from cellpose_src.new_3D_dynamics import compute_masks
+from cellpose_src.dynamics import masks_to_flows, follow_flows, get_masks, compute_masks
 from cellpose_src.utils import diameters, fill_holes_and_remove_small_masks
 from cellpose_src.transforms import _taper_mask
 import random
 import torchvision.transforms.functional as TF
-from my_utils.Calc_extents import diam_range
+from utils.Calc_extents import diam_range
 
 import matplotlib.pyplot as plt
 
@@ -220,19 +219,6 @@ def followflows(flows):
         masks[i] = torch.tensor(maski)
     
     return masks
-
-def followflows2D(flow):
-    """
-    Combines follow_flows, get_masks, and fill_holes_and_remove_small_masks from Cellpose implementation
-    """
-    niter = 200; interp = True; use_gpu = True; cellprob_threshold = 0.0; flow_threshold = 0.4; min_size=15  # min_size=15
-    cellprob = flow[0].cpu().numpy()
-    dP = flow[1:].cpu().numpy()
-    p = follow_flows(-1 * dP * (cellprob > cellprob_threshold) / 5., niter, interp, use_gpu)
-    mask = get_masks(p, iscell=(cellprob > cellprob_threshold), flows=dP, threshold=flow_threshold)
-    mask = fill_holes_and_remove_small_masks(mask, min_size=min_size)
-    
-    return mask
 
 def followflows3D(dP,cellprob):
     """

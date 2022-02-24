@@ -380,10 +380,6 @@ def fill_holes_and_remove_small_masks(masks, min_size=15):
 
     slices = find_objects(masks)
     
-    print(">>>mask uniques in fill_holes_and_remove_small_masks", np.unique(masks,return_counts=True))
-    
-    #min_size = (4/3)* math.pi * (min_size**3)
-    
     j = 0
     for i, slc in enumerate(slices):
         if slc is not None:

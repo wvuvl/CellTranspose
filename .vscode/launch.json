@@ -15,7 +15,7 @@
             "name": "LIN_RAM_BBBC24_3D_TEST_2D_MODEL_V4_FULL_TEST",
             "type": "python",
             "request": "launch",
-            "program": "main_test.py",
+            "program": "main.py",
             "console": "integratedTerminal",
             "args": [
                 "--learning-rate",
@@ -57,7 +57,7 @@
             "name": "LIN_RAM_BBBC24_3D_TEST_2D_MODEL_V3",
             "type": "python",
             "request": "launch",
-            "program": "main_test_3d.py",
+            "program": "main.py",
             "console": "integratedTerminal",
             "args": [
                 "--learning-rate",
@@ -99,7 +99,7 @@
             "name": "LIN_RAM_BBBC24_3D_TEST_2D_MODEL_V2",
             "type": "python",
             "request": "launch",
-            "program": "main_test.py",
+            "program": "main.py",
             "console": "integratedTerminal",
             "args": [
                 "--learning-rate",
@@ -182,7 +182,7 @@
             "name": "LIN_RAM_BBBC24_3D_TEST_2D_MODEL",
             "type": "python",
             "request": "launch",
-            "program": "main_test.py",
+            "program": "main.py",
             "console": "integratedTerminal",
             "args": [
                 "--learning-rate",

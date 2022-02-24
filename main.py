@@ -11,12 +11,13 @@ import matplotlib.pyplot as plt
 import tifffile
 import cv2
 import time
+import datetime
 import gc
 
 from transforms import Resize, reformat
-from loaddata import TrainCellTransposeData, ValTestCellTransposeData
+from loaddata import TrainCellTransposeData, ValTestCellTransposeData, ValTestCellTransposeData3D
 from CellTranspose2D import CellTranspose, SizeModel, ClassLoss, FlowLoss, SASClassLoss, ContrastiveFlowLoss
-from train_eval import train_network, adapt_network, eval_network, eval_network_3D, create_3D_masks
+from train_eval import train_network, adapt_network, eval_network, eval_network_3D
 from cellpose_src.metrics import average_precision
 from misc_utils import produce_logfile
 
@@ -224,117 +225,88 @@ if not args.train_only:
                                                       patch_size=args.patch_size, min_overlap=args.test_overlap)
 
     else:
-        test_dataset_xy = ValTestCellTransposeData('Test_xy', args.test_dataset, args.n_chan, do_3D=args.do_3D,
-                                                from_3D=args.test_from_3D, plane='xy', evaluate=True,
-                                                resize=Resize(args.median_diams, args.patch_size, args.test_overlap,
+        start = time.time()
+        test_dataset_3D = ValTestCellTransposeData3D('3D_test',args.test_dataset,args.n_chan,do_3D=args.do_3D,
+                                                        from_3D=args.test_from_3D, evaluate=True,
+                                                        resize=Resize(args.median_diams, args.patch_size, args.test_overlap,
                                                             use_labels=args.test_use_labels, refine=True,
                                                             gc_model=gen_cellpose, sz_model=gen_size_model,
-                                                            device=device, patch_per_batch=args.batch_size))
-
-        eval_dl_xy = DataLoader(test_dataset_xy, batch_size=1, shuffle=False)
-        pred_list_xy, label_list_xy = eval_network_3D(model, eval_dl_xy, device, patch_per_batch=args.batch_size,
-                                                      patch_size=args.patch_size, min_overlap=args.test_overlap)
-        del test_dataset_xy
-        del eval_dl_xy
-        gc.collect()
-
+                                                            device=device, patch_per_batch=args.batch_size)
+                                                        )
+        eval_dl_3D = DataLoader(test_dataset_3D,batch_size=1,shuffle=False)
+        eval_network_3D(model,eval_dl_3D,device,patch_per_batch=args.batch_size,
+                        patch_size=args.patch_size,min_overlap=args.test_overlap,results_dir=args.results_dir)
         
-        test_dataset_yz = ValTestCellTransposeData('Test_yz', args.test_dataset, args.n_chan, do_3D=args.do_3D,
-                                                from_3D=args.test_from_3D, plane='yz', evaluate=True,
-                                                resize=Resize(args.median_diams, args.patch_size, args.test_overlap,
-                                                            use_labels=args.test_use_labels, refine=True,
-                                                            gc_model=gen_cellpose, sz_model=gen_size_model,
-                                                            device=device, patch_per_batch=args.batch_size))
-
-        eval_dl_yz = DataLoader(test_dataset_yz, batch_size=1, shuffle=False)
-        pred_list_yz, label_list_yz = eval_network_3D(model, eval_dl_yz, device, patch_per_batch=args.batch_size,
-                                                      patch_size=args.patch_size, min_overlap=args.test_overlap)
-        del test_dataset_yz
-        del eval_dl_yz
-        gc.collect()
+        end = time.time() - start
         
-        test_dataset_xz = ValTestCellTransposeData('Test_xz', args.test_dataset, args.n_chan, do_3D=args.do_3D,
-                                                from_3D=args.test_from_3D, plane='xz', evaluate=True,
-                                                resize=Resize(args.median_diams, args.patch_size, args.test_overlap,
-                                                            use_labels=args.test_use_labels, refine=True,
-                                                            gc_model=gen_cellpose, sz_model=gen_size_model,
-                                                            device=device, patch_per_batch=args.batch_size))
-        
-        eval_dl_xz = DataLoader(test_dataset_xz, batch_size=1, shuffle=False)
-        pred_list_xz, label_list_xz = eval_network_3D(model, eval_dl_xz, device, patch_per_batch=args.batch_size,
-                                                      patch_size=args.patch_size, min_overlap=args.test_overlap)
-        del test_dataset_xz
-        del eval_dl_xz
-        gc.collect()
-
-                                                      
-        masks = create_3D_masks(pred_list_xy, pred_list_yz, pred_list_xz, label_list_xy, label_list_yz, label_list_xz)
+        print(">>>Time taken: ", str(datetime.timedelta(seconds=int(end))))
+        #TODO: perform AP evaluation for 3D
         
 
     
+    if args.test_from_3D == False:
+        for i in range(len(masks)):
+            masks[i] = masks[i].astype('int32')
+            with open(os.path.join(args.results_dir, label_list[i] + '_predicted_labels.pkl'), 'wb') as m_pkl:
+                pickle.dump(masks[i], m_pkl)
+            tifffile.imwrite(os.path.join(args.results_dir, 'tiff_results', label_list[i] + '.tif'),
+                            masks[i])
+            with open(os.path.join(args.results_dir, label_list[i] + '_raw_masks_flows.pkl'), 'wb') as rmf_pkl:
+                pickle.dump(prediction_list[i], rmf_pkl)
+            tifffile.imwrite(os.path.join(args.results_dir, 'raw_predictions_tiffs', label_list[i] + '.tif'),
+                            prediction_list[i])
+        end_eval = time.time()
+        tte = time.strftime("%H:%M:%S", time.gmtime(end_eval - start_eval))
+        print('Time to evaluate: {}'.format(tte))
 
-    for i in range(len(masks)):
-        masks[i] = masks[i].astype('int32')
-        with open(os.path.join(args.results_dir, label_list[i] + '_predicted_labels.pkl'), 'wb') as m_pkl:
-            pickle.dump(masks[i], m_pkl)
-        tifffile.imwrite(os.path.join(args.results_dir, 'tiff_results', label_list[i] + '.tif'),
-                         masks[i])
-        with open(os.path.join(args.results_dir, label_list[i] + '_raw_masks_flows.pkl'), 'wb') as rmf_pkl:
-            pickle.dump(prediction_list[i], rmf_pkl)
-        tifffile.imwrite(os.path.join(args.results_dir, 'raw_predictions_tiffs', label_list[i] + '.tif'),
-                         prediction_list[i])
-    end_eval = time.time()
-    tte = time.strftime("%H:%M:%S", time.gmtime(end_eval - start_eval))
-    print('Time to evaluate: {}'.format(tte))
+        with open(os.path.join(args.results_dir, 'counted_cells.txt'), 'w') as cc:
+            predicted_count = 0
+            true_count = 0
+            for i in range(len(test_dataset)):
+                num_masks = len(np.unique(masks[i]))-1
+                num_labels = len(np.unique(test_dataset.labels[i]))-1
+                cc.write('{}:\nPredicted: {}; True: {}\n'.format(test_dataset.d_list[i], num_masks, num_labels))
+                predicted_count += num_masks
+                true_count += num_labels
+            cc.write('\nTotal cell count:\nPredicted: {}; True: {}\n'.format(predicted_count, true_count))
+            counting_error = (abs(true_count - predicted_count)) / true_count
+            cc.write('Total counting error rate: {:.6f}'.format(counting_error))
+            print('Total cell count:\nPredicted: {}; True: {}'.format(predicted_count, true_count))
+            print('Total counting error rate: {}'.format(counting_error))
 
-    with open(os.path.join(args.results_dir, 'counted_cells.txt'), 'w') as cc:
-        predicted_count = 0
-        true_count = 0
-        for i in range(len(test_dataset)):
-            num_masks = len(np.unique(masks[i]))-1
-            num_labels = len(np.unique(test_dataset.labels[i]))-1
-            cc.write('{}:\nPredicted: {}; True: {}\n'.format(test_dataset.d_list[i], num_masks, num_labels))
-            predicted_count += num_masks
-            true_count += num_labels
-        cc.write('\nTotal cell count:\nPredicted: {}; True: {}\n'.format(predicted_count, true_count))
-        counting_error = (abs(true_count - predicted_count)) / true_count
-        cc.write('Total counting error rate: {:.6f}'.format(counting_error))
-        print('Total cell count:\nPredicted: {}; True: {}'.format(predicted_count, true_count))
-        print('Total counting error rate: {}'.format(counting_error))
-
-        # AP Calculation
-        # TODO: Have working with 3D as well (possibly re-initialize test dataset without resizing)
-        if args.calculate_ap:
-            labels = []
-            for l in test_dataset.l_list:
-                # label = as_tensor(cv2.imread(l, -1).astype('int16'))
-                label = as_tensor(tifffile.imread(l).astype('int16'))
-                label = squeeze(reformat(label), dim=0).numpy().astype('int16')
-                labels.append(label)
-            tau = np.arange(0.0, 1.01, 0.01)
-            ap_info = average_precision(labels, masks, threshold=tau)
-            ap_per_im = ap_info[0]
-            ap_overall = np.average(ap_per_im, axis=0)
-            tp_overall = np.sum(ap_info[1], axis=0).astype('int32')
-            fp_overall = np.sum(ap_info[2], axis=0).astype('int32')
-            fn_overall = np.sum(ap_info[3], axis=0).astype('int32')
-            plt.figure()
-            plt.plot(tau, ap_overall)
-            plt.title('Average Precision for CellTranspose on {} Dataset'.format(args.dataset_name))
-            plt.xlabel(r'IoU Matching Threshold $\tau$')
-            plt.ylabel('Average Precision')
-            plt.yticks(np.arange(0, 1.01, step=0.2))
-            plt.savefig(os.path.join(args.results_dir, 'AP Results'))
-            #plt.show()
-            cc.write('\nAP Results at IoU threshold 0.5: AP = {}\nTrue Postive: {}; False Positive: {}; False Negative:'
-                     ' {}\n'.format(ap_overall[51], tp_overall[51], fp_overall[51], fn_overall[51]))
-            print('AP Results at IoU threshold 0.5: AP = {}\nTrue Postive: {}; False Positive: {}; False Negative: {}'
-                  .format(ap_overall[51], tp_overall[51], fp_overall[51], fn_overall[51]))
-            false_error = (fp_overall[51] + fn_overall[51]) / (tp_overall[51] + fn_overall[51])
-            cc.write('Total false error rate: {:.6f}'.format(false_error))
-            print('Total false error rate: {:.6f}'.format(false_error))
-            with open(os.path.join(args.results_dir, '{}_AP_Results.pkl'.format(args.dataset_name)), 'wb') as apr:
-                pickle.dump((tau, ap_overall, tp_overall, fp_overall, fn_overall, false_error), apr)
+            # AP Calculation
+            # TODO: Have working with 3D as well (possibly re-initialize test dataset without resizing)
+            if args.calculate_ap:
+                labels = []
+                for l in test_dataset.l_list:
+                    # label = as_tensor(cv2.imread(l, -1).astype('int16'))
+                    label = as_tensor(tifffile.imread(l).astype('int16'))
+                    label = squeeze(reformat(label), dim=0).numpy().astype('int16')
+                    labels.append(label)
+                tau = np.arange(0.0, 1.01, 0.01)
+                ap_info = average_precision(labels, masks, threshold=tau)
+                ap_per_im = ap_info[0]
+                ap_overall = np.average(ap_per_im, axis=0)
+                tp_overall = np.sum(ap_info[1], axis=0).astype('int32')
+                fp_overall = np.sum(ap_info[2], axis=0).astype('int32')
+                fn_overall = np.sum(ap_info[3], axis=0).astype('int32')
+                plt.figure()
+                plt.plot(tau, ap_overall)
+                plt.title('Average Precision for CellTranspose on {} Dataset'.format(args.dataset_name))
+                plt.xlabel(r'IoU Matching Threshold $\tau$')
+                plt.ylabel('Average Precision')
+                plt.yticks(np.arange(0, 1.01, step=0.2))
+                plt.savefig(os.path.join(args.results_dir, 'AP Results'))
+                #plt.show()
+                cc.write('\nAP Results at IoU threshold 0.5: AP = {}\nTrue Postive: {}; False Positive: {}; False Negative:'
+                        ' {}\n'.format(ap_overall[51], tp_overall[51], fp_overall[51], fn_overall[51]))
+                print('AP Results at IoU threshold 0.5: AP = {}\nTrue Postive: {}; False Positive: {}; False Negative: {}'
+                    .format(ap_overall[51], tp_overall[51], fp_overall[51], fn_overall[51]))
+                false_error = (fp_overall[51] + fn_overall[51]) / (tp_overall[51] + fn_overall[51])
+                cc.write('Total false error rate: {:.6f}'.format(false_error))
+                print('Total false error rate: {:.6f}'.format(false_error))
+                with open(os.path.join(args.results_dir, '{}_AP_Results.pkl'.format(args.dataset_name)), 'wb') as apr:
+                    pickle.dump((tau, ap_overall, tp_overall, fp_overall, fn_overall, false_error), apr)
 
 print(args.results_dir)
 
