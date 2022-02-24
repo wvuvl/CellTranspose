@@ -1,6 +1,6 @@
 import argparse
 from torch.utils.data import DataLoader, RandomSampler, BatchSampler
-from torch import nn, device, load, save, squeeze, as_tensor
+from torch import nn, device, load, save, squeeze, as_tensor, jit
 from torch.cuda import is_available, device_count, empty_cache
 from torch.optim import SGD
 from torch.optim.lr_scheduler import CosineAnnealingLR, StepLR
@@ -90,9 +90,10 @@ print(args.results_dir)
 
 assert not os.path.exists(args.results_dir),\
     'Results folder {} currently exists; please specify new location to save results.'.format(args.results_dir)
-os.mkdir(args.results_dir)
-os.mkdir(os.path.join(args.results_dir, 'tiff_results'))
-os.mkdir(os.path.join(args.results_dir, 'raw_predictions_tiffs'))
+# if not os.path.exists(args.results_dir):
+#     os.mkdir(args.results_dir)
+#     os.mkdir(os.path.join(args.results_dir, 'tiff_results'))
+#     os.mkdir(os.path.join(args.results_dir, 'raw_predictions_tiffs'))
 assert not (args.train_only and args.eval_only), 'Cannot pass in "train-only" and "eval-only" arguments simultaneously.'
 num_workers = device_count()
 device = device('cuda' if is_available() else 'cpu')
@@ -121,6 +122,7 @@ else:
     gen_size_model = None
 
 model = CellTranspose(channels=args.n_chan, device=device)
+#
 model = nn.DataParallel(model)
 model.to(device)
 if args.pretrained_model is not None:
@@ -184,6 +186,8 @@ if not args.eval_only:
         scheduler = CosineAnnealingLR(optimizer, T_max=args.epochs, eta_min=args.learning_rate/100, last_epoch=-1)
         train_losses, val_losses = train_network(model, train_dl, val_dl, class_loss, flow_loss,
                                                  optimizer=optimizer, scheduler=scheduler, device=device, n_epochs=args.epochs)
+    # compiled_model = jit.script(model)
+    # jit.save(compiled_model, os.path.join(args.results_dir, 'trained_model.pt'))
     save(model.state_dict(), os.path.join(args.results_dir, 'trained_model.pt'))
     end_train = time.time()
     ttt = time.strftime("%H:%M:%S", time.gmtime(end_train - start_train))
@@ -202,7 +206,6 @@ if not args.eval_only:
     plt.ylabel('Combined Losses')
     plt.savefig(os.path.join(args.results_dir, 'Training-Validation Losses'))
     #plt.show()
-
 
 if not args.train_only:
     start_eval = time.time()
@@ -252,8 +255,8 @@ if not args.train_only:
         if args.calculate_ap:
             labels = []
             for l in test_dataset.l_list:
-                # label = as_tensor(cv2.imread(l, -1).astype('int16'))
-                label = as_tensor(tifffile.imread(l).astype('int16'))
+                label = as_tensor(cv2.imread(l, -1).astype('int16'))
+                # label = as_tensor(tifffile.imread(l).astype('int16'))
                 label = squeeze(reformat(label), dim=0).numpy().astype('int16')
                 labels.append(label)
             tau = np.arange(0.0, 1.01, 0.01)

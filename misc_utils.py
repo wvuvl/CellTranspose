@@ -6,7 +6,6 @@ import numpy as np
 import pandas as pd
 import seaborn as sns
 import os
-import time
 
 sns.set()
 
@@ -84,4 +83,6 @@ def produce_logfile(args, epochs, ttt, tte, num_workers):
         log.write('Refined size predictions: {}\n'.format(args.refine_prediction))
         log.write('\n')
         log.write('Cellpose model for size prediction: {}\n'.format(args.cellpose_model))
-        log.write('Size model: {}'.format(args.size_model))
+        log.write('Size model: {}\n\n'.format(args.size_model))
+
+        log.write('{}'.format(str(args)))

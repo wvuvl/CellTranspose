@@ -2,6 +2,7 @@
 Data Loader implementation, specifically designed for in-house datasets. Code will be designed to reflect flexibility in
 custom dataloaders for new data.
 """
+import numpy as np
 from torch.utils.data import Dataset
 from torch import empty, as_tensor, tensor, cat, unsqueeze, float32
 import torch.nn.functional as F
@@ -168,7 +169,6 @@ class CellTransposeData(Dataset):
         
         self.data_samples = self.data
         self.label_samples = self.labels
-        print(len(self.data))
     def __len__(self):
         return len(self.data) #return len(self.data_samples)
 
@@ -237,7 +237,7 @@ class TrainCellTransposeData(CellTransposeData):
             data, labels = self.train_generate_rand_crop(unsqueeze(data, 0), labels, crop=crop_size, lbl_flows=has_flows)
 
             if labels.ndim == 3:
-                labels = as_tensor([labels_to_flows(labels[i].numpy()) for i in range(len(labels))], dtype=float32)
+                labels = as_tensor(np.array([labels_to_flows(labels[i].numpy()) for i in range(len(labels))]), dtype=float32)
            
             return data[0], labels[0]
         except RuntimeError:
@@ -266,7 +266,7 @@ class ValTestCellTransposeData(CellTransposeData):
             if data.shape[1] >= patch_size[0] and data.shape[2] >= patch_size[1]:
                 data, labels = generate_patches(unsqueeze(data, 0), labels, patch=patch_size,
                                                 min_overlap=min_overlap, lbl_flows=False)
-                labels = as_tensor([labels_to_flows(labels[i].numpy()) for i in range(len(labels))])
+                labels = as_tensor(np.array([labels_to_flows(labels[i].numpy()) for i in range(len(labels))]))
                 # data, labels = remove_empty_label_patches(data, labels)
                 self.data_samples = cat((self.data_samples, data))
                 self.label_samples = cat((self.label_samples, labels))

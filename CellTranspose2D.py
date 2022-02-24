@@ -41,7 +41,7 @@ class SASClassLoss:
     def __init__(self, sas_class_loss):
         self.class_loss = sas_class_loss
 
-    def __call__(self, g_source, lbl_source, g_target, lbl_target, margin=1, gamma_1=0.8, gamma_2=0.5):
+    def __call__(self, g_source, lbl_source, g_target, lbl_target, margin=1, gamma_1=0.001, gamma_2=0.5):
         frgd_mask = torch.logical_and(lbl_source, lbl_target)
         frgd_count = torch.count_nonzero(frgd_mask)
         bkgd_mask = torch.logical_and(torch.logical_not(lbl_source), torch.logical_not(lbl_target))
@@ -50,15 +50,16 @@ class SASClassLoss:
         snt_count = torch.count_nonzero(s_not_t_mask)
         t_not_s_mask = torch.logical_and(torch.logical_not(lbl_source), lbl_target)
         tns_count = torch.count_nonzero(t_not_s_mask)
+        px_count = lbl_target.shape[-1] * lbl_target.shape[-2]
 
         sa_loss = gamma_1 * 0.5 * torch.square(g_source - g_target)
-        sa_loss = gamma_2 * (frgd_mask * sa_loss)*((frgd_count + bkgd_count)/(frgd_count+1)) + (bkgd_mask * sa_loss)*((frgd_count + bkgd_count)/(bkgd_count+1))
+        sa_loss = gamma_2 * (frgd_mask * sa_loss)*((px_count)/(frgd_count+1)) + (bkgd_mask * sa_loss)*((px_count)/(bkgd_count+1))
         s_loss = gamma_1 * 0.5 * torch.square(torch.max(torch.tensor(0).to(torch.device('cuda' if torch.cuda.is_available() else 'cpu')), margin - torch.abs(g_source - g_target)))
-        s_loss = (1-gamma_2) * (s_not_t_mask * s_loss)*((snt_count + tns_count)/(snt_count+1)) + (t_not_s_mask * s_loss)*((snt_count + tns_count)/(tns_count+1))
-
+        s_loss = (1-gamma_2) * (s_not_t_mask * s_loss)*((px_count)/(snt_count+1)) + (t_not_s_mask * s_loss)*((px_count)/(tns_count+1))
         source_class_loss = (1-gamma_1) * self.class_loss(g_source, lbl_source)
+        target_class_loss = (1-gamma_1) * self.class_loss(g_target, lbl_target)
 
-        class_loss = torch.mean(sa_loss + s_loss) + source_class_loss
+        class_loss = torch.mean(sa_loss + s_loss) + 0.5 * (source_class_loss + target_class_loss)
         return class_loss
 
 
@@ -75,16 +76,17 @@ class ContrastiveFlowLoss:
         flow_source = lbl_source[:, 1:]
         mask_target = lbl_target[:, 0]
         flow_target = lbl_target[:, 1:]
-        flow_target = torch.div(flow_target, torch.linalg.norm(flow_target, dim=1)[:, None, :])
-        flow_target[flow_target != flow_target] = 0.0
+        flow_target_norm = torch.div(flow_target, torch.linalg.norm(flow_target, dim=1)[:, None, :])
+        flow_target_norm[flow_target_norm != flow_target_norm] = 0.0
+        p_size = flow_target_norm.shape[-1]
 
         # similarity between target label and source output
-        lbl_match = torch.matmul(torch.transpose(torch.flatten(flow_target, 2, -1), 1, 2),
-                                 torch.flatten(z_source.detach(), 2, -1)).reshape(-1, 112, 112, 112, 112)
+        lbl_match = torch.matmul(torch.transpose(torch.flatten(flow_target_norm, 2, -1), 1, 2),
+                                 torch.flatten(z_source.detach(), 2, -1)).reshape(-1, p_size, p_size, p_size, p_size)
 
         # position of highest similarity source label vector for each target label vector
         # p_v, p_i = torch.max(lbl_match.view(-1, 112, 112, 112 * 112), dim=-1)
-        p_i = torch.argmax(lbl_match.view(-1, 112, 112, 112 * 112), dim=-1)
+        p_i = torch.argmax(lbl_match.view(-1, p_size, p_size, p_size * p_size), dim=-1)
         # p_i_new = torch.cat((torch.div(p_i[None, :], 112, rounding_mode='floor'), p_i[None, :] % 112))
         # Match target output with source output vectors
         pos = torch.zeros(z_source.shape).to('cuda')
@@ -103,7 +105,7 @@ class ContrastiveFlowLoss:
         icos = torch.acos(p_sim)
         thresh = torch.cos(icos + (pi / 12)).unsqueeze(-1)
         z_match = torch.matmul(torch.transpose(torch.flatten(pos, 2, -1), 1, 2),
-                               torch.flatten(z_source, 2, -1)).view(-1, 112, 112, 112 * 112)
+                               torch.flatten(z_source, 2, -1)).view(-1, p_size, p_size, p_size * p_size)
         z_match = torch.where(z_match < thresh, z_match, torch.tensor(0.0).to('cuda'))
         top_n = torch.topk(z_match, k, dim=-1).values
 
@@ -126,8 +128,9 @@ class ContrastiveFlowLoss:
         adaptive_flow_loss = torch.where(mask_target == 1, -torch.log(adaptive_flow_loss), torch.tensor(0.0).detach().to('cuda'))
 
         source_flow_loss = self.flow_loss(z_source, flow_source)
+        target_flow_loss = self.flow_loss(z_target, flow_target)
 
-        adaptive_flow_loss = lmbda * torch.mean(adaptive_flow_loss) + (1 - lmbda) * source_flow_loss
+        adaptive_flow_loss = lmbda * torch.mean(adaptive_flow_loss) + (1 - lmbda) * 0.5 * (source_flow_loss + target_flow_loss)
         return adaptive_flow_loss
 
 
@@ -141,11 +144,11 @@ def conv_block(in_feat, out_feat):
 
 class DownBlock(nn.Module):
 
-    def __init__(self, in_features, out_features, pool=True):
+    def __init__(self, in_features: int, out_features: int, pool: bool = True):
         super().__init__()
         self.pool = pool
-        if self.pool:
-            self.max_pool = nn.MaxPool2d(kernel_size=2)
+        # if self.pool:
+        self.max_pool = nn.MaxPool2d(kernel_size=2)
         self.c_layer1 = conv_block(in_features, out_features)
         self.c_layer2 = conv_block(out_features, out_features)
         self.res_conv = nn.Conv2d(in_channels=in_features, out_channels=out_features, kernel_size=1)
@@ -167,11 +170,11 @@ class DownBlock(nn.Module):
 
 class UpBlock(nn.Module):
 
-    def __init__(self, in_features, upsample=True):
+    def __init__(self, in_features: int, upsample: bool = True):
         super().__init__()
         self.upsample = upsample
+        self.upsample_image = nn.Upsample(scale_factor=2)  # mode='nearest'
         if self.upsample:
-            self.upsample_image = nn.Upsample(scale_factor=2)  # mode='nearest'
             self.out_features = in_features // 2
         else:
             self.out_features = in_features
@@ -204,7 +207,7 @@ class UpBlock(nn.Module):
 
 
 class CellTranspose(nn.Module):
-    def __init__(self, channels, device='cuda'):
+    def __init__(self, channels: int, device='cuda'):
         super().__init__()
         self.device = device  # TODO: Removing this should be fine
         self.d_block1 = DownBlock(channels, 32, pool=False)
@@ -223,7 +226,7 @@ class CellTranspose(nn.Module):
             nn.Conv2d(in_channels=32, out_channels=3, kernel_size=1)
         )
 
-    def forward(self, x, style_only=False):
+    def forward(self, x, style_only: bool = False):
         fm1 = self.d_block1(x)
         fm2 = self.d_block2(fm1)
         fm3 = self.d_block3(fm2)
