@@ -16,7 +16,7 @@ import gc
 
 from transforms import Resize, reformat
 from loaddata import TrainCellTransposeData, ValTestCellTransposeData, ValTestCellTransposeData3D
-from CellTranspose2D import CellTranspose, SizeModel, ClassLoss, FlowLoss, SASClassLoss, ContrastiveFlowLoss
+from CellTranspose2D import CellTranspose, SizeModel, ClassLoss, FlowLoss, SASMaskLoss, ContrastiveFlowLoss
 from train_eval import train_network, adapt_network, eval_network, eval_network_3D
 from cellpose_src.metrics import average_precision
 from misc_utils import produce_logfile
@@ -29,9 +29,11 @@ parser.add_argument('--momentum', type=float)
 parser.add_argument('--weight-decay', type=float)
 parser.add_argument('--batch-size', type=int)
 parser.add_argument('--epochs', type=int)
+parser.add_argument('--step-gamma', type=float)
 parser.add_argument('--k', type=int)
 parser.add_argument('--lmbda', type=float)
-parser.add_argument('--hardness_thresh', type=float)
+parser.add_argument('--gamma', type=float)
+parser.add_argument('--n_thresh', type=float)
 parser.add_argument('--temperature', type=float)
 parser.add_argument('--median-diams', type=int,
                     help='Median diameter size with which to resize images to. Note: If using pretrained model, ensure '
@@ -140,7 +142,7 @@ if not args.eval_only:
         print('Done.')
     else:
         train_dataset = TrainCellTransposeData('Training', args.train_dataset, args.n_chan, do_3D=args.do_3D, from_3D=args.train_from_3D,
-                                            crop_size=args.patch_size, has_flows=False,batch_size=args.batch_size,
+                                            crop_size=args.patch_size, has_flows=False, batch_size=args.batch_size,
                                             resize=Resize(args.median_diams, args.patch_size, args.min_overlap,
                                                    use_labels=True, patch_per_batch=args.batch_size))
         #train_dataset.process_training_data(args.patch_size, args.min_overlap, has_flows=False)
@@ -166,7 +168,7 @@ if not args.eval_only:
         print('No validation data given --> skipping validation.')
 
     if args.do_adaptation:
-        sas_class_loss = SASClassLoss(nn.BCEWithLogitsLoss(reduction='mean'))
+        sas_class_loss = SASMaskLoss(nn.BCEWithLogitsLoss(reduction='mean'))
         c_flow_loss = ContrastiveFlowLoss(nn.MSELoss(reduction='mean'))
         target_dataset = TrainCellTransposeData('Target', args.target_dataset, args.n_chan, pf_dirs=args.target_flows,
                                                 do_3D=args.do_3D, from_3D=args.target_from_3D,
@@ -179,11 +181,11 @@ if not args.eval_only:
         target_dl = DataLoader(target_dataset, batch_sampler=bs)
 
         start_train = time.time()
-        scheduler = StepLR(optimizer, step_size=1, gamma=0.5)
+        scheduler = StepLR(optimizer, step_size=1, gamma=args.step_gamma)
         train_losses, val_losses = adapt_network(model, train_dl, target_dl, val_dl, sas_class_loss, c_flow_loss,
                                                  class_loss, flow_loss, optimizer=optimizer, scheduler=scheduler,
                                                  device=device, n_epochs=args.epochs,
-                                                 k=args.k, lmbda=args.lmbda, hardness_thresh=args.hardness_thresh, temperature=args.temperature)
+                                                 k=args.k, lmbda=args.lmbda, gamma=args.gamma, n_thresh=args.n_thresh, temperature=args.temperature)
     else:
         start_train = time.time()
         scheduler = CosineAnnealingLR(optimizer, T_max=args.epochs, eta_min=args.learning_rate/100, last_epoch=-1)
@@ -279,7 +281,7 @@ if not args.train_only:
                 plt.ylabel('Average Precision')
                 plt.yticks(np.arange(0, 1.01, step=0.2))
                 plt.savefig(os.path.join(args.results_dir, 'AP Results'))
-                plt.show()
+                # plt.show()
                 cc.write('\nAP Results at IoU threshold 0.5: AP = {}\nTrue Postive: {}; False Positive: {}; False Negative:'
                         ' {}\n'.format(ap_overall[51], tp_overall[51], fp_overall[51], fn_overall[51]))
                 print('AP Results at IoU threshold 0.5: AP = {}\nTrue Postive: {}; False Positive: {}; False Negative: {}'

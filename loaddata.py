@@ -16,9 +16,8 @@ import cv2
 import random
 import numpy as np
 
-from utils.Calc_extents import diam_range_3D
 from cellpose_src import transforms
-from transforms import reformat, normalize1stto99th, Resize, random_horizontal_flip, labels_to_flows, generate_patches
+from transforms import reformat, normalize1stto99th, Resize, random_horizontal_flip, labels_to_flows, generate_patches, diam_range_3D
 
 import matplotlib.pyplot as plt
 

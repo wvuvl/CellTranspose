@@ -63,9 +63,9 @@ def train_network(model, train_dl, val_dl, class_loss, flow_loss, optimizer, sch
     return train_losses, val_losses
 
 
-def adapt_network(model: nn.Module, source_dl, target_dl, val_dl, sas_class_loss, c_flow_loss,
+def adapt_network(model: nn.Module, source_dl, target_dl, val_dl, sas_mask_loss, contrastive_flow_loss,
                   class_loss, flow_loss, optimizer, scheduler, device, n_epochs,
-                  k, lmbda, hardness_thresh, temperature):
+                  k, lmbda, gamma, n_thresh, temperature):
     train_losses = []
     val_losses = []
     print('Beginning domain adaptation.\n')
@@ -98,28 +98,42 @@ def adapt_network(model: nn.Module, source_dl, target_dl, val_dl, sas_class_loss
                 target_sample_data = target_sample[0].to(device)
                 target_sample_labels = target_sample[1].to(device)
                 target_output = model(target_sample_data)
-                source_class_loss = class_loss(source_output, source_sample_labels)
-                target_class_loss = class_loss(target_output, target_sample_labels)
-                source_flow_loss = flow_loss(source_output, source_sample_labels)
-                target_flow_loss = flow_loss(target_output, target_sample_labels)
-                adaptation_class_loss = sas_class_loss(source_output[:, 0], source_sample_labels[:, 0],
+
+                # if e == 1:
+                #     source_class_loss = 0.5 * class_loss(source_output, source_sample_labels)
+                #     target_class_loss = 0.5 * class_loss(target_output, target_sample_labels)
+                #     source_flow_loss = 0.5 * flow_loss(source_output, source_sample_labels)
+                #     target_flow_loss = 0.5 * flow_loss(target_output, target_sample_labels)
+                #     train_loss = target_class_loss + target_flow_loss + source_class_loss + source_flow_loss
+                # else:
+
+###
+                adaptation_class_loss = sas_mask_loss(source_output[:, 0], source_sample_labels[:, 0],
                                                        target_output[:, 0], target_sample_labels[:, 0],
-                                                       margin=10, gamma_1=0.01, gamma_2=0.5)
-                adaptation_flow_loss = c_flow_loss(source_output[:, 1:], source_sample_labels,
+                                                      margin=10, gamma_1=gamma, gamma_2=0.5)
+                # source_class_loss = 0.1 * class_loss(source_output, source_sample_labels)
+                target_class_loss = class_loss(target_output, target_sample_labels)
+                c_loss = target_class_loss + adaptation_class_loss
+                # c_loss = source_class_loss + target_class_loss + adaptation_class_loss
+                adaptation_flow_loss = contrastive_flow_loss(source_output[:, 1:], source_sample_labels,
                                                    target_output[:, 1:], target_sample_labels,
-                                                   k=k, lmbda=lmbda, hardness_thresh=hardness_thresh, temperature=temperature)
+                                                             k=k, lmbda=lmbda, n_thresh=n_thresh,
+                                                             temperature=temperature)
+                # source_flow_loss = 0.1 * flow_loss(source_output, source_sample_labels)
+                target_flow_loss = flow_loss(target_output, target_sample_labels)
+                f_loss = target_flow_loss + adaptation_flow_loss
+                # f_loss = source_flow_loss + target_flow_loss + adaptation_flow_loss
+###
 
                 # train_loss = target_flow_loss + target_class_loss
-                # train_loss = source_class_loss + source_flow_loss
+                # train_loss = source_flow_loss + source_class_loss
 
-                if e == 1:
-                    train_loss = 0.5 * (target_class_loss + target_flow_loss + source_class_loss + source_flow_loss)
-                else:
-                    train_loss = adaptation_class_loss + adaptation_flow_loss
+                train_loss = c_loss + f_loss
+                ###
 
                 train_epoch_losses.append(train_loss.item())
-                train_adaptation_class_losses.append(adaptation_class_loss.item())
-                train_adaptation_flow_losses.append(adaptation_flow_loss.item())
+                # train_adaptation_class_losses.append(adaptation_class_loss.item())
+                # train_adaptation_flow_losses.append(adaptation_flow_loss.item())
                 train_target_class_losses.append(target_class_loss.item())
                 train_target_flow_losses.append(target_flow_loss.item())
                 train_loss.backward()
