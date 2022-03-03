@@ -104,7 +104,7 @@ def resize_from_labels(x, y, default_med, pf=None, random_scale=1.0, diameter=No
     y_cf = copy.deepcopy(torch.squeeze(y, dim=0))
     y_cf = remove_cut_cells(y_cf)
     
-    med = diam_range(y_cf)*random_scale if diameter is None else diameter
+    med = diam_range(y_cf, percentile=50)*random_scale if diameter is None else diameter
     # med, cts = diameters(y_cf)
     if med > 0:
         rescale_w, rescale_h = default_med[0] / med, default_med[1] / med

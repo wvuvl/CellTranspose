@@ -53,6 +53,8 @@ parser.add_argument('--eval-only', help='Only perform evaluation, no training (m
 parser.add_argument('--pretrained-model', help='Location of pretrained model to load in. Default: None')
 parser.add_argument('--do-adaptation', help='Whether to perform domain adaptation or standard training.',
                     action='store_true')
+parser.add_argument('--no-adaptation-loss', help='Train directly using standard loss on target samples '
+                                                 '(for testing purposes)', action='store_true')
 parser.add_argument('--do-3D', help='Whether or not to use CellTranspose3D (Must use 3D volumes).',
                     action='store_true')
 parser.add_argument('--train-dataset', help='The directory(s) containing (source) data to be used for training.',
@@ -183,9 +185,10 @@ if not args.eval_only:
         start_train = time.time()
         scheduler = StepLR(optimizer, step_size=1, gamma=args.step_gamma)
         train_losses, val_losses = adapt_network(model, train_dl, target_dl, val_dl, sas_class_loss, c_flow_loss,
-                                                 class_loss, flow_loss, optimizer=optimizer, scheduler=scheduler,
-                                                 device=device, n_epochs=args.epochs,
-                                                 k=args.k, lmbda=args.lmbda, gamma=args.gamma, n_thresh=args.n_thresh, temperature=args.temperature)
+                                                 class_loss, flow_loss, train_direct=args.no_adaptation_loss,
+                                                 optimizer=optimizer, scheduler=scheduler, device=device,
+                                                 n_epochs=args.epochs, k=args.k, lmbda=args.lmbda, gamma=args.gamma,
+                                                 n_thresh=args.n_thresh, temperature=args.temperature)
     else:
         start_train = time.time()
         scheduler = CosineAnnealingLR(optimizer, T_max=args.epochs, eta_min=args.learning_rate/100, last_epoch=-1)
