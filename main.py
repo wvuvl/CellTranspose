@@ -9,10 +9,7 @@ import pickle
 import numpy as np
 import matplotlib.pyplot as plt
 import tifffile
-import cv2
 import time
-import datetime
-import gc
 
 from transforms import Resize, reformat
 from loaddata import TrainCellTransposeData, ValTestCellTransposeData, ValTestCellTransposeData3D
@@ -96,7 +93,6 @@ print(args.results_dir)
 
 assert not os.path.exists(args.results_dir),\
     'Results folder {} currently exists; please specify new location to save results.'.format(args.results_dir)
-# if not os.path.exists(args.results_dir):
 os.makedirs(args.results_dir)
 os.makedirs(os.path.join(args.results_dir, 'tiff_results'))
 os.makedirs(os.path.join(args.results_dir, 'raw_predictions_tiffs'))
@@ -213,7 +209,6 @@ if not args.eval_only:
     plt.xlabel('Epoch')
     plt.ylabel('Combined Losses')
     plt.savefig(os.path.join(args.results_dir, 'Training-Validation Losses'))
-    #plt.show()
 
 if not args.train_only:
     start_eval = time.time()
@@ -225,7 +220,6 @@ if not args.train_only:
                                                             use_labels=args.test_use_labels, refine=True,
                                                             gc_model=gen_cellpose, sz_model=gen_size_model,
                                                             device=device, patch_per_batch=args.batch_size))
-
         #Do this 3 times, once for xy, yx, xz
         eval_dl = DataLoader(test_dataset, batch_size=1, shuffle=False)
 
@@ -284,20 +278,17 @@ if not args.train_only:
                 plt.ylabel('Average Precision')
                 plt.yticks(np.arange(0, 1.01, step=0.2))
                 plt.savefig(os.path.join(args.results_dir, 'AP Results'))
-                # plt.show()
                 cc.write('\nAP Results at IoU threshold 0.5: AP = {}\nTrue Postive: {}; False Positive: {}; False Negative:'
                         ' {}\n'.format(ap_overall[51], tp_overall[51], fp_overall[51], fn_overall[51]))
-                print('AP Results at IoU threshold 0.5: AP = {}\nTrue Postive: {}; False Positive: {}; False Negative: {}'
-                    .format(ap_overall[51], tp_overall[51], fp_overall[51], fn_overall[51]))
+                print('AP Results at IoU threshold 0.5: AP = {}\nTrue Postive: {}; False Positive: {}; '
+                      'False Negative: {}'.format(ap_overall[51], tp_overall[51], fp_overall[51], fn_overall[51]))
                 false_error = (fp_overall[51] + fn_overall[51]) / (tp_overall[51] + fn_overall[51])
                 cc.write('Total false error rate: {:.6f}'.format(false_error))
                 print('Total false error rate: {:.6f}'.format(false_error))
                 with open(os.path.join(args.results_dir, '{}_AP_Results.pkl'.format(args.dataset_name)), 'wb') as apr:
                     pickle.dump((tau, ap_overall, tp_overall, fp_overall, fn_overall, false_error), apr)
 
-
     else:
-        
         test_dataset_3D = ValTestCellTransposeData3D('3D_test',args.test_dataset,args.n_chan,do_3D=args.do_3D,
                                                         from_3D=args.test_from_3D, evaluate=True,
                                                         resize=Resize(args.median_diams, args.patch_size, args.test_overlap,
@@ -316,9 +307,7 @@ if not args.train_only:
         #TODO: perform AP evaluation for 3D
         
 
-    
-    
-        
+
 print(args.results_dir)
 
 produce_logfile(args, len(train_losses) if train_losses is not None else None, ttt, tte, num_workers)

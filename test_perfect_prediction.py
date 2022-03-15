@@ -95,7 +95,6 @@ with open(os.path.join(results_dir, 'counted_cells.txt'), 'w') as cc:
     plt.ylabel('Average Precision')
     plt.yticks(np.arange(0, 1.01, step=0.2))
     plt.savefig(os.path.join(results_dir, 'AP Results'))
-    # plt.show()
     cc.write('\nAP Results at IoU threshold 0.5: AP = {}\nTrue Postive: {}; False Positive: {}; False Negative:'
              ' {}\n'.format(ap_overall[51], tp_overall[51], fp_overall[51], fn_overall[51]))
     print('AP Results at IoU threshold 0.5: AP = {}\nTrue Postive: {}; False Positive: {}; False Negative: {}'

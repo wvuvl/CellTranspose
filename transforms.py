@@ -9,8 +9,6 @@ from cellpose_src.transforms import _taper_mask
 import random
 import torchvision.transforms.functional as TF
 
-import matplotlib.pyplot as plt
-
 # TODO: Need to update to work for all situations
 #  (currently only for when 1-channel 2D image doesn't include channel dim)
 def reformat(x, n_chan=1, is_pf=False, do_3D=False):
@@ -48,7 +46,6 @@ def reformat(x, n_chan=1, is_pf=False, do_3D=False):
                     if x.shape[0] < n_chan:
                         zeros = torch.zeros((n_chan - x.shape[0]), x.shape[1], x.shape[2])
                         x = torch.cat((x, zeros))
-                    # raise ValueError('Data is not 2D; if intending to use 3D volumes, pass in "--do-3D" argument.')
         #else
     return x
 
@@ -67,7 +64,8 @@ def normalize1stto99th(x):
 
 
 class Resize(object):
-    def __init__(self, default_med, patch_size, min_overlap, use_labels=False, refine=True, gc_model=None, sz_model=None, device='cpu', patch_per_batch=None):
+    def __init__(self, default_med, patch_size, min_overlap, use_labels=False, refine=True, gc_model=None,
+                 sz_model=None, device='cpu', patch_per_batch=None):
         self.use_labels = use_labels
         self.default_med = default_med
         if not self.use_labels:
@@ -80,7 +78,7 @@ class Resize(object):
                 self.min_overlap = min_overlap
                 self.patch_size = patch_size
 
-    def __call__(self, x, y, pf=None, random_scale=1.0,diameter=None):
+    def __call__(self, x, y, pf=None, random_scale=1.0, diameter=None):
         original_dims = y.shape[1], y.shape[2]
         if self.use_labels:
                        
@@ -103,9 +101,9 @@ def resize_from_labels(x, y, default_med, pf=None, random_scale=1.0, diameter=No
     
     y_cf = copy.deepcopy(torch.squeeze(y, dim=0))
     y_cf = remove_cut_cells(y_cf)
-    
+
     med = diam_range(y_cf, percentile=50)*random_scale if diameter is None else diameter
-    # med, cts = diameters(y_cf)
+    med = med if med >= 12 else 12  # Note: following work from TissueNet
     if med > 0:
         rescale_w, rescale_h = default_med[0] / med, default_med[1] / med
         x = np.transpose(x.numpy(), (1, 2, 0))
@@ -199,7 +197,7 @@ def followflows(flows):
     """
     Combines follow_flows, get_masks, and fill_holes_and_remove_small_masks from Cellpose implementation
     """
-    niter = 400; interp = True; use_gpu = True; cellprob_threshold = 0.0; flow_threshold = 0.4; min_size=15  # min_size=15
+    niter = 400; interp = True; use_gpu = True; cellprob_threshold = 0.0; flow_threshold = 0.4; min_size = 15
     masks = torch.zeros((flows.shape[0], flows.shape[-2], flows.shape[-1]))
     for i, flow in enumerate(flows):
         
@@ -207,7 +205,6 @@ def followflows(flows):
         dP = flow[1:].cpu().numpy()
         
         p = follow_flows(-1 * dP * (cellprob > cellprob_threshold) / 5., niter, interp, use_gpu)
-        # p = follow_flows(-1 * dP * (cellprob > cellprob_threshold), niter, interp, use_gpu)
         
         maski = get_masks(p, iscell=(cellprob > cellprob_threshold), flows=dP, threshold=flow_threshold)
         maski = fill_holes_and_remove_small_masks(maski, min_size=min_size)
@@ -219,11 +216,11 @@ def followflows3D(dP,cellprob):
     """
     Combines follow_flows, get_masks, and fill_holes_and_remove_small_masks from Cellpose implementation
     """
-    niter = 400; interp = True; use_gpu = True; cellprob_threshold = 0.0; flow_threshold = 0.4; min_size=16000  # min_size=15
-     
-    masks= compute_masks(dP,cellprob,niter=niter,interp=interp,use_gpu=use_gpu,mask_threshold=cellprob_threshold,flow_threshold=flow_threshold,min_size=min_size)
-    
+    niter = 400; interp = True; use_gpu = True; cellprob_threshold = 0.0; flow_threshold = 0.4; min_size = 16000
+    masks = compute_masks(dP, cellprob, niter=niter, interp=interp, use_gpu=use_gpu, mask_threshold=cellprob_threshold,
+                          flow_threshold=flow_threshold, min_size=min_size)
     return masks
+
 
 # Generate patches of input to be passed into model. Currently set to 64x64 patches with at least 32x32 overlap
 # - image should also already be resized such that median cell diameter is 32
@@ -239,18 +236,15 @@ def generate_patches(data, label=None, patch=(96, 96), min_overlap=(64, 64), lbl
     else:
         patch_label = torch.empty((label.shape[0] * num_x_patches * num_y_patches, patch[0], patch[1]))
 
-    # for b in range(data.shape[0]):
     for i in range(num_x_patches):
         for j in range(num_y_patches):
             d_patch = data[0, :, y_patches[j]:y_patches[j] + patch[1], x_patches[i]:x_patches[i] + patch[0]]
-            # patch_data[(0 * num_y_patches * num_x_patches) + (num_y_patches * i + j)] = d_patch
             patch_data[num_y_patches * i + j] = d_patch
             if lbl_flows:
                 l_patch = label[:, y_patches[j]:y_patches[j] + patch[1], x_patches[i]:x_patches[i] + patch[0]]
             else:
                 l_patch = label[0, y_patches[j]:y_patches[j] + patch[1], x_patches[i]:x_patches[i] + patch[0]]
             patch_label[num_y_patches * i + j] = l_patch
-            # patch_label[(0 * num_y_patches * num_x_patches) + (num_y_patches * i + j)] = l_patch
 
     return patch_data, patch_label
 
@@ -266,13 +260,13 @@ def remove_cut_cells(labels, flows=False):
                                                   np.unique(label_mask[-1]), np.unique(label_mask[:, -1])))))
             for j in range(1, len(cc)):
                 b = (label_mask == cc[j]).nonzero(as_tuple=True)
-                label_mask[b] = 0  # Shallow copy means this is reflected in labels
-                label_flows1[b] = 0  # Shallow copy means this is reflected in labels
-                label_flows2[b] = 0  # Shallow copy means this is reflected in labels
+                label_mask[b] = 0
+                label_flows1[b] = 0
+                label_flows2[b] = 0
 
-            labels[i, 0] = label_mask  # More explicit
-            labels[i, 1] = label_flows1  # More explicit
-            labels[i, 2] = label_flows2  # More explicit
+            labels[i, 0] = label_mask
+            labels[i, 1] = label_flows1
+            labels[i, 2] = label_flows2
     else:
         cc = sorted(np.unique(np.concatenate((np.unique(labels[0]), np.unique(labels[:, 0]),
                                               np.unique(labels[-1]), np.unique(labels[:, -1])))))
@@ -345,7 +339,6 @@ def diam_range(masks, percentile=75):
         y_ranges.append(np.amax(inds[0]) - np.amin(inds[0]))
         diams.append(int(math.sqrt(x_ranges[-1] * y_ranges[-1])))
 
-    # print(diams)
     return np.percentile(np.array(diams), percentile)
 
 
@@ -365,7 +358,6 @@ def diam_range_3D(masks, percentile=75):
         z_ranges.append(np.amax(inds[0]) - np.amin(inds[0]))
         diams.append(int((x_ranges[-1] * y_ranges[-1] * z_ranges[-1]) ** (1 / 3)))
 
-    # print(diams)
     return np.percentile(np.array(diams), percentile)
 
 

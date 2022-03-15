@@ -1,17 +1,15 @@
 from torch.utils.data import DataLoader
-from torch import nn, tensor, cat, no_grad, as_tensor, squeeze, zeros
+from torch import nn, tensor, cat, no_grad, squeeze, zeros
 import time
 from tqdm import tqdm
 import cv2
 import numpy as np
-from statistics import mean
-from transforms import followflows, followflows3D, generate_patches, recombine_patches
-from cellpose_src import transforms
-
-import matplotlib.pyplot as plt
 import os
 import pickle
 import tifffile
+from statistics import mean
+from transforms import followflows, followflows3D, generate_patches, recombine_patches
+from cellpose_src import transforms
 
 def train_network(model, train_dl, val_dl, class_loss, flow_loss, optimizer, scheduler, device, n_epochs):
     train_losses = []
@@ -47,14 +45,6 @@ def train_network(model, train_dl, val_dl, class_loss, flow_loss, optimizer, sch
                 print('Train loss: {:.3f}; Validation loss: {:.3f}'.format(train_epoch_loss, val_epoch_loss))
             else:
                 print('Train loss: {:.3f}'.format(train_epoch_loss))
-
-            """if e % (n_epochs / 5) == 0:
-                plt.figure()
-                epoch_i = np.arange(1, e+1)
-                plt.plot(epoch_i, train_losses)
-                plt.plot(epoch_i, val_losses)
-                plt.legend(('Train Losses', 'Validation Losses'))
-                plt.show()"""
         except KeyboardInterrupt:
             print('Exiting early.')
             break
@@ -77,11 +67,10 @@ def adapt_network(model: nn.Module, source_dl, target_dl, val_dl, sas_mask_loss,
             model.train()
             print(scheduler.get_last_lr())
             train_epoch_losses = []
-            # train_adaptation_class_losses = []
-            # train_adaptation_flow_losses = []
             train_target_class_losses = []
             train_target_flow_losses = []
             target_dl_iter = iter(target_dl)
+
             for i, (source_sample_data, source_sample_labels) in enumerate(tqdm(
                     source_dl, desc='Training - Epoch {}/{}'.format(e, n_epochs))):
                 optimizer.zero_grad()
@@ -98,37 +87,20 @@ def adapt_network(model: nn.Module, source_dl, target_dl, val_dl, sas_mask_loss,
                 target_sample_data = target_sample[0].to(device)
                 target_sample_labels = target_sample[1].to(device)
                 target_output = model(target_sample_data)
-
-                # if e == 1:
-                #     source_class_loss = 0.5 * class_loss(source_output, source_sample_labels)
-                #     target_class_loss = 0.5 * class_loss(target_output, target_sample_labels)
-                #     source_flow_loss = 0.5 * flow_loss(source_output, source_sample_labels)
-                #     target_flow_loss = 0.5 * flow_loss(target_output, target_sample_labels)
-                #     train_loss = target_class_loss + target_flow_loss + source_class_loss + source_flow_loss
-                # else:
                 if not train_direct:
                     if e <= n_epochs/2:
                         adaptation_class_loss = sas_mask_loss(source_output[:, 0], source_sample_labels[:, 0],
                                                                target_output[:, 0], target_sample_labels[:, 0],
                                                               margin=10, gamma_1=gamma, gamma_2=0.5)
-                        # source_class_loss = 0.1 * class_loss(source_output, source_sample_labels)
                         target_class_loss = class_loss(target_output, target_sample_labels)
                         c_loss = target_class_loss + adaptation_class_loss
-                        # c_loss = source_class_loss + target_class_loss + adaptation_class_loss
                         adaptation_flow_loss = contrastive_flow_loss(source_output[:, 1:], source_sample_labels,
                                                            target_output[:, 1:], target_sample_labels,
                                                                      k=k, lmbda=lmbda, n_thresh=n_thresh,
                                                                      temperature=temperature)
-                        # source_flow_loss = 0.1 * flow_loss(source_output, source_sample_labels)
                         target_flow_loss = flow_loss(target_output, target_sample_labels)
                         f_loss = target_flow_loss + adaptation_flow_loss
-                        # f_loss = source_flow_loss + target_flow_loss + adaptation_flow_loss
-
-                        # train_loss = target_flow_loss + target_class_loss
-                        # train_loss = source_flow_loss + source_class_loss
-
                         train_loss = c_loss + f_loss
-
                     else:
                         target_class_loss = class_loss(target_output, target_sample_labels)
                         target_flow_loss = flow_loss(target_output, target_sample_labels)
@@ -139,8 +111,6 @@ def adapt_network(model: nn.Module, source_dl, target_dl, val_dl, sas_mask_loss,
                     train_loss = target_class_loss + target_flow_loss
 
                 train_epoch_losses.append(train_loss.item())
-                # train_adaptation_class_losses.append(adaptation_class_loss.item())
-                # train_adaptation_flow_losses.append(adaptation_flow_loss.item())
                 train_target_class_losses.append(target_class_loss.item())
                 train_target_flow_losses.append(target_flow_loss.item())
                 train_loss.backward()
@@ -195,8 +165,6 @@ def eval_network(model: nn.Module, data_loader: DataLoader, device, patch_per_ba
         for (sample_data, sample_labels, label_files, original_dims) in tqdm(data_loader,
                                                                              desc='Evaluating Test Dataset'):
             
-            #print(sample_data.shape)
-            
             resized_dims = (sample_data.shape[2], sample_data.shape[3])
             padding = sample_data.shape[2] < patch_size[0] or sample_data.shape[3] < patch_size[1]
             # Add padding if image is smaller than patch size in at least one dimension
@@ -239,9 +207,9 @@ def eval_network(model: nn.Module, data_loader: DataLoader, device, patch_per_ba
             masks.append(sample_mask)
             #original_dims_list.append(original_dims)
 
-            
     #TODO: Ram: remember to remove original_dims_list before merging 
     return masks, pred_list, label_list #, original_dims_list
+
 
 # Evaluation - due to image size mismatches, must currently be run one image at a time
 def eval_network_3D(model: nn.Module, data_loader: DataLoader, device, patch_per_batch, patch_size, min_overlap,results_dir):
@@ -343,7 +311,7 @@ def run_3D_masks(pred_yx, pred_zy, pred_zx,label_name,results_dir):
     del yf
     del dP
     del cellprob
-    del mask       
+    del mask
     #return mask, yf
-    
-        
+
+

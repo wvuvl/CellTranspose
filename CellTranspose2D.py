@@ -6,9 +6,6 @@ which can be found via the Cellpose github repository: https://github.com/MouseL
 
 import torch
 from torch import nn
-from numpy import pi
-
-import matplotlib.pyplot as plt
 
 
 # Standard Cellpose class loss
@@ -29,7 +26,6 @@ class FlowLoss:
         self.loss = flow_loss
 
     def __call__(self, g, y):
-        # flow_pred = 5. * g[:, 1:]
         flow_pred = g[:, 1:]
         flow_y = 5. * y[:, 1:]
         flow_loss = self.loss(flow_pred, flow_y)
@@ -53,12 +49,13 @@ class SASMaskLoss:
         px_count = lbl_target.shape[-1] * lbl_target.shape[-2]
 
         sa_loss = gamma_1 * 0.5 * torch.square(g_source - g_target)
-        sa_loss = gamma_2 * (frgd_mask * sa_loss)*((px_count)/(frgd_count+1)) + (bkgd_mask * sa_loss)*((px_count)/(bkgd_count+1))
-        s_loss = gamma_1 * 0.5 * torch.square(torch.max(torch.tensor(0).to(torch.device('cuda' if torch.cuda.is_available() else 'cpu')), margin - torch.abs(g_source - g_target)))
-        s_loss = (1-gamma_2) * (s_not_t_mask * s_loss)*((px_count)/(snt_count+1)) + (t_not_s_mask * s_loss)*((px_count)/(tns_count+1))
-
-        # source_class_loss = (1-gamma_1) * self.class_loss(g_source, lbl_source)
-        # target_class_loss = (1-gamma_1) * self.class_loss(g_target, lbl_target)
+        sa_loss = gamma_2 * (frgd_mask*sa_loss)*(px_count/(frgd_count+1)) +\
+                  (bkgd_mask*sa_loss) * (px_count/(bkgd_count+1))
+        s_loss = gamma_1 * 0.5 * torch.square(torch.max(torch.tensor(0).to
+                                                        (torch.device('cuda' if torch.cuda.is_available() else 'cpu')),
+                                                        margin - torch.abs(g_source - g_target)))
+        s_loss = (1-gamma_2) * (s_not_t_mask*s_loss)*(px_count/(snt_count+1)) +\
+                 (t_not_s_mask*s_loss) * (px_count/(tns_count+1))
 
         adaptive_class_loss = torch.mean(sa_loss + s_loss)
         return adaptive_class_loss
@@ -86,9 +83,7 @@ class ContrastiveFlowLoss:
                                  torch.flatten(z_source.detach(), 2, -1)).reshape(-1, p_size, p_size, p_size, p_size)
 
         # position of highest similarity source label vector for each target label vector
-        # p_v, p_i = torch.max(lbl_match.view(-1, 112, 112, 112 * 112), dim=-1)
         p_i = torch.argmax(lbl_match.view(-1, p_size, p_size, p_size * p_size), dim=-1)
-        # p_i_new = torch.cat((torch.div(p_i[None, :], 112, rounding_mode='floor'), p_i[None, :] % 112))
         # Match target output with source output vectors
         pos = torch.zeros(z_source.shape).to('cuda')
         for b in range(pos.shape[0]):
@@ -98,41 +93,23 @@ class ContrastiveFlowLoss:
         # of the target output and selected positive sample for each pixel
         p_sim = torch.sum(torch.mul(z_target, pos), dim=1)
         num = torch.exp(p_sim / temperature)
-        # num = torch.where(mask_target == 0, num, torch.tensor(0.0).to('cuda'))
-        # num = torch.mul(num, mask_target)
 
         # Denominator: similar to numerator, but summed across each target output
         # pixel to ALL sample pixels in source output
         icos = torch.acos(p_sim)
-        # thresh = torch.cos(icos + (pi / 18)).unsqueeze(-1)
         thresh = torch.cos(icos + n_thresh).unsqueeze(-1)
         z_match = torch.matmul(torch.transpose(torch.flatten(pos, 2, -1), 1, 2),
                                torch.flatten(z_source, 2, -1)).view(-1, p_size, p_size, p_size * p_size)
         z_match = torch.where(z_match < thresh, z_match, torch.tensor(0.0).to('cuda'))
         top_n = torch.topk(z_match, k, dim=-1).values
 
-        # z_match = torch.matmul(torch.transpose(torch.flatten(z_target, 2, -1), 1, 2),
-        #                          torch.flatten(z_source, 2, -1)).view(-1, 112, 112, 112 * 112)
-        # # z_match = torch.sigmoid((z_match - hardness_thresh) * 100)
-        # z_match = torch.where(z_match < hardness_thresh, z_match, torch.tensor(0.0).to('cuda'))
-        # top_n = torch.topk(z_match, k, dim=-1).values
-        # z_match = torch.where(z_match < 0.9, z_match, torch.tensor(0.0).to('cuda'))
-        # z_match = torch.where(z_match > hardness_thresh and z_match < 0.9, z_match, torch.tensor(0.0).to('cuda'))
-        # den = torch.sum(torch.exp(top_n / temperature), dim=-1)
-
         top_n = torch.exp(top_n / temperature)
         den = torch.cat((torch.unsqueeze(num, -1), top_n), dim=-1)
         den = torch.sum(den, dim=-1)
-        # NOTE: CONCAT NUM TO DEN IF NOT INCLUDED
-        # den = torch.mul(den, mask_target)
         adaptive_flow_loss = torch.div(num, den)
-        # adaptive_flow_loss = -torch.log(adaptive_flow_loss)
-        adaptive_flow_loss = torch.where(mask_target == 1, -torch.log(adaptive_flow_loss), torch.tensor(0.0).detach().to('cuda'))
+        adaptive_flow_loss = torch.where(mask_target == 1, -torch.log(adaptive_flow_loss),
+                                         torch.tensor(0.0).detach().to('cuda'))
 
-        # source_flow_loss = self.flow_loss(z_source, flow_source)
-        # target_flow_loss = self.flow_loss(z_target, flow_target)
-
-        # adaptive_flow_loss = lmbda * torch.mean(adaptive_flow_loss) + (1 - lmbda) * (source_flow_loss + target_flow_loss)
         adaptive_flow_loss = lmbda * torch.mean(adaptive_flow_loss)
         return adaptive_flow_loss
 
@@ -150,7 +127,6 @@ class DownBlock(nn.Module):
     def __init__(self, in_features: int, out_features: int, pool: bool = True):
         super().__init__()
         self.pool = pool
-        # if self.pool:
         self.max_pool = nn.MaxPool2d(kernel_size=2)
         self.c_layer1 = conv_block(in_features, out_features)
         self.c_layer2 = conv_block(out_features, out_features)
@@ -176,7 +152,7 @@ class UpBlock(nn.Module):
     def __init__(self, in_features: int, upsample: bool = True):
         super().__init__()
         self.upsample = upsample
-        self.upsample_image = nn.Upsample(scale_factor=2)  # mode='nearest'
+        self.upsample_image = nn.Upsample(scale_factor=2)
         if self.upsample:
             self.out_features = in_features // 2
         else:
@@ -259,28 +235,3 @@ class SizeModel(nn.Module):
     def forward(self, x):
         x = self.linear1(x)
         return self.linear2(x)
-
-
-if __name__ == '__main__':
-    from torchsummary import summary
-
-    # db = DownBlock(3, 32, down_sample=1)
-    # data = torch.zeros((8, 3, 96, 96))
-    # zeros = torch.zeros((8, 32, 96, 96))
-    # out = db(data)
-    mc = CellTranspose(3)
-    summary(mc, (3, 168, 168))
-    # data = torch.rand((8, 3, 8, 8))
-    # out = mc(data)
-    print('test')
-    # ub = UpBlock(128, 64)
-    # data = torch.rand((8, 128, 8, 8))
-    # fm = torch.rand((8, 64, 16, 16))
-    # style = torch.rand((8, 256))
-    # out = ub(data, fm, style)
-
-    # ub = UpBlock(256, 256, upsample=False)
-    # data = torch.rand((8,256,4,4))
-    # fm = torch.rand((8,256,4,4))
-    # style = torch.rand((8,256))
-    # out = ub(data, fm, style)

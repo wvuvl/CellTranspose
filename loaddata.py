@@ -40,29 +40,29 @@ class CellTransposeData(Dataset):
     # rather than one at a time via gpu memory (via __getitem__())
     def __init__(self, split_name, data_dirs, n_chan, pf_dirs=None, do_3D=False, from_3D=False, plane=None, evaluate=False, batch_size = 1,
                  resize: Resize = None):
-        
-        self.do_3D = do_3D
-        self.from_3D = from_3D
         """
         Parameters
         ------------------------------------------------------------------------------------------------
-        
+
             split_name: name corresponding to the split (i.e. train, validation, test, target)
-            
+
             n_chan: Maximum number of channels in input images (i.e. 2 for cytoplasm + nuclei images)
-            
+
             data_dirs: root directory/directories of the dataset, containing 'data' and 'labels' folders
-            
+
             pf_dirs: root directory/directories of pre-calculated flows, if they exist
-            
+
             do_3D: whether or not to train 3D CellTranspose model (requires that from_3d is true)
-            
+
             from_3D: whether input samples are 2D images (False) or 3D volumes (True)
-            
+
             evaluate: if set to true, returns additional information when calling __getitem__()
-            
+
             resize: Resize object containing parameters by which to resize input samples accordingly
         """
+        self.do_3D = do_3D
+        self.from_3D = from_3D
+
         self.split_name = split_name
         self.evaluate = evaluate
         self.d_list_3D = []
@@ -179,7 +179,7 @@ class CellTransposeData(Dataset):
 
 class TrainCellTransposeData(CellTransposeData):
     def __init__(self, split_name, data_dirs, n_chan, pf_dirs=None, do_3D=False, from_3D=False, evaluate=False,
-                 crop_size=(96, 96), has_flows=False, batch_size = 1, resize: Resize=None):
+                 crop_size=(96, 96), has_flows=False, batch_size=1, resize: Resize = None):
         self.resize = resize
         self.crop_size = crop_size
         self.has_flows = has_flows
@@ -228,8 +228,6 @@ class TrainCellTransposeData(CellTransposeData):
     # NOTE: ltf takes ~50% of time; generating patches and concatenating takes nearly as long
     # TODO: Save generated training data? Massively increase time to train
     def process_training_data(self, index, crop_size, has_flows=False):
-        #self.data_samples = tensor([])
-        #self.label_samples = tensor([])
         samples_generated = []
         data, labels = self.data[index], self.labels[index]
         
@@ -256,8 +254,8 @@ class TrainCellTransposeData(CellTransposeData):
 
 
 class ValTestCellTransposeData(CellTransposeData):
-    def __init__(self, split_name, data_dirs, n_chan, pf_dirs=None, do_3D=False, from_3D=False, plane='yz', evaluate=False,
-                 resize: Resize = None):
+    def __init__(self, split_name, data_dirs, n_chan, pf_dirs=None, do_3D=False, from_3D=False, plane='yz',
+                 evaluate=False, resize: Resize = None):
         self.from_3D = from_3D
         super().__init__(split_name, data_dirs, n_chan, pf_dirs=pf_dirs, do_3D=do_3D, from_3D=from_3D, plane=plane,
                          evaluate=evaluate, resize=resize)
@@ -294,17 +292,16 @@ class ValTestCellTransposeData(CellTransposeData):
 
 #final version of 3D validation dataloader
 class ValTestCellTransposeData3D(CellTransposeData):
-    def __init__(self,split_name, data_dirs, n_chan, pf_dirs=None, do_3D=False, from_3D=False, plane='xy', evaluate=False,
-                 resize: Resize = None):
+    def __init__(self, split_name, data_dirs, n_chan, pf_dirs=None, do_3D=False, from_3D=False, plane='xy',
+                 evaluate=False, resize: Resize = None):
         self.pf_dirs = pf_dirs
         self.resize = resize
         self.n_chan = n_chan
         
-        super().__init__(split_name,data_dirs, n_chan, pf_dirs=pf_dirs, do_3D=do_3D, from_3D=from_3D, plane=plane,
+        super().__init__(split_name, data_dirs, n_chan, pf_dirs=pf_dirs, do_3D=do_3D, from_3D=from_3D, plane=plane,
                          evaluate=evaluate, resize=resize)
     
-    def processing(self,index):   
-        
+    def processing(self, index):
         ext = os.path.splitext(self.d_list[index])[-1]
             
         #Read files
@@ -317,9 +314,9 @@ class ValTestCellTransposeData3D(CellTransposeData):
         
         diam = diam_range_3D(raw_label_vol)
         
-        X = ('Z','Y','X')
+        X = ('Z', 'Y', 'X')
         dX = ('YX', 'ZX', 'ZY')
-        TP = [(0,1,2),(1,0,2),(2,0,1)]
+        TP = [(0, 1, 2), (1, 0, 2), (2, 0, 1)]
         
         data_vol = []
         label_vol = []
@@ -359,7 +356,6 @@ class ValTestCellTransposeData3D(CellTransposeData):
             original_dim.append(new_origin_dim)
         
         return data_vol, label_vol, self.l_list[index], X, dX, original_dim
-        
-    
+
     def __getitem__(self, index):
         return self.processing(index)
