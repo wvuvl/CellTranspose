@@ -186,10 +186,13 @@ class TrainCellTransposeData(CellTransposeData):
         self.from_3D= from_3D
         self.preprocessed_data = preprocessed_data
         self.do_every_epoch = do_every_epoch
-        super().__init__(split_name, data_dirs, n_chan, pf_dirs=pf_dirs, do_3D=do_3D,
+        
+        if self.preprocessed_data is None:
+            super().__init__(split_name, data_dirs, n_chan, pf_dirs=pf_dirs, do_3D=do_3D,
                          from_3D=from_3D, evaluate=evaluate, batch_size=batch_size, resize=None)
         
         if self.preprocessed_data is not None:
+            print('Training preprocessed data provided...')
             self.data = as_tensor(np.load(os.path.join(self.preprocessed_data,'train_preprocessed_data.npy')))
             self.labels = as_tensor(np.load(os.path.join(self.preprocessed_data,'train_preprocessed_labels.npy')))
         elif self.do_every_epoch == False and self.preprocessed_data is None:
@@ -221,7 +224,8 @@ class TrainCellTransposeData(CellTransposeData):
                 np.save(os.path.join(result_dir,'train_preprocessed_labels.npy'),self.labels.cpu().detach().numpy())
         
        
-            
+    def __len__(self):
+        return len(self.data) #return len(self.data_samples)       
             
             
             
