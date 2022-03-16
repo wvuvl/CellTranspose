@@ -87,6 +87,9 @@ parser.add_argument('--save-dataset', help='Name of directory to save training d
                                            'if None, will not save dataset.')
 parser.add_argument('--load-from-torch', help='If true, assumes dataset is being loaded from torch files, with no '
                                               'preprocessing required.', action='store_true')
+
+parser.add_argument('--load-train-from-npy', help='If provided, assumes dataset is being loaded from npy files. ',)
+parser.add_argument('--process-each-epoch', help='If true, assumes processing occurs every epoch.', action='store_true')
 args = parser.parse_args()
 
 print(args.results_dir)
@@ -142,7 +145,10 @@ if not args.eval_only:
         train_dataset = TrainCellTransposeData('Training', args.train_dataset, args.n_chan, do_3D=args.do_3D, from_3D=args.train_from_3D,
                                             crop_size=args.patch_size, has_flows=False, batch_size=args.batch_size,
                                             resize=Resize(args.median_diams, args.patch_size, args.min_overlap,
-                                                   use_labels=True, patch_per_batch=args.batch_size))
+                                                   use_labels=True, patch_per_batch=args.batch_size),
+                                            preprocessed_data=args.load_train_from_npy,
+                                            do_every_epoch=args.process_each_epoch,
+                                            result_dir=args.results_dir)
         #train_dataset.process_training_data(args.patch_size, args.min_overlap, has_flows=False)
     
     if args.save_dataset:
@@ -220,7 +226,7 @@ if not args.train_only:
                                                             use_labels=args.test_use_labels, refine=True,
                                                             gc_model=gen_cellpose, sz_model=gen_size_model,
                                                             device=device, patch_per_batch=args.batch_size))
-        #Do this 3 times, once for xy, yx, xz
+        
         eval_dl = DataLoader(test_dataset, batch_size=1, shuffle=False)
 
         masks, prediction_list, label_list = eval_network(model, eval_dl, device, patch_per_batch=args.batch_size,

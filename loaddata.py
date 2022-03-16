@@ -179,14 +179,52 @@ class CellTransposeData(Dataset):
 
 class TrainCellTransposeData(CellTransposeData):
     def __init__(self, split_name, data_dirs, n_chan, pf_dirs=None, do_3D=False, from_3D=False, evaluate=False,
-                 crop_size=(96, 96), has_flows=False, batch_size=1, resize: Resize = None):
+                 crop_size=(96, 96), has_flows=False, batch_size=1, resize: Resize = None, preprocessed_data=None,do_every_epoch=True, result_dir=None):
         self.resize = resize
         self.crop_size = crop_size
         self.has_flows = has_flows
         self.from_3D= from_3D
+        self.preprocessed_data = preprocessed_data
+        self.do_every_epoch = do_every_epoch
         super().__init__(split_name, data_dirs, n_chan, pf_dirs=pf_dirs, do_3D=do_3D,
                          from_3D=from_3D, evaluate=evaluate, batch_size=batch_size, resize=None)
+        
+        if self.preprocessed_data is not None:
+            self.data = as_tensor(np.load(os.path.join(self.preprocessed_data,'train_preprocessed_data.npy')))
+            self.labels = as_tensor(np.load(os.path.join(self.preprocessed_data,'train_preprocessed_labels.npy')))
+        elif self.do_every_epoch == False and self.preprocessed_data is None:
+            
+            data_samples = tensor([])
+            label_samples = tensor([])
+            
+            for i in tqdm(range(len(self.data)),desc='Preprocessing training data once only...'):
+                try:
+                    data, labels, dim = self.resize(self.data[i], self.labels[i], random_scale=random.uniform(0.75, 1.25))
+                    data, labels = random_horizontal_flip(data, labels)
+                    # data, labels = random_rotate(data, labels)
+                    
+                    # print(data.shape," ",labels.shape)
+                    data, labels = self.train_generate_rand_crop(unsqueeze(data, 0), labels, crop=crop_size, lbl_flows=has_flows)
 
+                    if labels.ndim == 3:
+                        labels = as_tensor(np.array([labels_to_flows(labels[i].numpy()) for i in range(len(labels))]), dtype=float32)
+                
+                    data_samples = cat((data_samples, data))
+                    label_samples = cat((label_samples, labels))
+                    
+                except RuntimeError:
+                    print('Caught Size Mismatch.')
+            self.data = data_samples
+            self.labels = label_samples
+            if result_dir is not None: 
+                np.save(os.path.join(result_dir,'train_preprocessed_data.npy'),self.data.cpu().detach().numpy())
+                np.save(os.path.join(result_dir,'train_preprocessed_labels.npy'),self.labels.cpu().detach().numpy())
+        
+       
+            
+            
+            
+            
     def train_generate_rand_crop(self, data, label=None, crop=(96, 96), lbl_flows=False):
         if data.shape[3] < crop[0]: 
             pad_x = math.ceil((crop[0]-data.shape[3])/2)
@@ -249,7 +287,9 @@ class TrainCellTransposeData(CellTransposeData):
             samples_generated.append(-1)
 
     def __getitem__(self, index):
-        return self.process_training_data(index, self.crop_size, has_flows=self.has_flows)
+        
+        if self.preprocessed_data is None and self.do_every_epoch == True: return self.process_training_data(index, self.crop_size, has_flows=self.has_flows)
+        else: return self.data[index],self.labels[index]
         # self.data[index], self.labels[index] #return self.data_samples[index], self.label_samples[index]
 
 
