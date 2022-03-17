@@ -82,7 +82,7 @@ class ContrastiveFlowLoss:
         lbl_match = torch.matmul(torch.transpose(torch.flatten(flow_target_norm, 2, -1), 1, 2),
                                  torch.flatten(z_source.detach(), 2, -1)).reshape(-1, p_size, p_size, p_size, p_size)
 
-        # position of highest similarity source label vector for each target label vector
+        # position of the highest similarity source label vector for each target label vector
         p_i = torch.argmax(lbl_match.view(-1, p_size, p_size, p_size * p_size), dim=-1)
         # Match target output with source output vectors
         pos = torch.zeros(z_source.shape).to('cuda')
@@ -223,15 +223,3 @@ class CellTranspose(nn.Module):
             z = self.u_block1(z, fm1, im_style)
             y = self.out_block(z)
             return y
-
-
-class SizeModel(nn.Module):
-    def __init__(self):
-        super().__init__()
-        self.linear1 = nn.Linear(256, 512)
-        self.linear2 = nn.Linear(512, 1)
-        # self.linear = nn.Linear(256, 1)
-
-    def forward(self, x):
-        x = self.linear1(x)
-        return self.linear2(x)

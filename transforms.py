@@ -64,40 +64,21 @@ def normalize1stto99th(x):
 
 
 class Resize(object):
-    def __init__(self, default_med, patch_size, min_overlap, use_labels=False, refine=True, gc_model=None,
-                 sz_model=None, device='cpu', patch_per_batch=None):
-        self.use_labels = use_labels
+    def __init__(self, default_med):
         self.default_med = default_med
-        if not self.use_labels:
-            self.gc_model = gc_model
-            self.sz_model = sz_model
-            self.refine = refine
-            if refine:
-                self.device = device
-                self.patch_per_batch = patch_per_batch
-                self.min_overlap = min_overlap
-                self.patch_size = patch_size
 
     def __call__(self, x, y, pf=None, random_scale=1.0, diameter=None):
         original_dims = y.shape[1], y.shape[2]
-        if self.use_labels:
-                       
-            x, y = resize_from_labels(x, y, self.default_med, pf, random_scale=random_scale,diameter=diameter)
-            return x, y, original_dims
-        
-        else:
-            x, y = predict_and_resize(x, y, self.default_med, self.gc_model, self.sz_model)  # TODO: Add pf here
-            if self.refine:
-                x, y = refined_predict_and_resize(x, y, self.default_med, self.gc_model, self.device,
-                                                  self.patch_per_batch, self.patch_size, self.min_overlap)  # TODO: Add pf here
-            return x, y, original_dims
+        x, y = resize_from_labels(x, y, self.default_med, pf, random_scale=random_scale, diameter=diameter)
+        return x, y, original_dims
 
 
 def resize_from_labels(x, y, default_med, pf=None, random_scale=1.0, diameter=None):
     # calculate diameters using only full cells in image - remove cut off cells during median diameter calculation
     
     unq = torch.unique(y)
-    if len(unq) == 1 and unq == 0: return x,y
+    if len(unq) == 1 and unq == 0:
+        return x, y
     
     y_cf = copy.deepcopy(torch.squeeze(y, dim=0))
     y_cf = remove_cut_cells(y_cf)
@@ -126,47 +107,6 @@ def resize_from_labels(x, y, default_med, pf=None, random_scale=1.0, diameter=No
         return torch.tensor(x), torch.tensor(y)
     else:
         return x, y
-
-
-def predict_and_resize(x, y, default_med, gc_model, sz_model):
-    x = torch.unsqueeze(x, dim=0).float()
-    with torch.no_grad():
-        style = gc_model(x, style_only=True)
-        med = sz_model(style)
-    x = torch.squeeze(x, dim=0)
-    rescale_w, rescale_h = default_med[0] / med, default_med[1] / med
-    x = np.transpose(x.cpu().numpy(), (1, 2, 0))
-    x = cv2.resize(x, (int(x.shape[1] * rescale_w), int(x.shape[0] * rescale_h)),
-                   interpolation=cv2.INTER_LINEAR)[np.newaxis, :]
-    y = np.transpose(y.cpu().numpy(), (1, 2, 0))
-    y = cv2.resize(y, (int(y.shape[1] * rescale_w), int(y.shape[0] * rescale_h)),
-                   interpolation=cv2.INTER_NEAREST)[np.newaxis, :]
-    return torch.tensor(x), torch.tensor(y)
-
-
-# produce output masks using gc_model, then calculate mean diameter
-def refined_predict_and_resize(x, y, default_med, gc_model, device, patch_per_batch, patch_size, min_overlap):
-        x = torch.unsqueeze(x, dim=0)
-        im_dims = (x.shape[2], x.shape[3])
-        sample_data, _ = generate_patches(x, y, patch=patch_size, min_overlap=min_overlap, lbl_flows=False)
-        with torch.no_grad():
-            predictions = torch.tensor([]).to(device)
-            for patch_ind in range(0, len(sample_data), patch_per_batch):
-                sample_patch_data = sample_data[patch_ind:patch_ind + patch_per_batch].float().to(device)
-                p = gc_model(sample_patch_data)
-                predictions = torch.cat((predictions, p))
-        predictions = recombine_patches(predictions, im_dims, min_overlap)
-        sample_mask = followflows(predictions)
-        med, cts = diameters(sample_mask.numpy())
-        rescale_w, rescale_h = default_med[0] / med, default_med[1] / med
-        x = torch.squeeze(x, dim=0)
-        x = np.transpose(x.cpu().numpy(), (1, 2, 0))
-        x = cv2.resize(x, (int(x.shape[1] * rescale_w), int(x.shape[0] * rescale_h)),
-                       interpolation=cv2.INTER_LINEAR)[np.newaxis, :]
-        y = np.transpose(y.cpu().numpy(), (1, 2, 0))
-        y = cv2.resize(y, (int(y.shape[1] * rescale_w), int(y.shape[0] * rescale_h)),
-                       interpolation=cv2.INTER_NEAREST)[np.newaxis, :]
-        return torch.tensor(x), torch.tensor(y)
 
 
 def random_horizontal_flip(x, y):

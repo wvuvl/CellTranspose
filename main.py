@@ -13,7 +13,7 @@ import time
 
 from transforms import Resize, reformat
 from loaddata import TrainCellTransposeData, ValTestCellTransposeData, ValTestCellTransposeData3D
-from CellTranspose2D import CellTranspose, SizeModel, ClassLoss, FlowLoss, SASMaskLoss, ContrastiveFlowLoss
+from CellTranspose2D import CellTranspose, ClassLoss, FlowLoss, SASMaskLoss, ContrastiveFlowLoss
 from train_eval import train_network, adapt_network, eval_network, eval_network_3D
 from cellpose_src.metrics import average_precision
 from misc_utils import produce_logfile
@@ -38,9 +38,7 @@ parser.add_argument('--median-diams', type=int,
 parser.add_argument('--patch-size', type=int,
                     help='Size of image patches with which to tile.')
 parser.add_argument('--min-overlap', type=int,
-                    help='Amount of overlap to use for tiling - currently the same for train and validation.')
-parser.add_argument('--test-overlap', type=int,
-                    help='Amount of overlap to use for tiling during testing - if unspecified, defaults to min-overlap')
+                    help='Amount of overlap to use for tiling during testing.')
 parser.add_argument('--dataset-name', help='Name of dataset to use for reporting results (omit the word "Dataset").')
 parser.add_argument('--results-dir', help='Folder in which to save experiment results.')
 parser.add_argument('--train-only', help='Only perform training, no evaluation (mutually exclusive with "eval-only").',
@@ -61,12 +59,8 @@ parser.add_argument('--train-from-3D', help='Whether the input training source d
 parser.add_argument('--val-dataset', help='The directory(s) containing data to be used for validation.', nargs='+')
 parser.add_argument('--val-from-3D', help='Whether the input validation data is 3D: assumes 2D if set to False.',
                     action='store_true')
-parser.add_argument('--val-use-labels', help='Whether to use labels for resizing validation data.',
-                    action='store_true')
 parser.add_argument('--test-dataset', help='The directory(s) containing data to be used for testing.', nargs='+')
 parser.add_argument('--test-from-3D', help='Whether the input test data is 3D: assumes 2D if set to False.',
-                    action='store_true')
-parser.add_argument('--test-use-labels', help='Whether to use labels for resizing test data.',
                     action='store_true')
 parser.add_argument('--target-dataset',
                     help='The directory containing target data to be used for domain adaptation. Note: if do-adaptation'
@@ -75,12 +69,6 @@ parser.add_argument('--target-from-3D', help='Whether the input target data is 3
                     action='store_true')
 parser.add_argument('--target-flows', help='The directory(s) containing pre-calculated flows. If left empty, '
                                            'flows will be calculated manually.', nargs='+')
-parser.add_argument('--cellpose-model',
-                    help='Location of the generalized CellTranspose model to use for diameter estimation.')
-parser.add_argument('--size-model', help='Location of the generalized size model to use for diameter estimation.')
-parser.add_argument('--refine-prediction', help='Whether or not to apply refined diameter prediction with diameters of '
-                                                'generalized Cellpose model predictions (better accuracy,'
-                                                'slower evaluation).', action='store_true')
 parser.add_argument('--calculate-ap', help='Whether to perform AP calculation at the end of evaluation.',
                     action='store_true')
 parser.add_argument('--save-dataset', help='Name of directory to save training dataset to: '
@@ -88,7 +76,7 @@ parser.add_argument('--save-dataset', help='Name of directory to save training d
 parser.add_argument('--load-from-torch', help='If true, assumes dataset is being loaded from torch files, with no '
                                               'preprocessing required.', action='store_true')
 
-parser.add_argument('--load-train-from-npy', help='If provided, assumes dataset is being loaded from npy files. ',)
+parser.add_argument('--load-train-from-npy', help='If provided, assumes dataset is being loaded from npy files.')
 parser.add_argument('--process-each-epoch', help='If true, assumes processing occurs every epoch.', action='store_true')
 args = parser.parse_args()
 
@@ -110,28 +98,13 @@ args.min_overlap = (args.min_overlap, args.min_overlap)
 ttt = None
 tte = None
 train_losses = None
-if args.test_overlap is not None:
-    args.test_overlap = (args.test_overlap, args.test_overlap)
-else:
-    args.test_overlap = args.min_overlap
-
-if not (args.val_use_labels and args.test_use_labels):
-    gen_cellpose = CellTranspose(channels=1, device='cuda:0')
-    gen_cellpose = nn.DataParallel(gen_cellpose, device_ids=[0])
-    gen_cellpose.load_state_dict(load(args.cellpose_model))
-
-    gen_size_model = SizeModel().to('cuda:0')
-    gen_size_model.load_state_dict(load(args.size_model))
-else:
-    gen_cellpose = None
-    gen_size_model = None
 
 model = CellTranspose(channels=args.n_chan, device=device)
 #
 model = nn.DataParallel(model)
 model.to(device)
 if args.pretrained_model is not None:
-    model.load_state_dict(load(args.pretrained_model, map_location=device)) #TODO: Remove map_location from load
+    model.load_state_dict(load(args.pretrained_model, map_location=device))  # TODO: Remove map_location from load
 
 if not args.eval_only:
     class_loss = ClassLoss(nn.BCEWithLogitsLoss(reduction='mean'))
@@ -142,13 +115,11 @@ if not args.eval_only:
         train_dataset = load(args.train_dataset[0])
         print('Done.')
     else:
-        train_dataset = TrainCellTransposeData('Training', args.train_dataset, args.n_chan, do_3D=args.do_3D, from_3D=args.train_from_3D,
-                                            crop_size=args.patch_size, has_flows=False, batch_size=args.batch_size,
-                                            resize=Resize(args.median_diams, args.patch_size, args.min_overlap,
-                                                   use_labels=True, patch_per_batch=args.batch_size),
-                                            preprocessed_data=args.load_train_from_npy,
-                                            do_every_epoch=args.process_each_epoch,
-                                            result_dir=args.results_dir)
+        train_dataset = TrainCellTransposeData('Training', args.train_dataset, args.n_chan, do_3D=args.do_3D,
+                                               from_3D=args.train_from_3D, crop_size=args.patch_size, has_flows=False,
+                                               batch_size=args.batch_size, resize=Resize(args.median_diams),
+                                               preprocessed_data=args.load_train_from_npy,
+                                               do_every_epoch=args.process_each_epoch, result_dir=args.results_dir)
         #train_dataset.process_training_data(args.patch_size, args.min_overlap, has_flows=False)
     
     if args.save_dataset:
@@ -160,11 +131,7 @@ if not args.eval_only:
 
     if args.val_dataset is not None:
         val_dataset = ValTestCellTransposeData('Validation', args.val_dataset, args.n_chan, do_3D=args.do_3D,
-                                               from_3D=args.val_from_3D,
-                                               resize=Resize(args.median_diams, args.patch_size, args.min_overlap,
-                                                             use_labels=args.val_use_labels, refine=True,
-                                                             gc_model=gen_cellpose, sz_model=gen_size_model,
-                                                             device=device, patch_per_batch=args.batch_size))
+                                               from_3D=args.val_from_3D, resize=Resize(args.median_diams))
         val_dataset.pre_generate_validation_patches(patch_size=args.patch_size, min_overlap=args.min_overlap)
         val_dl = DataLoader(val_dataset, batch_size=args.batch_size, shuffle=False)
     else:
@@ -176,9 +143,8 @@ if not args.eval_only:
         c_flow_loss = ContrastiveFlowLoss(nn.MSELoss(reduction='mean'))
         target_dataset = TrainCellTransposeData('Target', args.target_dataset, args.n_chan, pf_dirs=args.target_flows,
                                                 do_3D=args.do_3D, from_3D=args.target_from_3D,
-                                                crop_size=args.patch_size, has_flows=False,batch_size=args.batch_size,
-                                                resize=Resize(args.median_diams, args.patch_size, args.min_overlap,
-                                                              use_labels=True, patch_per_batch=args.batch_size))
+                                                crop_size=args.patch_size, has_flows=False, batch_size=args.batch_size,
+                                                resize=Resize(args.median_diams, args.min_overlap))
         #target_dataset.process_training_data(args.patch_size, args.min_overlap, batch_size=args.batch_size, has_flows=True)
         rs = RandomSampler(target_dataset, replacement=False)
         bs = BatchSampler(rs, args.batch_size, True)
@@ -194,8 +160,8 @@ if not args.eval_only:
     else:
         start_train = time.time()
         scheduler = CosineAnnealingLR(optimizer, T_max=args.epochs, eta_min=args.learning_rate/100, last_epoch=-1)
-        train_losses, val_losses = train_network(model, train_dl, val_dl, class_loss, flow_loss,
-                                                 optimizer=optimizer, scheduler=scheduler, device=device, n_epochs=args.epochs)
+        train_losses, val_losses = train_network(model, train_dl, val_dl, class_loss, flow_loss, optimizer=optimizer,
+                                                 scheduler=scheduler, device=device, n_epochs=args.epochs)
     # compiled_model = jit.script(model)
     # jit.save(compiled_model, os.path.join(args.results_dir, 'trained_model.pt'))
     save(model.state_dict(), os.path.join(args.results_dir, 'trained_model.pt'))
@@ -222,26 +188,22 @@ if not args.train_only:
     if not args.test_from_3D:
         test_dataset = ValTestCellTransposeData('Test', args.test_dataset, args.n_chan, do_3D=args.do_3D,
                                                 from_3D=args.test_from_3D, evaluate=True,
-                                                resize=Resize(args.median_diams, args.patch_size, args.test_overlap,
-                                                            use_labels=args.test_use_labels, refine=True,
-                                                            gc_model=gen_cellpose, sz_model=gen_size_model,
-                                                            device=device, patch_per_batch=args.batch_size))
-        
+                                                resize=Resize(args.median_diams))
+
         eval_dl = DataLoader(test_dataset, batch_size=1, shuffle=False)
 
         masks, prediction_list, label_list = eval_network(model, eval_dl, device, patch_per_batch=args.batch_size,
-                                                      patch_size=args.patch_size, min_overlap=args.test_overlap)
+                                                          patch_size=args.patch_size, min_overlap=args.min_overlap)
         
         for i in range(len(masks)):
             masks[i] = masks[i].astype('int32')
             with open(os.path.join(args.results_dir, label_list[i] + '_predicted_labels.pkl'), 'wb') as m_pkl:
                 pickle.dump(masks[i], m_pkl)
-            tifffile.imwrite(os.path.join(args.results_dir, 'tiff_results', label_list[i] + '.tif'),
-                            masks[i])
+            tifffile.imwrite(os.path.join(args.results_dir, 'tiff_results', label_list[i] + '.tif'), masks[i])
             with open(os.path.join(args.results_dir, label_list[i] + '_raw_masks_flows.pkl'), 'wb') as rmf_pkl:
                 pickle.dump(prediction_list[i], rmf_pkl)
             tifffile.imwrite(os.path.join(args.results_dir, 'raw_predictions_tiffs', label_list[i] + '.tif'),
-                            prediction_list[i])
+                             prediction_list[i])
         end_eval = time.time()
         tte = time.strftime("%H:%M:%S", time.gmtime(end_eval - start_eval))
         print('Time to evaluate: {}'.format(tte))
@@ -284,8 +246,8 @@ if not args.train_only:
                 plt.ylabel('Average Precision')
                 plt.yticks(np.arange(0, 1.01, step=0.2))
                 plt.savefig(os.path.join(args.results_dir, 'AP Results'))
-                cc.write('\nAP Results at IoU threshold 0.5: AP = {}\nTrue Postive: {}; False Positive: {}; False Negative:'
-                        ' {}\n'.format(ap_overall[51], tp_overall[51], fp_overall[51], fn_overall[51]))
+                cc.write('\nAP Results at IoU threshold 0.5: AP = {}\nTrue Postive: {}; False Positive: {};'
+                         'False Negative: {}\n'.format(ap_overall[51], tp_overall[51], fp_overall[51], fn_overall[51]))
                 print('AP Results at IoU threshold 0.5: AP = {}\nTrue Postive: {}; False Positive: {}; '
                       'False Negative: {}'.format(ap_overall[51], tp_overall[51], fp_overall[51], fn_overall[51]))
                 false_error = (fp_overall[51] + fn_overall[51]) / (tp_overall[51] + fn_overall[51])
@@ -295,22 +257,18 @@ if not args.train_only:
                     pickle.dump((tau, ap_overall, tp_overall, fp_overall, fn_overall, false_error), apr)
 
     else:
-        test_dataset_3D = ValTestCellTransposeData3D('3D_test',args.test_dataset,args.n_chan,do_3D=args.do_3D,
-                                                        from_3D=args.test_from_3D, evaluate=True,
-                                                        resize=Resize(args.median_diams, args.patch_size, args.test_overlap,
-                                                            use_labels=args.test_use_labels, refine=True,
-                                                            gc_model=gen_cellpose, sz_model=gen_size_model,
-                                                            device=device, patch_per_batch=args.batch_size)
-                                                        )
-        eval_dl_3D = DataLoader(test_dataset_3D,batch_size=1,shuffle=False)
-        eval_network_3D(model,eval_dl_3D,device,patch_per_batch=args.batch_size,
-                        patch_size=args.patch_size,min_overlap=args.test_overlap,results_dir=args.results_dir)
+        test_dataset_3D = ValTestCellTransposeData3D('3D_test', args.test_dataset, args.n_chan, do_3D=args.do_3D,
+                                                     from_3D=args.test_from_3D, evaluate=True,
+                                                     resize=Resize(args.median_diams))
+        eval_dl_3D = DataLoader(test_dataset_3D, batch_size=1, shuffle=False)
+        eval_network_3D(model, eval_dl_3D, device, patch_per_batch=args.batch_size,
+                        patch_size=args.patch_size, min_overlap=args.min_overlap, results_dir=args.results_dir)
         
         end_eval = time.time() - start_eval
         
         tte = time.strftime("%H:%M:%S", time.gmtime(end_eval - start_eval))
         print('Time to evaluate: {}'.format(end_eval))
-        #TODO: perform AP evaluation for 3D
+        # TODO: perform AP evaluation for 3D
         
 
 

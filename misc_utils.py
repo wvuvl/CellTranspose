@@ -58,8 +58,7 @@ def produce_logfile(args, epochs, ttt, tte, num_workers):
         log.write('Number of channels: {}\n'.format(args.n_chan))
         log.write('Cells resized to possess median diameter of {}.\n'.format(args.median_diams))
         log.write('Patch size: {}\n'.format(args.patch_size))
-        log.write('Minimum patch overlap (train): {}\n'.format(args.min_overlap))
-        log.write('Minimum patch overlap (test): {} \n'.format(args.test_overlap))
+        log.write('Minimum patch overlap: {} \n'.format(args.min_overlap))
         log.write('\n')
         log.write('Zeros removed: all\n')
         log.write('\n')
@@ -76,13 +75,7 @@ def produce_logfile(args, epochs, ttt, tte, num_workers):
             log.write('Pretrained model: {}\n'.format(args.pretrained_model))
             log.write('\n')
             log.write('Validation dataset(s): {}\n'.format(args.val_dataset))
-            log.write('Labels used for validation: {}\n'.format(args.val_use_labels))
         if not args.train_only:
             log.write('Test dataset(s): {}\n'.format(args.test_dataset))
-            log.write('Labels used for testing: {}\n'.format(args.test_use_labels))
-        log.write('Refined size predictions: {}\n'.format(args.refine_prediction))
-        log.write('\n')
-        log.write('Cellpose model for size prediction: {}\n'.format(args.cellpose_model))
-        log.write('Size model: {}\n\n'.format(args.size_model))
 
         log.write('{}'.format(str(args)))
