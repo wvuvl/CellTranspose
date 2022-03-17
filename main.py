@@ -115,6 +115,7 @@ if not args.eval_only:
         train_dataset = load(args.train_dataset[0])
         print('Done.')
     else:
+        if not args.do_adaptation: args.process_each_epoch = True
         train_dataset = TrainCellTransposeData('Training', args.train_dataset, args.n_chan, do_3D=args.do_3D,
                                                from_3D=args.train_from_3D, crop_size=args.patch_size, has_flows=False,
                                                batch_size=args.batch_size, resize=Resize(args.median_diams),
