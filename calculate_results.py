@@ -105,11 +105,20 @@ def plot_loss(train_losses, results_dir, val_dl=None, val_losses=None):
 
 
 def save_pred(masks, test_dataset, prediction_list, label_list, calculate_ap, results_dir, dataset_name):
-    """
-    Saves masks and raw predictions
+    """ Saves raw predictions and masks. Counts cells and computes AP.
     
-    calculates AP
+    Parameters
+    -----
+    Args:
+        masks: predicted masks
+        test_dataset: loaded test dataset
+        prediction_list: raw predictions
+        label_list: list containing file names of corresponding labels
+        calculate_ap: true for calculting AP
+        results_dir: directory where results are stored
+        dataset_name: name of the dataset
     """
+    
     for i in range(len(masks)):
         masks[i] = masks[i].astype('int32')
         with open(os.path.join(results_dir, label_list[i] + '_predicted_labels.pkl'), 'wb') as m_pkl:
@@ -140,8 +149,10 @@ def save_pred(masks, test_dataset, prediction_list, label_list, calculate_ap, re
             labels = []
             for l in test_dataset.l_list:
                 
-                if os.path.splitext(l)[1] == 'tif': label = as_tensor(tifffile.imread(l).astype('int16'))
-                else: label = as_tensor(cv2.imread(l, -1).astype('int16'))
+                if os.path.splitext(l)[1] == 'tif': 
+                    label = as_tensor(tifffile.imread(l).astype('int16'))
+                else: 
+                    label = as_tensor(cv2.imread(l, -1).astype('int16'))
                 
                 label = squeeze(reformat(label), dim=0).numpy().astype('int16')
                 labels.append(label)
