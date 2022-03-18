@@ -21,24 +21,24 @@ from misc_utils import produce_logfile
 parser = argparse.ArgumentParser()
 parser.add_argument('--n-chan', type=int,
                     help='Maximum number of channels in input images (i.e. 2 for cytoplasm + nuclei images).')
-parser.add_argument('--learning-rate', type=float)
-parser.add_argument('--momentum', type=float)
-parser.add_argument('--weight-decay', type=float)
-parser.add_argument('--batch-size', type=int)
-parser.add_argument('--epochs', type=int)
-parser.add_argument('--step-gamma', type=float)
-parser.add_argument('--k', type=int)
-parser.add_argument('--lmbda', type=float)
-parser.add_argument('--gamma', type=float)
-parser.add_argument('--n_thresh', type=float)
-parser.add_argument('--temperature', type=float)
+parser.add_argument('--learning-rate', type=float, default=0.01)
+parser.add_argument('--momentum', type=float, default=0.9)
+parser.add_argument('--weight-decay', type=float, default=1e-5)
+parser.add_argument('--batch-size', type=int, default=2)
+parser.add_argument('--epochs', type=int, default=10)
+parser.add_argument('--step-gamma', type=float, default=0.1)
+parser.add_argument('--k', type=int, default=20)
+parser.add_argument('--gamma-1', type=float, default=0.1)
+parser.add_argument('--gamma-2', type=float, default=2)
+parser.add_argument('--n_thresh', type=float, default=0.05)
+parser.add_argument('--temperature', type=float, default=0.1)
 parser.add_argument('--median-diams', type=int,
                     help='Median diameter size with which to resize images to. Note: If using pretrained model, ensure '
-                         'that this variable remains the same as the given model.')
+                         'that this variable remains the same as the given model.', default=30)
 parser.add_argument('--patch-size', type=int,
-                    help='Size of image patches with which to tile.')
+                    help='Size of image patches with which to tile.', default=112)
 parser.add_argument('--min-overlap', type=int,
-                    help='Amount of overlap to use for tiling during testing.')
+                    help='Amount of overlap to use for tiling during testing.', default=84)
 parser.add_argument('--dataset-name', help='Name of dataset to use for reporting results (omit the word "Dataset").')
 parser.add_argument('--results-dir', help='Folder in which to save experiment results.')
 parser.add_argument('--train-only', help='Only perform training, no evaluation (mutually exclusive with "eval-only").',
@@ -115,7 +115,8 @@ if not args.eval_only:
         train_dataset = load(args.train_dataset[0])
         print('Done.')
     else:
-        if not args.do_adaptation: args.process_each_epoch = True
+        if not args.do_adaptation:
+            args.process_each_epoch = True
         train_dataset = TrainCellTransposeData('Training', args.train_dataset, args.n_chan, do_3D=args.do_3D,
                                                from_3D=args.train_from_3D, crop_size=args.patch_size, has_flows=False,
                                                batch_size=args.batch_size, resize=Resize(args.median_diams),
@@ -145,7 +146,7 @@ if not args.eval_only:
         target_dataset = TrainCellTransposeData('Target', args.target_dataset, args.n_chan, pf_dirs=args.target_flows,
                                                 do_3D=args.do_3D, from_3D=args.target_from_3D,
                                                 crop_size=args.patch_size, has_flows=False, batch_size=args.batch_size,
-                                                resize=Resize(args.median_diams, args.min_overlap))
+                                                resize=Resize(args.median_diams))
         #target_dataset.process_training_data(args.patch_size, args.min_overlap, batch_size=args.batch_size, has_flows=True)
         rs = RandomSampler(target_dataset, replacement=False)
         bs = BatchSampler(rs, args.batch_size, True)
@@ -156,8 +157,9 @@ if not args.eval_only:
         train_losses, val_losses = adapt_network(model, train_dl, target_dl, val_dl, sas_class_loss, c_flow_loss,
                                                  class_loss, flow_loss, train_direct=args.no_adaptation_loss,
                                                  optimizer=optimizer, scheduler=scheduler, device=device,
-                                                 n_epochs=args.epochs, k=args.k, lmbda=args.lmbda, gamma=args.gamma,
-                                                 n_thresh=args.n_thresh, temperature=args.temperature)
+                                                 n_epochs=args.epochs, k=args.k, gamma_1=args.gamma_1,
+                                                 gamma_2=args.gamma_2, n_thresh=args.n_thresh,
+                                                 temperature=args.temperature)
     else:
         start_train = time.time()
         scheduler = CosineAnnealingLR(optimizer, T_max=args.epochs, eta_min=args.learning_rate/100, last_epoch=-1)

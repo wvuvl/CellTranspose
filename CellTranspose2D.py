@@ -37,7 +37,7 @@ class SASMaskLoss:
     def __init__(self, sas_class_loss):
         self.class_loss = sas_class_loss
 
-    def __call__(self, g_source, lbl_source, g_target, lbl_target, margin=1, gamma_1=0.001, gamma_2=0.5):
+    def __call__(self, g_source, lbl_source, g_target, lbl_target, margin=10, gamma_1=0.1, lam=0.5):
         frgd_mask = torch.logical_and(lbl_source, lbl_target)
         frgd_count = torch.count_nonzero(frgd_mask)
         bkgd_mask = torch.logical_and(torch.logical_not(lbl_source), torch.logical_not(lbl_target))
@@ -49,12 +49,12 @@ class SASMaskLoss:
         px_count = lbl_target.shape[-1] * lbl_target.shape[-2]
 
         sa_loss = gamma_1 * 0.5 * torch.square(g_source - g_target)
-        sa_loss = gamma_2 * (frgd_mask*sa_loss)*(px_count/(frgd_count+1)) +\
-                  (bkgd_mask*sa_loss) * (px_count/(bkgd_count+1))
+        sa_loss = lam * (frgd_mask*sa_loss) * (px_count / (frgd_count + 1)) + \
+                        (bkgd_mask*sa_loss) * (px_count/(bkgd_count+1))
         s_loss = gamma_1 * 0.5 * torch.square(torch.max(torch.tensor(0).to
                                                         (torch.device('cuda' if torch.cuda.is_available() else 'cpu')),
                                                         margin - torch.abs(g_source - g_target)))
-        s_loss = (1-gamma_2) * (s_not_t_mask*s_loss)*(px_count/(snt_count+1)) +\
+        s_loss = (1 - lam) * (s_not_t_mask*s_loss) * (px_count / (snt_count + 1)) + \
                  (t_not_s_mask*s_loss) * (px_count/(tns_count+1))
 
         adaptive_class_loss = torch.mean(sa_loss + s_loss)
@@ -66,7 +66,7 @@ class ContrastiveFlowLoss:
         self.flow_loss = c_flow_loss
         return
 
-    def __call__(self, z_source, lbl_source, z_target, lbl_target, k=10, lmbda=1e-1, n_thresh=0.05, temperature=0.1):
+    def __call__(self, z_source, lbl_source, z_target, lbl_target, k=20, gamma_2=2, n_thresh=0.05, temperature=0.1):
 
         # Normalize labels and outputs
         z_source = torch.div(z_source, torch.linalg.norm(z_source, dim=1)[:, None, :])
@@ -109,8 +109,7 @@ class ContrastiveFlowLoss:
         adaptive_flow_loss = torch.div(num, den)
         adaptive_flow_loss = torch.where(mask_target == 1, -torch.log(adaptive_flow_loss),
                                          torch.tensor(0.0).detach().to('cuda'))
-
-        adaptive_flow_loss = lmbda * torch.mean(adaptive_flow_loss)
+        adaptive_flow_loss = gamma_2 * torch.mean(adaptive_flow_loss)
         return adaptive_flow_loss
 
 

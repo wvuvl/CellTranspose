@@ -51,7 +51,7 @@ def train_network(model, train_dl, val_dl, class_loss, flow_loss, optimizer, sch
 
 def adapt_network(model: nn.Module, source_dl, target_dl, val_dl, sas_mask_loss, contrastive_flow_loss,
                   class_loss, flow_loss, train_direct, optimizer, scheduler, device, n_epochs,
-                  k, lmbda, gamma, n_thresh, temperature):
+                  k, gamma_1, gamma_2, n_thresh, temperature):
     train_losses = []
     val_losses = []
     print('Beginning domain adaptation.\n')
@@ -85,13 +85,13 @@ def adapt_network(model: nn.Module, source_dl, target_dl, val_dl, sas_mask_loss,
             if not train_direct:
                 if e <= n_epochs/2:
                     adaptation_class_loss = sas_mask_loss(source_output[:, 0], source_sample_labels[:, 0],
-                                                           target_output[:, 0], target_sample_labels[:, 0],
-                                                          margin=10, gamma_1=gamma, gamma_2=0.5)
+                                                          target_output[:, 0], target_sample_labels[:, 0],
+                                                          margin=10, gamma_1=gamma_1, lam=0.5)
                     target_class_loss = class_loss(target_output, target_sample_labels)
                     c_loss = target_class_loss + adaptation_class_loss
                     adaptation_flow_loss = contrastive_flow_loss(source_output[:, 1:], source_sample_labels,
-                                                       target_output[:, 1:], target_sample_labels,
-                                                                 k=k, lmbda=lmbda, n_thresh=n_thresh,
+                                                                 target_output[:, 1:], target_sample_labels,
+                                                                 k=k, gamma_2=gamma_2, n_thresh=n_thresh,
                                                                  temperature=temperature)
                     target_flow_loss = flow_loss(target_output, target_sample_labels)
                     f_loss = target_flow_loss + adaptation_flow_loss
