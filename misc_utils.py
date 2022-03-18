@@ -10,13 +10,13 @@ import tifffile
 import pickle
 import matplotlib.pyplot as plt
 
-from transforms import Resize, reformat
+from transforms import reformat
 from cellpose_src.metrics import average_precision
 
 sns.set()
 
 
-# TODO: Yet to be updated to work for this project
+# TODO: Yet to be updated to work again for this project
 def create_confusion_matrix(y_true, y_pred, classes, normalize=None):
     # Get data into confusion matrix (array)
     num_classes = len(classes)
@@ -49,6 +49,7 @@ def create_confusion_matrix(y_true, y_pred, classes, normalize=None):
         sns.heatmap(conf_pivot, annot=True, cmap="BuGn", fmt='.3f', cbar=False)
     else:
         sns.heatmap(conf_pivot, annot=True, cmap="BuGn", fmt='g', cbar=False)
+
 
 def produce_logfile(args, epochs, ttt, tte, num_workers):
     with open(os.path.join(args.results_dir, 'logfile.txt'), 'w') as log:
@@ -86,7 +87,8 @@ def produce_logfile(args, epochs, ttt, tte, num_workers):
 
         log.write('{}'.format(str(args)))
 
-def plot_loss(train_losses,results_dir,val_dl=None,val_losses=None):
+
+def plot_loss(train_losses, results_dir, val_dl=None, val_losses=None):
     plt.figure()
     x_range = np.arange(1, len(train_losses)+1)
     plt.plot(x_range, train_losses)
@@ -99,8 +101,9 @@ def plot_loss(train_losses,results_dir,val_dl=None,val_losses=None):
     plt.xlabel('Epoch')
     plt.ylabel('Combined Losses')
     plt.savefig(os.path.join(results_dir, 'Training-Validation Losses'))
-    
-def save_pred(masks,test_dataset,prediction_list,label_list,calculate_ap,results_dir,dataset_name):
+
+
+def save_pred(masks, test_dataset, prediction_list, label_list, calculate_ap, results_dir, dataset_name):
     for i in range(len(masks)):
         masks[i] = masks[i].astype('int32')
         with open(os.path.join(results_dir, label_list[i] + '_predicted_labels.pkl'), 'wb') as m_pkl:
@@ -109,8 +112,7 @@ def save_pred(masks,test_dataset,prediction_list,label_list,calculate_ap,results
         with open(os.path.join(results_dir, label_list[i] + '_raw_masks_flows.pkl'), 'wb') as rmf_pkl:
             pickle.dump(prediction_list[i], rmf_pkl)
         tifffile.imwrite(os.path.join(results_dir, 'raw_predictions_tiffs', label_list[i] + '.tif'),
-                            prediction_list[i])
-    
+                         prediction_list[i])
 
     with open(os.path.join(results_dir, 'counted_cells.txt'), 'w') as cc:
         predicted_count = 0
@@ -128,7 +130,6 @@ def save_pred(masks,test_dataset,prediction_list,label_list,calculate_ap,results
         print('Total counting error rate: {}'.format(counting_error))
 
         # AP Calculation
-        # TODO: Have working with 3D as well (possibly re-initialize test dataset without resizing)
         if calculate_ap:
             labels = []
             for l in test_dataset.l_list:
@@ -151,9 +152,9 @@ def save_pred(masks,test_dataset,prediction_list,label_list,calculate_ap,results
             plt.yticks(np.arange(0, 1.01, step=0.2))
             plt.savefig(os.path.join(results_dir, 'AP Results'))
             cc.write('\nAP Results at IoU threshold 0.5: AP = {}\nTrue Postive: {}; False Positive: {};'
-                        'False Negative: {}\n'.format(ap_overall[51], tp_overall[51], fp_overall[51], fn_overall[51]))
+                     'False Negative: {}\n'.format(ap_overall[51], tp_overall[51], fp_overall[51], fn_overall[51]))
             print('AP Results at IoU threshold 0.5: AP = {}\nTrue Postive: {}; False Positive: {}; '
-                    'False Negative: {}'.format(ap_overall[51], tp_overall[51], fp_overall[51], fn_overall[51]))
+                  'False Negative: {}'.format(ap_overall[51], tp_overall[51], fp_overall[51], fn_overall[51]))
             false_error = (fp_overall[51] + fn_overall[51]) / (tp_overall[51] + fn_overall[51])
             cc.write('Total false error rate: {:.6f}'.format(false_error))
             print('Total false error rate: {:.6f}'.format(false_error))

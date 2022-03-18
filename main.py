@@ -1,22 +1,17 @@
 import argparse
 from torch.utils.data import DataLoader, RandomSampler, BatchSampler
-from torch import nn, device, load, save, squeeze, as_tensor, jit
+from torch import nn, device, load, save, jit
 from torch.cuda import is_available, device_count, empty_cache
 from torch.optim import SGD
 from torch.optim.lr_scheduler import CosineAnnealingLR, StepLR
 import os
-import pickle
-import numpy as np
-import matplotlib.pyplot as plt
-import tifffile
 import time
 
-from transforms import Resize, reformat
+from transforms import Resize
 from loaddata import TrainCellTransposeData, ValTestCellTransposeData, ValTestCellTransposeData3D
 from CellTranspose2D import CellTranspose, ClassLoss, FlowLoss, SASMaskLoss, ContrastiveFlowLoss
 from train_eval import train_network, adapt_network, eval_network, eval_network_3D
-from cellpose_src.metrics import average_precision
-from misc_utils import produce_logfile,plot_loss,save_pred
+from misc_utils import produce_logfile, plot_loss, save_pred
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--n-chan', type=int,
@@ -168,7 +163,7 @@ if not args.eval_only:
     end_train = time.time()
     ttt = time.strftime("%H:%M:%S", time.gmtime(end_train - start_train))
     print('Time to train: {}'.format(ttt))
-    plot_loss(train_losses,args.results_dir,val_dl=val_dl,val_losses=val_losses)
+    plot_loss(train_losses, args.results_dir, val_dl=val_dl, val_losses=val_losses)
     
 if not args.train_only:
     start_eval = time.time()
@@ -180,7 +175,8 @@ if not args.train_only:
         eval_dl = DataLoader(test_dataset, batch_size=1, shuffle=False)
         masks, prediction_list, label_list = eval_network(model, eval_dl, device, patch_per_batch=args.batch_size,
                                                           patch_size=args.patch_size, min_overlap=args.min_overlap)
-        save_pred(masks,test_dataset,prediction_list,label_list,args.calculate_ap,args.results_dir,args.dataset_name)
+        save_pred(masks, test_dataset, prediction_list, label_list,
+                  args.calculate_ap, args.results_dir, args.dataset_name)
     else:
         test_dataset_3D = ValTestCellTransposeData3D('3D_test', args.test_dataset, args.n_chan, do_3D=args.do_3D,
                                                      from_3D=args.test_from_3D, evaluate=True,
@@ -189,13 +185,10 @@ if not args.train_only:
         eval_network_3D(model, eval_dl_3D, device, patch_per_batch=args.batch_size,
                         patch_size=args.patch_size, min_overlap=args.min_overlap, results_dir=args.results_dir)
         
-        
         # TODO: perform AP evaluation for 3D
     end_eval = time.time()
     tte = time.strftime("%H:%M:%S", time.gmtime(end_eval - start_eval))
-    print('Time to evaluate: {}'.format(tte))    
-
+    print('Time to evaluate: {}'.format(tte))
 
 print(args.results_dir)
-
 produce_logfile(args, len(train_losses) if train_losses is not None else None, ttt, tte, num_workers)
