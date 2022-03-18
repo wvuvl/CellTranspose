@@ -7,6 +7,7 @@ import pandas as pd
 import seaborn as sns
 import os
 import tifffile
+import cv2
 import pickle
 import matplotlib.pyplot as plt
 
@@ -104,6 +105,11 @@ def plot_loss(train_losses, results_dir, val_dl=None, val_losses=None):
 
 
 def save_pred(masks, test_dataset, prediction_list, label_list, calculate_ap, results_dir, dataset_name):
+    """
+    Saves masks and raw predictions
+    
+    calculates AP
+    """
     for i in range(len(masks)):
         masks[i] = masks[i].astype('int32')
         with open(os.path.join(results_dir, label_list[i] + '_predicted_labels.pkl'), 'wb') as m_pkl:
@@ -133,8 +139,10 @@ def save_pred(masks, test_dataset, prediction_list, label_list, calculate_ap, re
         if calculate_ap:
             labels = []
             for l in test_dataset.l_list:
-                # label = as_tensor(cv2.imread(l, -1).astype('int16'))
-                label = as_tensor(tifffile.imread(l).astype('int16'))
+                
+                if os.path.splitext(l)[1] == 'tif': label = as_tensor(tifffile.imread(l).astype('int16'))
+                else: label = as_tensor(cv2.imread(l, -1).astype('int16'))
+                
                 label = squeeze(reformat(label), dim=0).numpy().astype('int16')
                 labels.append(label)
             tau = np.arange(0.0, 1.01, 0.01)
