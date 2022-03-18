@@ -33,12 +33,10 @@ parser.add_argument('--gamma-2', type=float, default=2)
 parser.add_argument('--n_thresh', type=float, default=0.05)
 parser.add_argument('--temperature', type=float, default=0.1)
 parser.add_argument('--median-diams', type=int,
-                    help='Median diameter size with which to resize images to. Note: If using pretrained model, ensure '
-                         'that this variable remains the same as the given model.', default=30)
-parser.add_argument('--patch-size', type=int,
-                    help='Size of image patches with which to tile.', default=112)
-parser.add_argument('--min-overlap', type=int,
-                    help='Amount of overlap to use for tiling during testing.', default=84)
+                    help='Median diameter size with which to resize images to. Note: If using pretrained model, ensure'
+                         ' that this variable remains the same as the given model.', default=30)
+parser.add_argument('--patch-size', type=int, help='Size of image patches with which to tile.', default=112)
+parser.add_argument('--min-overlap', type=int, help='Amount of overlap to use for tiling during testing.', default=84)
 parser.add_argument('--dataset-name', help='Name of dataset to use for reporting results (omit the word "Dataset").')
 parser.add_argument('--results-dir', help='Folder in which to save experiment results.')
 parser.add_argument('--train-only', help='Only perform training, no evaluation (mutually exclusive with "eval-only").',
@@ -48,10 +46,9 @@ parser.add_argument('--eval-only', help='Only perform evaluation, no training (m
 parser.add_argument('--pretrained-model', help='Location of pretrained model to load in. Default: None')
 parser.add_argument('--do-adaptation', help='Whether to perform domain adaptation or standard training.',
                     action='store_true')
-parser.add_argument('--no-adaptation-loss', help='Train directly using standard loss on target samples '
-                                                 '(for testing purposes)', action='store_true')
-parser.add_argument('--do-3D', help='Whether or not to use CellTranspose3D (Must use 3D volumes).',
-                    action='store_true')
+parser.add_argument('--no-adaptation-loss', help='Train directly using standard loss on target samples'
+                                                 ' (for testing purposes)', action='store_true')
+parser.add_argument('--do-3D', help='Whether or not to use CellTranspose3D (Must use 3D volumes).', action='store_true')
 parser.add_argument('--train-dataset', help='The directory(s) containing (source) data to be used for training.',
                     nargs='+')
 parser.add_argument('--train-from-3D', help='Whether the input training source data is 3D: assumes 2D if set to False.',
@@ -67,14 +64,14 @@ parser.add_argument('--target-dataset',
                          ' is set to False, this parameter will be ignored.', nargs='+')
 parser.add_argument('--target-from-3D', help='Whether the input target data is 3D: assumes 2D if set to False.',
                     action='store_true')
-parser.add_argument('--target-flows', help='The directory(s) containing pre-calculated flows. If left empty, '
-                                           'flows will be calculated manually.', nargs='+')
+parser.add_argument('--target-flows', help='The directory(s) containing pre-calculated flows. If left empty,'
+                                           ' flows will be calculated manually.', nargs='+')
 parser.add_argument('--calculate-ap', help='Whether to perform AP calculation at the end of evaluation.',
                     action='store_true')
-parser.add_argument('--save-dataset', help='Name of directory to save training dataset to: '
-                                           'if None, will not save dataset.')
-parser.add_argument('--load-from-torch', help='If true, assumes dataset is being loaded from torch files, with no '
-                                              'preprocessing required.', action='store_true')
+parser.add_argument('--save-dataset', help='Name of directory to save training dataset to:'
+                                           ' if None, will not save dataset.')
+parser.add_argument('--load-from-torch', help='If true, assumes dataset is being loaded from torch files, with no'
+                                              ' preprocessing required.', action='store_true')
 
 parser.add_argument('--load-train-from-npy', help='If provided, assumes dataset is being loaded from npy files.')
 parser.add_argument('--process-each-epoch', help='If true, assumes processing occurs every epoch.', action='store_true')
