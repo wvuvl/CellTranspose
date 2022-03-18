@@ -11,7 +11,7 @@ from transforms import Resize
 from loaddata import TrainCellTransposeData, ValTestCellTransposeData, ValTestCellTransposeData3D
 from CellTranspose2D import CellTranspose, ClassLoss, FlowLoss, SASMaskLoss, ContrastiveFlowLoss
 from train_eval import train_network, adapt_network, eval_network, eval_network_3D
-from misc_utils import produce_logfile, plot_loss, save_pred
+from calculate_results import produce_logfile, plot_loss, save_pred
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--n-chan', type=int,

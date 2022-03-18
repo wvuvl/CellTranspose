@@ -1,5 +1,5 @@
 """
-Utility code for miscellaneous tasks
+Utility code for various performance metrics
 """
 from torch import squeeze, as_tensor
 import numpy as np
