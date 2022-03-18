@@ -16,7 +16,7 @@ from loaddata import TrainCellTransposeData, ValTestCellTransposeData, ValTestCe
 from CellTranspose2D import CellTranspose, ClassLoss, FlowLoss, SASMaskLoss, ContrastiveFlowLoss
 from train_eval import train_network, adapt_network, eval_network, eval_network_3D
 from cellpose_src.metrics import average_precision
-from misc_utils import produce_logfile
+from misc_utils import produce_logfile,plot_loss,save_pred
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--n-chan', type=int,
@@ -168,20 +168,8 @@ if not args.eval_only:
     end_train = time.time()
     ttt = time.strftime("%H:%M:%S", time.gmtime(end_train - start_train))
     print('Time to train: {}'.format(ttt))
-
-    plt.figure()
-    x_range = np.arange(1, len(train_losses)+1)
-    plt.plot(x_range, train_losses)
-    if val_dl is not None:
-        plt.plot(x_range, val_losses)
-        plt.legend(['Training Losses', 'Validation Losses'])
-        plt.title('Training and Validation Losses')
-    else:
-        plt.title('Training Loss')
-    plt.xlabel('Epoch')
-    plt.ylabel('Combined Losses')
-    plt.savefig(os.path.join(args.results_dir, 'Training-Validation Losses'))
-
+    plot_loss(train_losses,args.results_dir,val_dl=val_dl,val_losses=val_losses)
+    
 if not args.train_only:
     start_eval = time.time()
 
@@ -189,73 +177,10 @@ if not args.train_only:
         test_dataset = ValTestCellTransposeData('Test', args.test_dataset, args.n_chan, do_3D=args.do_3D,
                                                 from_3D=args.test_from_3D, evaluate=True,
                                                 resize=Resize(args.median_diams))
-
         eval_dl = DataLoader(test_dataset, batch_size=1, shuffle=False)
-
         masks, prediction_list, label_list = eval_network(model, eval_dl, device, patch_per_batch=args.batch_size,
                                                           patch_size=args.patch_size, min_overlap=args.min_overlap)
-        
-        for i in range(len(masks)):
-            masks[i] = masks[i].astype('int32')
-            with open(os.path.join(args.results_dir, label_list[i] + '_predicted_labels.pkl'), 'wb') as m_pkl:
-                pickle.dump(masks[i], m_pkl)
-            tifffile.imwrite(os.path.join(args.results_dir, 'tiff_results', label_list[i] + '.tif'), masks[i])
-            with open(os.path.join(args.results_dir, label_list[i] + '_raw_masks_flows.pkl'), 'wb') as rmf_pkl:
-                pickle.dump(prediction_list[i], rmf_pkl)
-            tifffile.imwrite(os.path.join(args.results_dir, 'raw_predictions_tiffs', label_list[i] + '.tif'),
-                             prediction_list[i])
-        end_eval = time.time()
-        tte = time.strftime("%H:%M:%S", time.gmtime(end_eval - start_eval))
-        print('Time to evaluate: {}'.format(tte))
-
-        with open(os.path.join(args.results_dir, 'counted_cells.txt'), 'w') as cc:
-            predicted_count = 0
-            true_count = 0
-            for i in range(len(test_dataset)):
-                num_masks = len(np.unique(masks[i]))-1
-                num_labels = len(np.unique(test_dataset.labels[i]))-1
-                cc.write('{}:\nPredicted: {}; True: {}\n'.format(test_dataset.d_list[i], num_masks, num_labels))
-                predicted_count += num_masks
-                true_count += num_labels
-            cc.write('\nTotal cell count:\nPredicted: {}; True: {}\n'.format(predicted_count, true_count))
-            counting_error = (abs(true_count - predicted_count)) / true_count
-            cc.write('Total counting error rate: {:.6f}'.format(counting_error))
-            print('Total cell count:\nPredicted: {}; True: {}'.format(predicted_count, true_count))
-            print('Total counting error rate: {}'.format(counting_error))
-
-            # AP Calculation
-            # TODO: Have working with 3D as well (possibly re-initialize test dataset without resizing)
-            if args.calculate_ap:
-                labels = []
-                for l in test_dataset.l_list:
-                    # label = as_tensor(cv2.imread(l, -1).astype('int16'))
-                    label = as_tensor(tifffile.imread(l).astype('int16'))
-                    label = squeeze(reformat(label), dim=0).numpy().astype('int16')
-                    labels.append(label)
-                tau = np.arange(0.0, 1.01, 0.01)
-                ap_info = average_precision(labels, masks, threshold=tau)
-                ap_per_im = ap_info[0]
-                ap_overall = np.average(ap_per_im, axis=0)
-                tp_overall = np.sum(ap_info[1], axis=0).astype('int32')
-                fp_overall = np.sum(ap_info[2], axis=0).astype('int32')
-                fn_overall = np.sum(ap_info[3], axis=0).astype('int32')
-                plt.figure()
-                plt.plot(tau, ap_overall)
-                plt.title('Average Precision for CellTranspose on {} Dataset'.format(args.dataset_name))
-                plt.xlabel(r'IoU Matching Threshold $\tau$')
-                plt.ylabel('Average Precision')
-                plt.yticks(np.arange(0, 1.01, step=0.2))
-                plt.savefig(os.path.join(args.results_dir, 'AP Results'))
-                cc.write('\nAP Results at IoU threshold 0.5: AP = {}\nTrue Postive: {}; False Positive: {};'
-                         'False Negative: {}\n'.format(ap_overall[51], tp_overall[51], fp_overall[51], fn_overall[51]))
-                print('AP Results at IoU threshold 0.5: AP = {}\nTrue Postive: {}; False Positive: {}; '
-                      'False Negative: {}'.format(ap_overall[51], tp_overall[51], fp_overall[51], fn_overall[51]))
-                false_error = (fp_overall[51] + fn_overall[51]) / (tp_overall[51] + fn_overall[51])
-                cc.write('Total false error rate: {:.6f}'.format(false_error))
-                print('Total false error rate: {:.6f}'.format(false_error))
-                with open(os.path.join(args.results_dir, '{}_AP_Results.pkl'.format(args.dataset_name)), 'wb') as apr:
-                    pickle.dump((tau, ap_overall, tp_overall, fp_overall, fn_overall, false_error), apr)
-
+        save_pred(masks,test_dataset,prediction_list,label_list,args.calculate_ap,args.results_dir,args.dataset_name)
     else:
         test_dataset_3D = ValTestCellTransposeData3D('3D_test', args.test_dataset, args.n_chan, do_3D=args.do_3D,
                                                      from_3D=args.test_from_3D, evaluate=True,
@@ -264,12 +189,11 @@ if not args.train_only:
         eval_network_3D(model, eval_dl_3D, device, patch_per_batch=args.batch_size,
                         patch_size=args.patch_size, min_overlap=args.min_overlap, results_dir=args.results_dir)
         
-        end_eval = time.time() - start_eval
         
-        tte = time.strftime("%H:%M:%S", time.gmtime(end_eval - start_eval))
-        print('Time to evaluate: {}'.format(end_eval))
         # TODO: perform AP evaluation for 3D
-        
+    end_eval = time.time()
+    tte = time.strftime("%H:%M:%S", time.gmtime(end_eval - start_eval))
+    print('Time to evaluate: {}'.format(tte))    
 
 
 print(args.results_dir)
