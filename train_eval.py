@@ -121,7 +121,6 @@ def adapt_network(model: nn.Module, source_dl, target_dl, val_dl, sas_mask_loss,
         else:
             print('Train loss: {:.3f}'.format(mean(train_epoch_losses)))
 
-
     print('Train time: {}'.format(time.strftime("%H:%M:%S", time.gmtime(time.time() - start_train))))
     return train_losses, val_losses
 
@@ -131,7 +130,6 @@ def validate_network(model, data_loader, flow_loss, class_loss, device):
     val_epoch_losses = []
     with no_grad():
         for (val_sample_data, val_sample_labels) in tqdm(data_loader, desc='Performing validation'):
-            # When not using precalculated flows, makes up majority of validation time (~85-90%)
             val_sample_data = val_sample_data.to(device)
             val_sample_labels = val_sample_labels.to(device)
             output = model(val_sample_data)
@@ -144,19 +142,13 @@ def validate_network(model, data_loader, flow_loss, class_loss, device):
 
 # Evaluation - due to image size mismatches, must currently be run one image at a time
 def eval_network(model: nn.Module, data_loader: DataLoader, device, patch_per_batch, patch_size, min_overlap):
-
-    # temporary for speedup
-    patch_per_batch = 32
-
     model.eval()
     with no_grad():
         masks = []
         label_list = []
         pred_list = []
         # original_dims_list = []
-        for (sample_data, sample_labels, label_files, original_dims) in tqdm(data_loader,
-                                                                             desc='Evaluating Test Dataset'):
-            
+        for (sample_data, sample_labels, label_files, original_dims) in tqdm(data_loader, desc='Evaluating Test Dataset'):
             resized_dims = (sample_data.shape[2], sample_data.shape[3])
             padding = sample_data.shape[2] < patch_size[0] or sample_data.shape[3] < patch_size[1]
             # Add padding if image is smaller than patch size in at least one dimension
@@ -204,16 +196,11 @@ def eval_network(model: nn.Module, data_loader: DataLoader, device, patch_per_ba
 
 
 # Evaluation - due to image size mismatches, must currently be run one image at a time
-def eval_network_3D(model: nn.Module, data_loader: DataLoader, device, patch_per_batch, patch_size, min_overlap,results_dir):
-
-    # temporary for speedup
-    patch_per_batch = 256
-    
+def eval_network_3D(model: nn.Module, data_loader: DataLoader, device,
+                    patch_per_batch, patch_size, min_overlap, results_dir):
     model.eval()
     with no_grad():
-                
         for (data_vol, label_vol, label_files, X, dX,dim) in data_loader:
-            
             pred_yx = []
             pred_zx = []
             pred_zy = []

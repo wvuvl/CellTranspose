@@ -20,6 +20,7 @@ parser.add_argument('--learning-rate', type=float, default=0.01)
 parser.add_argument('--momentum', type=float, default=0.9)
 parser.add_argument('--weight-decay', type=float, default=1e-5)
 parser.add_argument('--batch-size', type=int, default=2)
+parser.add_argument('--eval-batch-size', type=int, default=256)
 parser.add_argument('--epochs', type=int, default=10)
 parser.add_argument('--step-gamma', type=float, default=0.1)
 parser.add_argument('--k', type=int, default=20)
@@ -173,7 +174,7 @@ if not args.train_only:
                                                 from_3D=args.test_from_3D, evaluate=True,
                                                 resize=Resize(args.median_diams))
         eval_dl = DataLoader(test_dataset, batch_size=1, shuffle=False)
-        masks, prediction_list, label_list = eval_network(model, eval_dl, device, patch_per_batch=args.batch_size,
+        masks, prediction_list, label_list = eval_network(model, eval_dl, device, patch_per_batch=args.eval_batch_size,
                                                           patch_size=args.patch_size, min_overlap=args.min_overlap)
         save_pred(masks, test_dataset, prediction_list, label_list,
                   args.calculate_ap, args.results_dir, args.dataset_name)
@@ -182,7 +183,7 @@ if not args.train_only:
                                                      from_3D=args.test_from_3D, evaluate=True,
                                                      resize=Resize(args.median_diams))
         eval_dl_3D = DataLoader(test_dataset_3D, batch_size=1, shuffle=False)
-        eval_network_3D(model, eval_dl_3D, device, patch_per_batch=args.batch_size,
+        eval_network_3D(model, eval_dl_3D, device, patch_per_batch=args.eval_batch_size,
                         patch_size=args.patch_size, min_overlap=args.min_overlap, results_dir=args.results_dir)
         
         # TODO: perform AP evaluation for 3D
