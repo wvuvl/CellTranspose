@@ -63,36 +63,24 @@ class CellTransposeData(Dataset):
         self.evaluate = evaluate
         self.d_list_3D = []
         self.l_list_3D = []
-        
-        if isinstance(data_dirs, list):  # TODO: Determine how to not treat input as list (if necessary)
-            self.d_list = []
-            self.l_list = []
-            for dir_i in data_dirs:
-                self.d_list = self.d_list + sorted([dir_i + os.sep + 'data' + os.sep + f for f in
-                                                    os.listdir(os.path.join(dir_i, 'data')) if f.lower()
-                                                   .endswith('.tiff') or f.lower().endswith('.tif')
-                                                    or f.lower().endswith('.png')])
-                self.l_list = self.l_list + sorted([dir_i + os.sep + 'labels' + os.sep + f for f in
-                                                    os.listdir(os.path.join(dir_i, 'labels')) if f.lower()
-                                                   .endswith('.tiff') or f.lower().endswith('.tif')
-                                                    or f.lower().endswith('.png')])
-        else:
-            self.d_list = sorted([data_dirs + os.sep + 'data' + os.sep + f for f in os.listdir(os.path.join(
-                data_dirs, 'data')) if f.lower().endswith('.tiff') or f.lower().endswith('.tif')
-                                  or f.lower().endswith('.png')])
-            self.l_list = sorted([data_dirs + os.sep + 'labels' + os.sep + f for f in os.listdir(os.path.join(
-                data_dirs, 'labels')) if f.lower().endswith('.tiff') or f.lower().endswith('.tif')
-                                  or f.lower().endswith('.png')])
+
+        self.d_list = []
+        self.l_list = []
+        for dir_i in data_dirs:
+            self.d_list = self.d_list + sorted([dir_i + os.sep + 'data' + os.sep + f for f in
+                                                os.listdir(os.path.join(dir_i, 'data')) if f.lower()
+                                               .endswith('.tiff') or f.lower().endswith('.tif')
+                                                or f.lower().endswith('.png')])
+            self.l_list = self.l_list + sorted([dir_i + os.sep + 'labels' + os.sep + f for f in
+                                                os.listdir(os.path.join(dir_i, 'labels')) if f.lower()
+                                               .endswith('.tiff') or f.lower().endswith('.tif')
+                                                or f.lower().endswith('.png')])
         if pf_dirs is not None:
-            if isinstance(pf_dirs, list):  # TODO: Determine how to not treat input as list (if necessary)
-                self.pf_list = []
-                for dir_i in pf_dirs:
-                    self.pf_list = self.pf_list + sorted([dir_i + os.sep + 'labels' + os.sep + f for f in
-                                                          os.listdir(os.path.join(dir_i, 'labels')) if f.lower()
-                                                         .endswith('.tiff') or f.lower().endswith('.tif')])
-            else:
-                self.pf_list = sorted([pf_dirs + os.sep + 'labels' + os.sep + f for f in os.listdir(os.path.join(
-                    pf_dirs, 'labels')) if f.lower().endswith('.tiff') or f.lower().endswith('.tif')])
+            self.pf_list = []
+            for dir_i in pf_dirs:
+                self.pf_list = self.pf_list + sorted([dir_i + os.sep + 'labels' + os.sep + f for f in
+                                                      os.listdir(os.path.join(dir_i, 'labels')) if f.lower()
+                                                     .endswith('.tiff') or f.lower().endswith('.tif')])
         self.data = []
         self.labels = []
         self.original_dims = []
@@ -157,7 +145,7 @@ class TrainCellTransposeData(CellTransposeData):
             print('Training preprocessed data provided...')
             self.data = as_tensor(np.load(os.path.join(self.preprocessed_data, 'train_preprocessed_data.npy')))
             self.labels = as_tensor(np.load(os.path.join(self.preprocessed_data, 'train_preprocessed_labels.npy')))
-        elif self.do_every_epoch == False and self.preprocessed_data is None:
+        elif self.do_every_epoch is False and self.preprocessed_data is None:
             
             data_samples = tensor([])
             label_samples = tensor([])
@@ -168,10 +156,8 @@ class TrainCellTransposeData(CellTransposeData):
                                                     random_scale=random.uniform(0.75, 1.25))
                     data, labels = random_horizontal_flip(data, labels)
                     # data, labels = random_rotate(data, labels)
-
                     data, labels = train_generate_rand_crop(unsqueeze(data, 0), labels,
                                                             crop=crop_size, lbl_flows=has_flows)
-
                     if labels.ndim == 3:
                         labels = as_tensor(np.array([labels_to_flows(labels[i].numpy()) for i in range(len(labels))]),
                                            dtype=float32)

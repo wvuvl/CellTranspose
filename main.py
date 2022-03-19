@@ -168,7 +168,6 @@ if not args.eval_only:
     
 if not args.train_only:
     start_eval = time.time()
-
     if not args.test_from_3D:
         test_dataset = ValTestCellTransposeData('Test', args.test_dataset, args.n_chan, do_3D=args.do_3D,
                                                 from_3D=args.test_from_3D, evaluate=True,
