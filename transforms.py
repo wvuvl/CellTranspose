@@ -4,49 +4,33 @@ import cv2
 import numpy as np
 import copy
 from cellpose_src.dynamics import masks_to_flows, follow_flows, get_masks, compute_masks
-from cellpose_src.utils import diameters, fill_holes_and_remove_small_masks
+from cellpose_src.utils import fill_holes_and_remove_small_masks
 from cellpose_src.transforms import _taper_mask
 import random
 import torchvision.transforms.functional as TF
 
-# TODO: Need to update to work for all situations
-#  (currently only for when 1-channel 2D image doesn't include channel dim)
-def reformat(x, n_chan=1, is_pf=False, do_3D=False):
+
+def reformat(x, n_chan=1, do_3D=False):
     """
     Reformats raw input data with the following expected output:
-    If 2-D -> torch.tensor with shape [1, x_dim, y_dim]
-    If 3-D -> torch.tensor with shape [1, x_dim, y_dim, z_dim]
+    If 2-D -> torch.tensor with shape [channels, x_dim, y_dim]
+    If 3-D -> torch.tensor with shape [channels, x_dim, y_dim, z_dim]
     """
-    if is_pf:
-        if x.ndim == 3:  # Likely flows
-            x = x.reshape(1, x.shape[0], x.shape[1], x.shape[2])
-    else:
-        if not do_3D:
-            if x.dim() == 2:
-                x = x.view(1, x.shape[0], x.shape[1])
-                x = torch.cat((x, torch.zeros((n_chan - 1, x.shape[1], x.shape[2]))))
-            
-            # Currently transforms multi-channel input to greyscale
-            elif x.dim() == 3:
-                # TODO: copying Cellpose implementation, find a cleaner method for solving this
-                if x.shape[2] < 10:
-                    info_chans = [len(torch.unique(x[:, :, i])) > 1 for i in range(x.shape[2])]
-                    x = x[:, :, info_chans]
-                    x = torch.tensor(np.transpose(x.numpy(), (2, 0, 1))[:n_chan])  # Remove any additional channels
-                    # Concatenate empty channels if image has fewer than the specified number of channels
-                    if x.shape[0] < n_chan:
-                        zeros = torch.zeros((n_chan - x.shape[0]), x.shape[1], x.shape[2])
-                        x = torch.cat((x, zeros))
-                else:
-                    x = torch.transpose(torch.transpose(x, 2, 0), 1, 0)  # TODO: Quick fix, solve this later
-                    info_chans = [len(torch.unique(x[:, :, i])) > 1 for i in range(x.shape[2])]
-                    x = x[:, :, info_chans]
-                    x = torch.tensor(np.transpose(x.numpy(), (2, 0, 1))[:n_chan])  # Remove any additional channels
-                    # Concatenate empty channels if image has fewer than the specified number of channels
-                    if x.shape[0] < n_chan:
-                        zeros = torch.zeros((n_chan - x.shape[0]), x.shape[1], x.shape[2])
-                        x = torch.cat((x, zeros))
-        #else
+    if not do_3D:
+        if x.dim() == 2:
+            x = x.view(1, x.shape[0], x.shape[1])
+            x = torch.cat((x, torch.zeros((n_chan - 1, x.shape[1], x.shape[2]))))
+        elif x.dim() == 3:
+            if x.shape[2] > x.shape[0]:
+                x = x.permute(1, 2, 0)
+            info_chans = [len(torch.unique(x[:, :, i])) > 1 for i in range(x.shape[2])]
+            x = x[:, :, info_chans]
+            x = torch.tensor(np.transpose(x.numpy(), (2, 0, 1))[:n_chan])  # Remove any additional channels
+            # Concatenate empty channels if image has fewer than the specified number of channels
+            if x.shape[0] < n_chan:
+                zeros = torch.zeros((n_chan - x.shape[0]), x.shape[1], x.shape[2])
+                x = torch.cat((x, zeros))
+    # else: handle 3-D scenario here
     return x
 
 
@@ -74,16 +58,15 @@ class Resize(object):
 
 
 def resize_from_labels(x, y, default_med, pf=None, random_scale=1.0, diameter=None):
-    # calculate diameters using only full cells in image - remove cut off cells during median diameter calculation
-    
     unq = torch.unique(y)
     if len(unq) == 1 and unq == 0:
         return x, y
-    
+
+    # calculate diameters using only full cells in image - remove cut off cells during median diameter calculation
     y_cf = copy.deepcopy(torch.squeeze(y, dim=0))
     y_cf = remove_cut_cells(y_cf)
 
-    med = diam_range(y_cf, percentile=50)*random_scale if diameter is None else diameter
+    med = diam_range(y_cf, percentile=75)*random_scale if diameter is None else diameter
     med = med if med >= 12 else 12  # Note: following work from TissueNet
     if med > 0:
         rescale_w, rescale_h = default_med[0] / med, default_med[1] / med
@@ -140,16 +123,13 @@ def followflows(flows):
     niter = 400; interp = True; use_gpu = True; cellprob_threshold = 0.0; flow_threshold = 0.4; min_size = 15
     masks = torch.zeros((flows.shape[0], flows.shape[-2], flows.shape[-1]))
     for i, flow in enumerate(flows):
-        
         cellprob = flow[0].cpu().numpy()
         dP = flow[1:].cpu().numpy()
         
         p = follow_flows(-1 * dP * (cellprob > cellprob_threshold) / 5., niter, interp, use_gpu)
-        
         maski = get_masks(p, iscell=(cellprob > cellprob_threshold), flows=dP, threshold=flow_threshold)
         maski = fill_holes_and_remove_small_masks(maski, min_size=min_size)
         masks[i] = torch.tensor(maski)
-    
     return masks
 
 def followflows3D(dP,cellprob):
@@ -185,7 +165,6 @@ def generate_patches(data, label=None, patch=(96, 96), min_overlap=(64, 64), lbl
             else:
                 l_patch = label[0, y_patches[j]:y_patches[j] + patch[1], x_patches[i]:x_patches[i] + patch[0]]
             patch_label[num_y_patches * i + j] = l_patch
-
     return patch_data, patch_label
 
 
@@ -237,15 +216,13 @@ def remove_empty_label_patches(data, labels):
     return data, labels
 
 
+# Creates recombined images after averaging together
 def recombine_patches(labels, im_dims, min_overlap):
-    # Creates recombined images after averaging together
-
     num_x_patches = math.ceil((im_dims[1] - min_overlap[0]) / (labels.shape[3] - min_overlap[0]))
     x_patches = np.linspace(0, im_dims[1] - labels.shape[3], num_x_patches, dtype=int)
     num_y_patches = math.ceil((im_dims[0] - min_overlap[1]) / (labels.shape[2] - min_overlap[1]))
     y_patches = np.linspace(0, im_dims[0] - labels.shape[2], num_y_patches, dtype=int)
 
-    # mask_patch = torch.ones((labels.shape[3], labels.shape[2])).to('cuda')
     mask_patch = torch.tensor(_taper_mask(lx=labels.shape[3], ly=labels.shape[2], sig=7.5)).to('cuda')
     num_ims = labels.shape[0] // (num_x_patches * num_y_patches)
     recombined_labels = torch.zeros((num_ims, 3, im_dims[0], im_dims[1])).to('cuda')
@@ -259,18 +236,15 @@ def recombine_patches(labels, im_dims, min_overlap):
                     labels[(b * num_y_patches * num_x_patches) + (num_y_patches * i + j)] * mask_patch
                 recombined_mask[b, :, y_patches[j]:y_patches[j] + labels.shape[2],
                                 x_patches[i]:x_patches[i] + labels.shape[3]] += mask_patch
-
     recombined_labels /= recombined_mask
-
     return recombined_labels
 
 
 def diam_range(masks, percentile=75):
-    masks = np.int32(masks)  # Cast as np for convenience
+    masks = np.int32(masks)
     masks = remove_cut_cells(masks)
     x_ranges = []
     y_ranges = []
-
     diams = []
     uniques = np.unique(masks)[1:]
     for u in uniques:
@@ -278,17 +252,15 @@ def diam_range(masks, percentile=75):
         x_ranges.append(np.amax(inds[1]) - np.amin(inds[1]))
         y_ranges.append(np.amax(inds[0]) - np.amin(inds[0]))
         diams.append(int(math.sqrt(x_ranges[-1] * y_ranges[-1])))
-
     return np.percentile(np.array(diams), percentile)
 
 
 def diam_range_3D(masks, percentile=75):
-    masks = np.int32(masks)  # Cast as np for convenience
+    masks = np.int32(masks)
     x_ranges = []
     y_ranges = []
     z_ranges = []
     diams = []
-
     uniques = np.unique(masks)[1:]
 
     for u in uniques:
@@ -306,4 +278,3 @@ def cell_range(masks, mask_val):
     x_range = np.amax(inds[1]) - np.amin(inds[1])
     y_range = np.amax(inds[0]) - np.amin(inds[0])
     return int(math.sqrt(x_range * y_range))
-
