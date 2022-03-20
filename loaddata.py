@@ -240,7 +240,7 @@ def train_generate_rand_crop(data, label=None, crop=(96, 96), lbl_flows=False):
     return patch_data, patch_label
 
 
-class ValTestCellTransposeData(CellTransposeData):
+class EvalCellTransposeData(CellTransposeData):
     def __init__(self, split_name, data_dirs, n_chan, pf_dirs=None, do_3D=False, from_3D=False, plane='yz',
                  evaluate=False, resize: Resize = None):
         self.from_3D = from_3D
@@ -279,7 +279,7 @@ class ValTestCellTransposeData(CellTransposeData):
 
 
 # final version of 3D validation dataloader
-class ValTestCellTransposeData3D(CellTransposeData):
+class EvalCellTransposeData3D(CellTransposeData):
     def __init__(self, split_name, data_dirs, n_chan, pf_dirs=None, do_3D=False, from_3D=False, plane='xy',
                  evaluate=False, resize: Resize = None):
         self.pf_dirs = pf_dirs
