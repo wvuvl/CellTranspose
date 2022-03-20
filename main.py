@@ -14,6 +14,7 @@ from train_eval import train_network, adapt_network, eval_network, eval_network_
 from calculate_results import produce_logfile, plot_loss, save_pred
 
 parser = argparse.ArgumentParser()
+
 parser.add_argument('--n-chan', type=int,
                     help='Maximum number of channels in input images (i.e. 2 for cytoplasm + nuclei images).')
 parser.add_argument('--learning-rate', type=float, default=0.01)
@@ -33,17 +34,16 @@ parser.add_argument('--median-diams', type=int,
                          ' that this variable remains the same as the given model.', default=30)
 parser.add_argument('--patch-size', type=int, help='Size of image patches with which to tile.', default=112)
 parser.add_argument('--min-overlap', type=int, help='Amount of overlap to use for tiling during testing.', default=84)
+
+parser.add_argument('--do-adaptation', help='Whether to perform domain adaptation or standard training.',
+                    action='store_true')
+parser.add_argument('--pretrained-model', help='Location of pretrained model to load in. Default: None')
 parser.add_argument('--dataset-name', help='Name of dataset to use for reporting results (omit the word "Dataset").')
 parser.add_argument('--results-dir', help='Folder in which to save experiment results.')
 parser.add_argument('--train-only', help='Only perform training, no evaluation (mutually exclusive with "eval-only").',
                     action='store_true')
 parser.add_argument('--eval-only', help='Only perform evaluation, no training (mutually exclusive with "train-only").',
                     action='store_true',)
-parser.add_argument('--pretrained-model', help='Location of pretrained model to load in. Default: None')
-parser.add_argument('--do-adaptation', help='Whether to perform domain adaptation or standard training.',
-                    action='store_true')
-parser.add_argument('--no-adaptation-loss', help='Train directly using standard loss on target samples'
-                                                 ' (for testing purposes)', action='store_true')
 parser.add_argument('--do-3D', help='Whether or not to use CellTranspose3D (Must use 3D volumes).', action='store_true')
 parser.add_argument('--train-dataset', help='The directory(s) containing (source) data to be used for training.',
                     nargs='+')
@@ -62,8 +62,8 @@ parser.add_argument('--target-from-3D', help='Whether the input target data is 3
                     action='store_true')
 parser.add_argument('--target-flows', help='The directory(s) containing pre-calculated flows. If left empty,'
                                            ' flows will be calculated manually.', nargs='+')
-parser.add_argument('--calculate-ap', help='Whether to perform AP calculation at the end of evaluation.',
-                    action='store_true')
+parser.add_argument('--no-adaptation-loss', help='Train directly using standard loss on target samples'
+                                                 ' (for experimentation purposes)', action='store_true')
 parser.add_argument('--save-dataset', help='Name of directory to save training dataset to:'
                                            ' if None, will not save dataset.')
 parser.add_argument('--load-from-torch', help='If true, assumes dataset is being loaded from torch files, with no'
@@ -175,8 +175,7 @@ if not args.train_only:
         eval_dl = DataLoader(test_dataset, batch_size=1, shuffle=False)
         masks, prediction_list, label_list = eval_network(model, eval_dl, device, patch_per_batch=args.eval_batch_size,
                                                           patch_size=args.patch_size, min_overlap=args.min_overlap)
-        save_pred(masks, test_dataset, prediction_list, label_list,
-                  args.calculate_ap, args.results_dir, args.dataset_name)
+        save_pred(masks, test_dataset, prediction_list, label_list, args.results_dir, args.dataset_name)
     else:
         test_dataset_3D = ValTestCellTransposeData3D('3D_test', args.test_dataset, args.n_chan, do_3D=args.do_3D,
                                                      from_3D=args.test_from_3D, evaluate=True,

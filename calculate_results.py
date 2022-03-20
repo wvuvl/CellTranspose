@@ -104,7 +104,7 @@ def plot_loss(train_losses, results_dir, val_dl=None, val_losses=None):
     plt.savefig(os.path.join(results_dir, 'Training-Validation Losses'))
 
 
-def save_pred(masks, test_dataset, prediction_list, label_list, calculate_ap, results_dir, dataset_name):
+def save_pred(masks, test_dataset, prediction_list, label_list, results_dir, dataset_name):
     """ Saves raw predictions and masks. Counts cells and computes AP.
     
     Parameters
@@ -114,7 +114,6 @@ def save_pred(masks, test_dataset, prediction_list, label_list, calculate_ap, re
         test_dataset: loaded test dataset
         prediction_list: raw predictions
         label_list: list containing file names of corresponding labels
-        calculate_ap: true for calculting AP
         results_dir: directory where results are stored
         dataset_name: name of the dataset
     """
@@ -145,37 +144,36 @@ def save_pred(masks, test_dataset, prediction_list, label_list, calculate_ap, re
         print('Total counting error rate: {}'.format(counting_error))
 
         # AP Calculation
-        if calculate_ap:
-            labels = []
-            for l in test_dataset.l_list:
-                
-                if os.path.splitext(l)[1] == 'tif': 
-                    label = as_tensor(tifffile.imread(l).astype('int16'))
-                else: 
-                    label = as_tensor(cv2.imread(l, -1).astype('int16'))
-                
-                label = squeeze(reformat(label), dim=0).numpy().astype('int16')
-                labels.append(label)
-            tau = np.arange(0.0, 1.01, 0.01)
-            ap_info = average_precision(labels, masks, threshold=tau)
-            ap_per_im = ap_info[0]
-            ap_overall = np.average(ap_per_im, axis=0)
-            tp_overall = np.sum(ap_info[1], axis=0).astype('int32')
-            fp_overall = np.sum(ap_info[2], axis=0).astype('int32')
-            fn_overall = np.sum(ap_info[3], axis=0).astype('int32')
-            plt.figure()
-            plt.plot(tau, ap_overall)
-            plt.title('Average Precision for CellTranspose on {} Dataset'.format(dataset_name))
-            plt.xlabel(r'IoU Matching Threshold $\tau$')
-            plt.ylabel('Average Precision')
-            plt.yticks(np.arange(0, 1.01, step=0.2))
-            plt.savefig(os.path.join(results_dir, 'AP Results'))
-            cc.write('\nAP Results at IoU threshold 0.5: AP = {}\nTrue Postive: {}; False Positive: {};'
-                     'False Negative: {}\n'.format(ap_overall[51], tp_overall[51], fp_overall[51], fn_overall[51]))
-            print('AP Results at IoU threshold 0.5: AP = {}\nTrue Postive: {}; False Positive: {}; '
-                  'False Negative: {}'.format(ap_overall[51], tp_overall[51], fp_overall[51], fn_overall[51]))
-            false_error = (fp_overall[51] + fn_overall[51]) / (tp_overall[51] + fn_overall[51])
-            cc.write('Total false error rate: {:.6f}'.format(false_error))
-            print('Total false error rate: {:.6f}'.format(false_error))
-            with open(os.path.join(results_dir, '{}_AP_Results.pkl'.format(dataset_name)), 'wb') as apr:
-                pickle.dump((tau, ap_overall, tp_overall, fp_overall, fn_overall, false_error), apr)
+        labels = []
+        for l in test_dataset.l_list:
+
+            if os.path.splitext(l)[1] == 'tif':
+                label = as_tensor(tifffile.imread(l).astype('int16'))
+            else:
+                label = as_tensor(cv2.imread(l, -1).astype('int16'))
+
+            label = squeeze(reformat(label), dim=0).numpy().astype('int16')
+            labels.append(label)
+        tau = np.arange(0.0, 1.01, 0.01)
+        ap_info = average_precision(labels, masks, threshold=tau)
+        ap_per_im = ap_info[0]
+        ap_overall = np.average(ap_per_im, axis=0)
+        tp_overall = np.sum(ap_info[1], axis=0).astype('int32')
+        fp_overall = np.sum(ap_info[2], axis=0).astype('int32')
+        fn_overall = np.sum(ap_info[3], axis=0).astype('int32')
+        plt.figure()
+        plt.plot(tau, ap_overall)
+        plt.title('Average Precision for CellTranspose on {} Dataset'.format(dataset_name))
+        plt.xlabel(r'IoU Matching Threshold $\tau$')
+        plt.ylabel('Average Precision')
+        plt.yticks(np.arange(0, 1.01, step=0.2))
+        plt.savefig(os.path.join(results_dir, 'AP Results'))
+        cc.write('\nAP Results at IoU threshold 0.5: AP = {}\nTrue Postive: {}; False Positive: {};'
+                 'False Negative: {}\n'.format(ap_overall[51], tp_overall[51], fp_overall[51], fn_overall[51]))
+        print('AP Results at IoU threshold 0.5: AP = {}\nTrue Postive: {}; False Positive: {}; '
+              'False Negative: {}'.format(ap_overall[51], tp_overall[51], fp_overall[51], fn_overall[51]))
+        false_error = (fp_overall[51] + fn_overall[51]) / (tp_overall[51] + fn_overall[51])
+        cc.write('Total false error rate: {:.6f}'.format(false_error))
+        print('Total false error rate: {:.6f}'.format(false_error))
+        with open(os.path.join(results_dir, '{}_AP_Results.pkl'.format(dataset_name)), 'wb') as apr:
+            pickle.dump((tau, ap_overall, tp_overall, fp_overall, fn_overall, false_error), apr)
