@@ -91,6 +91,7 @@ args.min_overlap = (args.min_overlap, args.min_overlap)
 ttt = None
 tte = None
 train_losses = None
+target_dataset = None
 
 model = CellTranspose(channels=args.n_chan, device=device)
 #
@@ -168,10 +169,14 @@ if not args.eval_only:
     
 if not args.train_only:
     start_eval = time.time()
+    if target_dataset is not None:
+        target_labels = target_dataset.labels
+    else:
+        target_labels = None
     if not args.test_from_3D:
         test_dataset = EvalCellTransposeData('Test', args.test_dataset, args.n_chan, do_3D=args.do_3D,
                                              from_3D=args.test_from_3D, evaluate=True,
-                                             resize=Resize(args.median_diams))
+                                             resize=Resize(args.median_diams, target_labels=target_labels))
         eval_dl = DataLoader(test_dataset, batch_size=1, shuffle=False)
         masks, prediction_list, label_list = eval_network(model, eval_dl, device, patch_per_batch=args.eval_batch_size,
                                                           patch_size=args.patch_size, min_overlap=args.min_overlap)
@@ -179,7 +184,7 @@ if not args.train_only:
     else:
         test_dataset_3D = EvalCellTransposeData3D('3D_test', args.test_dataset, args.n_chan, do_3D=args.do_3D,
                                                   from_3D=args.test_from_3D, evaluate=True,
-                                                  resize=Resize(args.median_diams))
+                                                  resize=Resize(args.median_diams), target_labels=target_labels)
         eval_dl_3D = DataLoader(test_dataset_3D, batch_size=1, shuffle=False)
         eval_network_3D(model, eval_dl_3D, device, patch_per_batch=args.eval_batch_size,
                         patch_size=args.patch_size, min_overlap=args.min_overlap, results_dir=args.results_dir)

@@ -280,8 +280,8 @@ class EvalCellTransposeData(CellTransposeData):
 
 # final version of 3D validation dataloader
 class EvalCellTransposeData3D(CellTransposeData):
-    def __init__(self, split_name, data_dirs, n_chan, pf_dirs=None, do_3D=False, from_3D=False, plane='xy',
-                 evaluate=False, resize: Resize = None):
+    def __init__(self, split_name, data_dirs, n_chan, pf_dirs=None, do_3D=False,
+                 from_3D=False, plane='xy', evaluate=False, resize: Resize = None):
         self.pf_dirs = pf_dirs
         self.resize = resize
         self.n_chan = n_chan

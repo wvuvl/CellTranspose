@@ -48,26 +48,38 @@ def normalize1stto99th(x):
 
 
 class Resize(object):
-    def __init__(self, default_med):
+    def __init__(self, default_med, target_labels=None):
         self.default_med = default_med
+        self.target_labels = target_labels
 
     def __call__(self, x, y, pf=None, random_scale=1.0, diameter=None):
         original_dims = y.shape[1], y.shape[2]
-        x, y = resize_from_labels(x, y, self.default_med, pf, random_scale=random_scale, diameter=diameter)
+        x, y = resize_from_labels(x, y, self.default_med, pf, random_scale=random_scale,
+                                  diameter=diameter, target_labels=self.target_labels)
         return x, y, original_dims
 
 
-def resize_from_labels(x, y, default_med, pf=None, random_scale=1.0, diameter=None):
+def resize_from_labels(x, y, default_med, pf=None, random_scale=1.0, diameter=None, target_labels=None):
     unq = torch.unique(y)
     if len(unq) == 1 and unq == 0:
         return x, y
 
-    # calculate diameters using only full cells in image - remove cut off cells during median diameter calculation
-    y_cf = copy.deepcopy(torch.squeeze(y, dim=0))
-    y_cf = remove_cut_cells(y_cf)
+    # calculate diameters, using only full cells in the given image or images
+    if target_labels is None:
+        y_cf = copy.deepcopy(torch.squeeze(y, dim=0))
+        y_cf = remove_cut_cells(y_cf)
+        diams = diam_range(y_cf)
+        med = np.percentile(np.array(diams), 75)*random_scale
+        med = med if med > 12 else 12  # Note: following work from TissueNet
+    else:
+        diams = []
+        for t_label in target_labels:
+            t_cf = copy.deepcopy(torch.squeeze(t_label, dim=0))
+            t_cf = remove_cut_cells(t_cf)
+            diams = diams + diam_range(t_cf)
+        med = np.percentile(np.array(diams), 75)*random_scale
+        med = med if med > 12 else 12
 
-    med = diam_range(y_cf, percentile=75)*random_scale if diameter is None else diameter
-    med = med if med >= 12 else 12  # Note: following work from TissueNet
     if med > 0:
         rescale_w, rescale_h = default_med[0] / med, default_med[1] / med
         x = np.transpose(x.numpy(), (1, 2, 0))
@@ -240,7 +252,7 @@ def recombine_patches(labels, im_dims, min_overlap):
     return recombined_labels
 
 
-def diam_range(masks, percentile=75):
+def diam_range(masks):
     masks = np.int32(masks)
     masks = remove_cut_cells(masks)
     x_ranges = []
@@ -252,7 +264,8 @@ def diam_range(masks, percentile=75):
         x_ranges.append(np.amax(inds[1]) - np.amin(inds[1]))
         y_ranges.append(np.amax(inds[0]) - np.amin(inds[0]))
         diams.append(int(math.sqrt(x_ranges[-1] * y_ranges[-1])))
-    return np.percentile(np.array(diams), percentile)
+    return diams
+    # return np.percentile(np.array(diams), percentile)
 
 
 def diam_range_3D(masks, percentile=75):
