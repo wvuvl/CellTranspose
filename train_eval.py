@@ -35,7 +35,6 @@ def train_network(model, train_dl, val_dl, class_loss, flow_loss, optimizer, sch
             optimizer.step()
 
         scheduler.step()
-
         train_epoch_loss = mean(train_epoch_losses)
         train_losses.append(train_epoch_loss)
         if val_dl is not None:

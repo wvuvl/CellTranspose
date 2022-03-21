@@ -71,7 +71,6 @@ class ContrastiveFlowLoss:
         # Normalize labels and outputs
         z_source = torch.div(z_source, torch.linalg.norm(z_source, dim=1)[:, None, :])
         z_target = torch.div(z_target, torch.linalg.norm(z_target, dim=1)[:, None, :])
-        flow_source = lbl_source[:, 1:]
         mask_target = lbl_target[:, 0]
         flow_target = lbl_target[:, 1:]
         flow_target_norm = torch.div(flow_target, torch.linalg.norm(flow_target, dim=1)[:, None, :])
@@ -81,7 +80,6 @@ class ContrastiveFlowLoss:
         # similarity between target label and source output
         lbl_match = torch.matmul(torch.transpose(torch.flatten(flow_target_norm, 2, -1), 1, 2),
                                  torch.flatten(z_source.detach(), 2, -1)).reshape(-1, p_size, p_size, p_size, p_size)
-
         # position of the highest similarity source label vector for each target label vector
         p_i = torch.argmax(lbl_match.view(-1, p_size, p_size, p_size * p_size), dim=-1)
         # Match target output with source output vectors
@@ -95,17 +93,17 @@ class ContrastiveFlowLoss:
         num = torch.exp(p_sim / temperature)
 
         # Denominator: similar to numerator, but summed across each target output
-        # pixel to ALL sample pixels in source output
+        # pixel to top k sample pixels in source output, thresholded at some maximum similarity
         icos = torch.acos(p_sim)
         thresh = torch.cos(icos + n_thresh).unsqueeze(-1)
         z_match = torch.matmul(torch.transpose(torch.flatten(pos, 2, -1), 1, 2),
                                torch.flatten(z_source, 2, -1)).view(-1, p_size, p_size, p_size * p_size)
         z_match = torch.where(z_match < thresh, z_match, torch.tensor(0.0).to('cuda'))
         top_n = torch.topk(z_match, k, dim=-1).values
-
         top_n = torch.exp(top_n / temperature)
         den = torch.cat((torch.unsqueeze(num, -1), top_n), dim=-1)
         den = torch.sum(den, dim=-1)
+
         adaptive_flow_loss = torch.div(num, den)
         adaptive_flow_loss = torch.where(mask_target == 1, -torch.log(adaptive_flow_loss),
                                          torch.tensor(0.0).detach().to('cuda'))

@@ -265,25 +265,22 @@ def diam_range(masks):
         y_ranges.append(np.amax(inds[0]) - np.amin(inds[0]))
         diams.append(int(math.sqrt(x_ranges[-1] * y_ranges[-1])))
     return diams
-    # return np.percentile(np.array(diams), percentile)
 
 
-def diam_range_3D(masks, percentile=75):
+def diam_range_3D(masks):
     masks = np.int32(masks)
     x_ranges = []
     y_ranges = []
     z_ranges = []
     diams = []
     uniques = np.unique(masks)[1:]
-
     for u in uniques:
         inds = np.where(masks == u)
         x_ranges.append(np.amax(inds[2]) - np.amin(inds[2]))
         y_ranges.append(np.amax(inds[1]) - np.amin(inds[1]))
         z_ranges.append(np.amax(inds[0]) - np.amin(inds[0]))
         diams.append(int((x_ranges[-1] * y_ranges[-1] * z_ranges[-1]) ** (1 / 3)))
-
-    return np.percentile(np.array(diams), percentile)
+    return diams
 
 
 def cell_range(masks, mask_val):

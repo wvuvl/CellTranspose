@@ -299,8 +299,8 @@ class EvalCellTransposeData3D(CellTransposeData):
         else:
             raw_data_vol = cv2.imread(self.d_list[index], -1).astype('float')
             raw_label_vol = cv2.imread(self.l_list[index], -1).astype('int16')
-        
-        diam = diam_range_3D(raw_label_vol)
+
+        diam = np.percentile(np.array(diam_range_3D(raw_label_vol)), 75)
         
         X = ('Z', 'Y', 'X')
         dX = ('YX', 'ZX', 'ZY')
