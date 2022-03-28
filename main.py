@@ -94,8 +94,6 @@ train_losses = None
 target_dataset = None
 
 model = CellTranspose(channels=args.n_chan, device=device)
-#
-model = nn.DataParallel(model)
 model.to(device)
 if args.pretrained_model is not None:
     model.load_state_dict(load(args.pretrained_model, map_location=device))  # TODO: Remove map_location from load
@@ -159,9 +157,8 @@ if not args.eval_only:
         scheduler = CosineAnnealingLR(optimizer, T_max=args.epochs, eta_min=args.learning_rate/100, last_epoch=-1)
         train_losses, val_losses = train_network(model, train_dl, val_dl, class_loss, flow_loss, optimizer=optimizer,
                                                  scheduler=scheduler, device=device, n_epochs=args.epochs)
-    # compiled_model = jit.script(model)
-    # jit.save(compiled_model, os.path.join(args.results_dir, 'trained_model.pt'))
-    save(model.state_dict(), os.path.join(args.results_dir, 'trained_model.pt'))
+    compiled_model = jit.script(model)
+    jit.save(compiled_model, os.path.join(args.results_dir, 'trained_model.pt'))
     end_train = time.time()
     ttt = time.strftime("%H:%M:%S", time.gmtime(end_train - start_train))
     print('Time to train: {}'.format(ttt))
