@@ -34,7 +34,7 @@ class CellTransposeData(Dataset):
 
     # Currently, set to load in volumes upfront to cpu memory (via __init__())
     # rather than one at a time via gpu memory (via __getitem__())
-    def __init__(self, split_name, data_dirs, n_chan, pf_dirs=None, do_3D=False, from_3D=False, plane=None,
+    def __init__(self, split_name, data_dirs, n_chan, pf_dirs=None, do_3D=False, from_3D=False,
                  evaluate=False, batch_size=1, resize: Resize = None):
         """
         Parameters
@@ -54,6 +54,8 @@ class CellTransposeData(Dataset):
 
             evaluate: if set to true, returns additional information when calling __getitem__()
 
+            batch_size: default 1
+            
             resize: Resize object containing parameters by which to resize input samples accordingly
         """
         self.do_3D = do_3D
@@ -271,9 +273,6 @@ class EvalCellTransposeData(CellTransposeData):
     def __getitem__(self, index):
         if self.evaluate and not self.from_3D:
             return self.data_samples[index], self.label_samples[index], self.l_list[index], self.original_dims[index]
-        # elif self.from_3D:
-        #    return self.data_samples[index], self.label_samples[index], self.d_list_3D[index],
-        #           self.l_list_3D[index], self.original_dims[index]
         else:
             return self.data_samples[index], self.label_samples[index]
 
@@ -311,7 +310,7 @@ class EvalCellTransposeData3D(CellTransposeData):
         original_dim = []
         
         if self.pf_dirs is not None:
-            new_pf = tifffile.imread(self.pf_list[ind])
+            new_pf = tifffile.imread(self.pf_list[index])
             new_pf = new_pf.reshape(1, new_pf.shape[0], new_pf.shape[1], new_pf.shape[2])
         else:
             new_pf = None
