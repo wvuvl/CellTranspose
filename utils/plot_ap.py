@@ -9,10 +9,9 @@ import numpy as np
 from cellpose_src.metrics import average_precision
 import matplotlib.pyplot as plt
 
-label_dir = '/home/mrkeaton/Documents/Datasets/Neuro_Proj1_Data/2D Toy Dataset - 2-dim/labels'
-prediction_dir = '/home/mrkeaton/Documents/Datasets/Neuro_Proj1_Data/2D Toy Dataset - 2-dim/results/results3'
+label_dir = '/media/matthew/f142958d-59d8-4451-8a3d-de9bad6c021e/Neuro_Proj1_Data/Cellpose_Dataset/Specialized/test/labels'
+prediction_dir = '/media/matthew/f142958d-59d8-4451-8a3d-de9bad6c021e/Neuro_Proj1_Data/DA_Results/local/TEST_jit'
 
-# Load in Ground Truth labels
 labels = []
 for label_file in sorted([f for f in os.listdir(label_dir) if f.lower().endswith('.tif') or f.lower().endswith('.tiff')]):
     labels.append(tifffile.imread(os.path.join(label_dir, label_file)))
@@ -28,7 +27,7 @@ overall_ap = ap_per_im.mean(axis=0)
 
 plt.figure()
 plt.plot(threshold, overall_ap)
-plt.title('Average Precision')  # Could add further arguments here
+plt.title('Average Precision')
 plt.xlabel(r'IoU Matching Threshold $\tau$')
 plt.ylabel('Average Precision')
 plt.savefig(os.path.join(prediction_dir, 'Average_Precision.pdf'))

@@ -15,23 +15,34 @@ parser.add_argument('--mask-path')
 parser.add_argument('--label-path')
 args = parser.parse_args()
 
-tif_or_png = 'png'
-
+tif_or_png_pred = os.path.splitext(os.listdir(args.mask_path)[0])[-1]
+print(tif_or_png_pred)
+tif_or_png_label = os.path.splitext(os.listdir(args.label_path)[0])[-1]
+print(tif_or_png_label)
 masks = []
 labels = []
 filenames = []
 
-for file in sorted(i for i in os.listdir(args.mask_path) if i.endswith('.npy')):
-    masks.append(np.load(os.path.join(args.mask_path, file), allow_pickle=True).item()['masks'])
+# for file in sorted(i for i in os.listdir(args.mask_path) if i.endswith('.npy')):
+#     masks.append(np.load(os.path.join(args.mask_path, file), allow_pickle=True).item()['masks'])
+
+for file in sorted(os.listdir(args.mask_path)):
+    if tif_or_png_pred == '.png':
+        masks.append(cv2.imread(os.path.join(args.mask_path, file), -1))
+    elif tif_or_png_pred == '.tif':
+        masks.append(tifffile.imread(os.path.join(args.mask_path, file)))
+    else:
+        raise Exception('\"tif_or_png\" must be set as \".tif\" or \".png\"')
+
 for file in sorted(os.listdir(args.label_path)):
-    if tif_or_png == 'png':
+    if tif_or_png_label == '.png':
         labels.append(cv2.imread(os.path.join(args.label_path, file), -1))
         filenames.append(file)
-    elif tif_or_png == 'tif':
+    elif tif_or_png_label == '.tif':
         labels.append(tifffile.imread(os.path.join(args.label_path, file)))
         filenames.append(file)
     else:
-        raise Exception('\"tif_or_png\" must be set as \"tif\" or \"png\"')
+        raise Exception('\"tif_or_png\" must be set as \".tif\" or \".png\"')
 
 # Count cells in each mask and calculate counting error
 with open(os.path.join(args.mask_path, 'counted_cells.txt'), 'w') as cc:
@@ -64,4 +75,3 @@ plt.xlabel(r'IoU Matching Threshold $\tau$')
 plt.ylabel('Average Precision')
 plt.yticks(np.arange(0, 1.01, step=0.2))
 plt.savefig(os.path.join(args.mask_path, 'AP Results'))
-# plt.show()

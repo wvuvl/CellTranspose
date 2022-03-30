@@ -10,43 +10,6 @@ import random
 import torchvision.transforms.functional as TF
 
 
-def reformat(x, n_chan=1, do_3D=False):
-    """
-    Reformats raw input data with the following expected output:
-    If 2-D -> torch.tensor with shape [channels, x_dim, y_dim]
-    If 3-D -> torch.tensor with shape [channels, x_dim, y_dim, z_dim]
-    """
-    if not do_3D:
-        if x.dim() == 2:
-            x = x.view(1, x.shape[0], x.shape[1])
-            x = torch.cat((x, torch.zeros((n_chan - 1, x.shape[1], x.shape[2]))))
-        elif x.dim() == 3:
-            if x.shape[2] > x.shape[0]:
-                x = x.permute(1, 2, 0)
-            info_chans = [len(torch.unique(x[:, :, i])) > 1 for i in range(x.shape[2])]
-            x = x[:, :, info_chans]
-            x = torch.tensor(np.transpose(x.numpy(), (2, 0, 1))[:n_chan])  # Remove any additional channels
-            # Concatenate empty channels if image has fewer than the specified number of channels
-            if x.shape[0] < n_chan:
-                zeros = torch.zeros((n_chan - x.shape[0]), x.shape[1], x.shape[2])
-                x = torch.cat((x, zeros))
-    # else: handle 3-D scenario here
-    return x
-
-
-def normalize1stto99th(x):
-    """
-    Normalize each channel of input image so that 0.0 corresponds to 1st percentile and 1.0 corresponds to 99th -
-    Made to mimic Cellpose's normalization implementation
-    """
-    sample = x.clone()
-    for chan in range(len(sample)):
-        if len(torch.unique(sample[chan])) != 1:
-            sample[chan] = (sample[chan] - np.percentile(sample[chan], 1))\
-                           / (np.percentile(sample[chan], 99) - np.percentile(sample[chan], 1))
-    return sample
-
-
 class Resize(object):
     def __init__(self, default_med, target_labels=None):
         self.default_med = default_med
@@ -55,11 +18,11 @@ class Resize(object):
     def __call__(self, x, y, pf=None, random_scale=1.0, diameter=None):
         original_dims = y.shape[1], y.shape[2]
         x, y = resize_from_labels(x, y, self.default_med, pf, random_scale=random_scale,
-                                  diameter=diameter, target_labels=self.target_labels)
+                                  target_labels=self.target_labels)
         return x, y, original_dims
 
 
-def resize_from_labels(x, y, default_med, pf=None, random_scale=1.0, diameter=None, target_labels=None):
+def resize_from_labels(x, y, default_med, pf=None, random_scale=1.0, target_labels=None):
     unq = torch.unique(y)
     if len(unq) == 1 and unq == 0:
         return x, y
@@ -104,6 +67,40 @@ def resize_from_labels(x, y, default_med, pf=None, random_scale=1.0, diameter=No
         return x, y
 
 
+def reformat(x, n_chan=1):
+    """
+    Reformats raw input data with the following expected output:
+    If 2-D -> torch.tensor with shape [channels, x_dim, y_dim]
+    """
+    if x.dim() == 2:
+        x = x.view(1, x.shape[0], x.shape[1])
+        x = torch.cat((x, torch.zeros((n_chan - 1, x.shape[1], x.shape[2]))))
+    elif x.dim() == 3:
+        if x.shape[2] > x.shape[0]:
+            x = x.permute(1, 2, 0)
+        info_chans = [len(torch.unique(x[:, :, i])) > 1 for i in range(x.shape[2])]
+        x = x[:, :, info_chans]
+        x = torch.tensor(np.transpose(x.numpy(), (2, 0, 1))[:n_chan])  # Remove any additional channels
+        # Concatenate empty channels if image has fewer than the specified number of channels
+        if x.shape[0] < n_chan:
+            zeros = torch.zeros((n_chan - x.shape[0]), x.shape[1], x.shape[2])
+            x = torch.cat((x, zeros))
+    return x
+
+
+def normalize1stto99th(x):
+    """
+    Normalize each channel of input image so that 0.0 corresponds to 1st percentile and 1.0 corresponds to 99th -
+    Made to mimic Cellpose's normalization implementation
+    """
+    sample = x.clone()
+    for chan in range(len(sample)):
+        if len(torch.unique(sample[chan])) != 1:
+            sample[chan] = (sample[chan] - np.percentile(sample[chan], 1))\
+                           / (np.percentile(sample[chan], 99) - np.percentile(sample[chan], 1))
+    return sample
+
+
 def random_horizontal_flip(x, y):
     if np.random.rand() > .5:
         x = TF.hflip(x)
@@ -144,19 +141,24 @@ def followflows(flows):
         masks[i] = torch.tensor(maski)
     return masks
 
-def followflows3D(dP,cellprob):
+
+def followflows3D(dP, cellprob):
+
+
     """
     Combines follow_flows, get_masks, and fill_holes_and_remove_small_masks from Cellpose implementation
     """
-    niter = 400; interp = True; use_gpu = True; cellprob_threshold = 0.0; flow_threshold = 0.4; min_size = 16000
+    niter = 400; interp = True; use_gpu = True; cellprob_threshold = 0.0; flow_threshold = 0.4; min_size = 1400
     masks = compute_masks(dP, cellprob, niter=niter, interp=interp, use_gpu=use_gpu, mask_threshold=cellprob_threshold,
                           flow_threshold=flow_threshold, min_size=min_size)
     return masks
 
 
-# Generate patches of input to be passed into model. Currently set to 64x64 patches with at least 32x32 overlap
-# - image should also already be resized such that median cell diameter is 32
 def generate_patches(data, label=None, patch=(96, 96), min_overlap=(64, 64), lbl_flows=False):
+    """
+    Generate patches of input to be passed into model. Currently set to 64x64 patches with at least 32x32 overlap
+    - image should also already be resized such that median cell diameter is 32
+    """
     num_x_patches = math.ceil((data.shape[3] - min_overlap[0]) / (patch[0] - min_overlap[0]))
     x_patches = np.linspace(0, data.shape[3] - patch[0], num_x_patches, dtype=int)
     num_y_patches = math.ceil((data.shape[2] - min_overlap[1]) / (patch[1] - min_overlap[1]))

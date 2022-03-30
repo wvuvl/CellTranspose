@@ -1,7 +1,7 @@
 import argparse
 from torch.utils.data import DataLoader, RandomSampler, BatchSampler
 from torch import nn, device, load, save, jit
-from torch.cuda import is_available, device_count, empty_cache
+from torch.cuda import is_available, empty_cache
 from torch.optim import SGD
 from torch.optim.lr_scheduler import CosineAnnealingLR, StepLR
 import os
@@ -15,6 +15,7 @@ from calculate_results import produce_logfile, plot_loss, save_pred
 
 parser = argparse.ArgumentParser()
 
+# Model hyperparameters
 parser.add_argument('--n-chan', type=int,
                     help='Maximum number of channels in input images (i.e. 2 for cytoplasm + nuclei images).')
 parser.add_argument('--learning-rate', type=float, default=0.01)
@@ -35,26 +36,32 @@ parser.add_argument('--median-diams', type=int,
 parser.add_argument('--patch-size', type=int, help='Size of image patches with which to tile.', default=112)
 parser.add_argument('--min-overlap', type=int, help='Amount of overlap to use for tiling during testing.', default=84)
 
-parser.add_argument('--do-adaptation', help='Whether to perform domain adaptation or standard training.',
-                    action='store_true')
-parser.add_argument('--pretrained-model', help='Location of pretrained model to load in. Default: None')
+# Control
 parser.add_argument('--dataset-name', help='Name of dataset to use for reporting results (omit the word "Dataset").')
 parser.add_argument('--results-dir', help='Folder in which to save experiment results.')
+parser.add_argument('--pretrained-model', help='Location of pretrained model to load in. Default: None')
 parser.add_argument('--train-only', help='Only perform training, no evaluation (mutually exclusive with "eval-only").',
                     action='store_true')
 parser.add_argument('--eval-only', help='Only perform evaluation, no training (mutually exclusive with "train-only").',
                     action='store_true',)
-parser.add_argument('--do-3D', help='Whether or not to use CellTranspose3D (Must use 3D volumes).', action='store_true')
+parser.add_argument('--do-adaptation', help='Whether to perform domain adaptation or standard training.',
+                    action='store_true')
+parser.add_argument('--no-adaptation-loss', help='Train directly using standard loss on target samples'
+                                                 ' (for experimentation purposes)', action='store_true')
+parser.add_argument('--save-dataset', help='Name of directory to save training dataset to:'
+                                           ' if None, will not save dataset.')
+parser.add_argument('--load-from-torch', help='If true, assumes dataset is being loaded from torch files, with no'
+                                              ' preprocessing required.', action='store_true')
+parser.add_argument('--process-each-epoch', help='If true, assumes processing occurs every epoch.', action='store_true')
+parser.add_argument('--load-train-from-npy', help='If provided, assumes training data is being loaded from npy files.')
+
+# Training data
 parser.add_argument('--train-dataset', help='The directory(s) containing (source) data to be used for training.',
                     nargs='+')
 parser.add_argument('--train-from-3D', help='Whether the input training source data is 3D: assumes 2D if set to False.',
                     action='store_true')
-parser.add_argument('--val-dataset', help='The directory(s) containing data to be used for validation.', nargs='+')
-parser.add_argument('--val-from-3D', help='Whether the input validation data is 3D: assumes 2D if set to False.',
-                    action='store_true')
-parser.add_argument('--test-dataset', help='The directory(s) containing data to be used for testing.', nargs='+')
-parser.add_argument('--test-from-3D', help='Whether the input test data is 3D: assumes 2D if set to False.',
-                    action='store_true')
+
+# Target data
 parser.add_argument('--target-dataset',
                     help='The directory containing target data to be used for domain adaptation. Note: if do-adaptation'
                          ' is set to False, this parameter will be ignored.', nargs='+')
@@ -62,26 +69,29 @@ parser.add_argument('--target-from-3D', help='Whether the input target data is 3
                     action='store_true')
 parser.add_argument('--target-flows', help='The directory(s) containing pre-calculated flows. If left empty,'
                                            ' flows will be calculated manually.', nargs='+')
-parser.add_argument('--no-adaptation-loss', help='Train directly using standard loss on target samples'
-                                                 ' (for experimentation purposes)', action='store_true')
-parser.add_argument('--save-dataset', help='Name of directory to save training dataset to:'
-                                           ' if None, will not save dataset.')
-parser.add_argument('--load-from-torch', help='If true, assumes dataset is being loaded from torch files, with no'
-                                              ' preprocessing required.', action='store_true')
 
-parser.add_argument('--load-train-from-npy', help='If provided, assumes dataset is being loaded from npy files.')
-parser.add_argument('--process-each-epoch', help='If true, assumes processing occurs every epoch.', action='store_true')
+# Validation data
+parser.add_argument('--val-dataset', help='The directory(s) containing data to be used for validation.', nargs='+')
+parser.add_argument('--val-from-3D', help='Whether the input validation data is 3D: assumes 2D if set to False.',
+                    action='store_true')
+
+# Test data
+parser.add_argument('--test-dataset', help='The directory(s) containing data to be used for testing.', nargs='+')
+parser.add_argument('--test-from-3D', help='Whether the input test data is 3D: assumes 2D if set to False.',
+                    action='store_true')
+
+# Note: do-3D not currently implemented. Can be used for further development with volumetric approach
+parser.add_argument('--do-3D', help='Whether or not to use CellTranspose3D (Must use 3D volumes).', action='store_true')
+
 args = parser.parse_args()
 
 print(args.results_dir)
-
 assert not os.path.exists(args.results_dir),\
     'Results folder {} currently exists; please specify new location to save results.'.format(args.results_dir)
 os.makedirs(args.results_dir)
 os.makedirs(os.path.join(args.results_dir, 'tiff_results'))
 os.makedirs(os.path.join(args.results_dir, 'raw_predictions_tiffs'))
 assert not (args.train_only and args.eval_only), 'Cannot pass in "train-only" and "eval-only" arguments simultaneously.'
-num_workers = device_count()
 device = device('cuda' if is_available() else 'cpu')
 empty_cache()
 
@@ -94,6 +104,7 @@ train_losses = None
 target_dataset = None
 
 model = CellTranspose(channels=args.n_chan, device=device)
+model = nn.DataParallel(model)
 model.to(device)
 if args.pretrained_model is not None:
     model.load_state_dict(load(args.pretrained_model, map_location=device))  # TODO: Remove map_location from load
@@ -113,8 +124,7 @@ if not args.eval_only:
                                                from_3D=args.train_from_3D, crop_size=args.patch_size, has_flows=False,
                                                batch_size=args.batch_size, resize=Resize(args.median_diams),
                                                preprocessed_data=args.load_train_from_npy,
-                                               do_every_epoch=args.process_each_epoch, result_dir=args.results_dir)
-        #train_dataset.process_training_data(args.patch_size, args.min_overlap, has_flows=False)
+                                               proc_every_epoch=args.process_each_epoch, result_dir=args.results_dir)
     
     if args.save_dataset:
         print('Saving Training Dataset... ', end='')
@@ -139,7 +149,7 @@ if not args.eval_only:
                                                 do_3D=args.do_3D, from_3D=args.target_from_3D,
                                                 crop_size=args.patch_size, has_flows=False, batch_size=args.batch_size,
                                                 resize=Resize(args.median_diams))
-        #target_dataset.process_training_data(args.patch_size, args.min_overlap, batch_size=args.batch_size, has_flows=True)
+        target_dataset.process_training_data(args.patch_size, args.min_overlap, batch_size=args.batch_size, has_flows=True)
         rs = RandomSampler(target_dataset, replacement=False)
         bs = BatchSampler(rs, args.batch_size, True)
         target_dl = DataLoader(target_dataset, batch_sampler=bs)
@@ -157,8 +167,8 @@ if not args.eval_only:
         scheduler = CosineAnnealingLR(optimizer, T_max=args.epochs, eta_min=args.learning_rate/100, last_epoch=-1)
         train_losses, val_losses = train_network(model, train_dl, val_dl, class_loss, flow_loss, optimizer=optimizer,
                                                  scheduler=scheduler, device=device, n_epochs=args.epochs)
-    compiled_model = jit.script(model)
-    jit.save(compiled_model, os.path.join(args.results_dir, 'trained_model.pt'))
+    # compiled_model = jit.script(model)
+    # jit.save(compiled_model, os.path.join(args.results_dir, 'trained_model.pt'))
     end_train = time.time()
     ttt = time.strftime("%H:%M:%S", time.gmtime(end_train - start_train))
     print('Time to train: {}'.format(ttt))
@@ -185,11 +195,9 @@ if not args.train_only:
         eval_dl_3D = DataLoader(test_dataset_3D, batch_size=1, shuffle=False)
         eval_network_3D(model, eval_dl_3D, device, patch_per_batch=args.eval_batch_size,
                         patch_size=args.patch_size, min_overlap=args.min_overlap, results_dir=args.results_dir)
-        
-        # TODO: perform AP evaluation for 3D
     end_eval = time.time()
     tte = time.strftime("%H:%M:%S", time.gmtime(end_eval - start_eval))
     print('Time to evaluate: {}'.format(tte))
 
 print(args.results_dir)
-produce_logfile(args, len(train_losses) if train_losses is not None else None, ttt, tte, num_workers)
+produce_logfile(args, len(train_losses) if train_losses is not None else None, ttt, tte)

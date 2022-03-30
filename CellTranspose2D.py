@@ -61,6 +61,7 @@ class SASMaskLoss:
         return adaptive_class_loss
 
 
+# Contrastive Loss for flow calculation
 class ContrastiveFlowLoss:
     def __init__(self, c_flow_loss):
         self.flow_loss = c_flow_loss

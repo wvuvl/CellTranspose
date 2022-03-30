@@ -14,12 +14,14 @@ import cv2
 import random
 import numpy as np
 
-from transforms import reformat, normalize1stto99th, Resize, random_horizontal_flip, labels_to_flows, generate_patches, diam_range_3D
+from transforms import reformat, normalize1stto99th, Resize, random_horizontal_flip, labels_to_flows,\
+    generate_patches, diam_range_3D
 
 
 class CellTransposeData(Dataset):
     """
-    Dataset subclass for loading in any tiff data, where the dataset follows the following format:
+    Dataset subclass for loading in any tiff data, serving as a superclass to each dataset type for CellTranspose.
+    The dataset is expected to possess the following structure:
         - /data
             - vol1.tiff
             ...
@@ -28,12 +30,10 @@ class CellTransposeData(Dataset):
             - lbl1.tiff
             ...
             - lbln.tiff
-    Data and labels are expected to be named in such a way that when sorted in ascending order,
+    *** NOTE: Data and labels are expected to be named in such a way that when sorted in ascending order,
     the ith element of data corresponds to the ith label
     """
 
-    # Currently, set to load in volumes upfront to cpu memory (via __init__())
-    # rather than one at a time via gpu memory (via __getitem__())
     def __init__(self, split_name, data_dirs, n_chan, pf_dirs=None, do_3D=False, from_3D=False,
                  evaluate=False, batch_size=1, resize: Resize = None):
         """
@@ -41,21 +41,13 @@ class CellTransposeData(Dataset):
         ------------------------------------------------------------------------------------------------
 
             split_name: name corresponding to the split (i.e. train, validation, test, target)
-
-            n_chan: Maximum number of channels in input images (i.e. 2 for cytoplasm + nuclei images)
-
             data_dirs: root directory/directories of the dataset, containing 'data' and 'labels' folders
-
+            n_chan: Maximum number of channels in input images (i.e. 2 for cytoplasm + nuclei images)
             pf_dirs: root directory/directories of pre-calculated flows, if they exist
-
             do_3D: whether or not to train 3D CellTranspose model (requires that from_3d is true)
-
             from_3D: whether input samples are 2D images (False) or 3D volumes (True)
-
             evaluate: if set to true, returns additional information when calling __getitem__()
-
             batch_size: default 1
-            
             resize: Resize object containing parameters by which to resize input samples accordingly
         """
         self.do_3D = do_3D
@@ -87,8 +79,6 @@ class CellTransposeData(Dataset):
         self.labels = []
         self.original_dims = []
 
-        # if do_3D:  # and from_3D
-        # else:
         if from_3D:
             print(">>>Implementing 2D model on 3D...")
         else:
@@ -130,14 +120,14 @@ class CellTransposeData(Dataset):
 
 class TrainCellTransposeData(CellTransposeData):
     def __init__(self, split_name, data_dirs, n_chan, pf_dirs=None, do_3D=False, from_3D=False, evaluate=False,
-                 crop_size=(96, 96), has_flows=False, batch_size=1, resize: Resize = None,
-                 preprocessed_data=None, do_every_epoch=True, result_dir=None):
+                 crop_size=(112, 112), has_flows=False, batch_size=1, resize: Resize = None,
+                 preprocessed_data=None, proc_every_epoch=True, result_dir=None):
         self.resize = resize
         self.crop_size = crop_size
         self.has_flows = has_flows
         self.from_3D = from_3D
         self.preprocessed_data = preprocessed_data
-        self.do_every_epoch = do_every_epoch
+        self.do_every_epoch = proc_every_epoch
         
         if self.preprocessed_data is None:
             super().__init__(split_name, data_dirs, n_chan, pf_dirs=pf_dirs, do_3D=do_3D,
@@ -151,19 +141,16 @@ class TrainCellTransposeData(CellTransposeData):
             
             data_samples = tensor([])
             label_samples = tensor([])
-            
             for i in tqdm(range(len(self.data)), desc='Preprocessing training data once only...'):
                 try:
                     data, labels, dim = self.resize(self.data[i], self.labels[i],
                                                     random_scale=random.uniform(0.75, 1.25))
                     data, labels = random_horizontal_flip(data, labels)
-                    # data, labels = random_rotate(data, labels)
                     data, labels = train_generate_rand_crop(unsqueeze(data, 0), labels,
                                                             crop=crop_size, lbl_flows=has_flows)
                     if labels.ndim == 3:
                         labels = as_tensor(np.array([labels_to_flows(labels[i].numpy()) for i in range(len(labels))]),
                                            dtype=float32)
-                
                     data_samples = cat((data_samples, data))
                     label_samples = cat((label_samples, labels))
                     
@@ -175,22 +162,15 @@ class TrainCellTransposeData(CellTransposeData):
                 np.save(os.path.join(result_dir, 'train_preprocessed_data.npy'), self.data.cpu().detach().numpy())
                 np.save(os.path.join(result_dir, 'train_preprocessed_labels.npy'), self.labels.cpu().detach().numpy())
 
-    def __len__(self):
-        return len(self.data)
-
     # Augmentations and tiling applied to input data (for training and adaptation) -
     # separated from DataLoader to allow for possibility of running only once or once per epoch
-    # NOTE: ltf takes ~50% of time; generating patches and concatenating takes nearly as long
-    # TODO: Save generated training data? Massively increase time to train
     def process_training_data(self, index, crop_size, has_flows=False):
         samples_generated = []
         data, labels = self.data[index], self.labels[index]
-
         try:
             data, labels, dim = self.resize(data, labels, random_scale=random.uniform(0.75, 1.25))
             data, labels = random_horizontal_flip(data, labels)
             data, labels = train_generate_rand_crop(unsqueeze(data, 0), labels, crop=crop_size, lbl_flows=has_flows)
-
             if labels.ndim == 3:
                 labels = as_tensor(np.array([labels_to_flows(labels[i].numpy())
                                              for i in range(len(labels))]), dtype=float32)
@@ -205,8 +185,11 @@ class TrainCellTransposeData(CellTransposeData):
         else:
             return self.data[index], self.labels[index]
 
+    # def __len__(self):
+    #     return len(self.data)
 
-def train_generate_rand_crop(data, label=None, crop=(96, 96), lbl_flows=False):
+
+def train_generate_rand_crop(data, label=None, crop=(112, 112), lbl_flows=False):
     if data.shape[3] < crop[0]:
         pad_x = math.ceil((crop[0] - data.shape[3]) / 2)
         data = F.pad(data, (pad_x, pad_x))
@@ -219,18 +202,14 @@ def train_generate_rand_crop(data, label=None, crop=(96, 96), lbl_flows=False):
 
     x_max = data.shape[3] - crop[0]
     y_max = data.shape[2] - crop[1]
-
     patch_data = empty((data.shape[0] * 1 * 1, data.shape[1], crop[0], crop[1]))
     if lbl_flows:
         patch_label = empty((1 * 1, 3, crop[0], crop[1]))
     else:
         patch_label = empty((label.shape[0] * 1 * 1, crop[0], crop[1]))
-
     i = random.randint(0, x_max)
     j = random.randint(0, y_max)
-
     d_patch = data[0, :, j:j + crop[1], i:i + crop[0]]
-
     patch_data[0] = d_patch
 
     if lbl_flows:
@@ -243,10 +222,10 @@ def train_generate_rand_crop(data, label=None, crop=(96, 96), lbl_flows=False):
 
 
 class EvalCellTransposeData(CellTransposeData):
-    def __init__(self, split_name, data_dirs, n_chan, pf_dirs=None, do_3D=False, from_3D=False, plane='yz',
+    def __init__(self, split_name, data_dirs, n_chan, pf_dirs=None, do_3D=False, from_3D=False,
                  evaluate=False, resize: Resize = None):
         self.from_3D = from_3D
-        super().__init__(split_name, data_dirs, n_chan, pf_dirs=pf_dirs, do_3D=do_3D, from_3D=from_3D, plane=plane,
+        super().__init__(split_name, data_dirs, n_chan, pf_dirs=pf_dirs, do_3D=do_3D, from_3D=from_3D,
                          evaluate=evaluate, resize=resize)
 
     # Generates patches for validation dataset - only happens once
@@ -261,7 +240,6 @@ class EvalCellTransposeData(CellTransposeData):
                 data, labels = generate_patches(unsqueeze(data, 0), labels, patch=patch_size,
                                                 min_overlap=min_overlap, lbl_flows=False)
                 labels = as_tensor(np.array([labels_to_flows(labels[i].numpy()) for i in range(len(labels))]))
-                # data, labels = remove_empty_label_patches(data, labels)
                 self.data_samples = cat((self.data_samples, data))
                 self.label_samples = cat((self.label_samples, labels))
                 for _ in range(len(data)):
@@ -279,19 +257,15 @@ class EvalCellTransposeData(CellTransposeData):
 
 # final version of 3D validation dataloader
 class EvalCellTransposeData3D(CellTransposeData):
-    def __init__(self, split_name, data_dirs, n_chan, pf_dirs=None, do_3D=False,
-                 from_3D=False, plane='xy', evaluate=False, resize: Resize = None):
-        self.pf_dirs = pf_dirs
+    def __init__(self, split_name, data_dirs, n_chan, do_3D=False,
+                 from_3D=False, evaluate=False, resize: Resize = None):
         self.resize = resize
         self.n_chan = n_chan
-        
-        super().__init__(split_name, data_dirs, n_chan, pf_dirs=pf_dirs, do_3D=do_3D, from_3D=from_3D, plane=plane,
-                         evaluate=evaluate, resize=resize)
+        super().__init__(split_name, data_dirs, n_chan, do_3D=do_3D, from_3D=from_3D, evaluate=evaluate, resize=resize)
     
-    def processing(self, index):
+    def process_eval_3D(self, index):
         ext = os.path.splitext(self.d_list[index])[-1]
-            
-        # Read files
+
         if ext == '.tif' or ext == '.tiff':
             raw_data_vol = tifffile.imread(self.d_list[index]).astype('float')
             raw_label_vol = tifffile.imread(self.l_list[index]).astype('int16')
@@ -300,28 +274,18 @@ class EvalCellTransposeData3D(CellTransposeData):
             raw_label_vol = cv2.imread(self.l_list[index], -1).astype('int16')
 
         diam = np.percentile(np.array(diam_range_3D(raw_label_vol)), 75)
-        
-        X = ('Z', 'Y', 'X')
-        dX = ('YX', 'ZX', 'ZY')
+        axis = ('Z', 'Y', 'X')
+        plane = ('YX', 'ZX', 'ZY')
         TP = [(0, 1, 2), (1, 0, 2), (2, 0, 1)]
-        
         data_vol = []
         label_vol = []
         original_dim = []
         
-        if self.pf_dirs is not None:
-            new_pf = tifffile.imread(self.pf_list[index])
-            new_pf = new_pf.reshape(1, new_pf.shape[0], new_pf.shape[1], new_pf.shape[2])
-        else:
-            new_pf = None
-        
         print(f">>>Image path: {self.d_list[index]}")   
-        for ind in range(len(dX)):
+        for ind in range(len(plane)):
+            print(f">>>Processing 3D data on {new_data.shape[0]} {plane[ind]} planes in {axis[ind]} direction...")
             new_data = raw_data_vol.transpose(TP[ind])
             new_label = raw_label_vol.transpose(TP[ind])
-            
-            print(f">>>Processing 3D data on {new_data.shape[0]} {dX[ind]} planes in {X[ind]} direction...")
-                   
             new_data_vol = []
             new_label_vol = []
             new_origin_dim = []
@@ -331,7 +295,7 @@ class EvalCellTransposeData3D(CellTransposeData):
                 label = reformat(as_tensor(new_label[i]))
                 
                 if self.resize is not None:
-                    data, label, dim = self.resize(data, label, new_pf, diameter=diam)
+                    data, label, dim = self.resize(data, label, diameter=diam)
                 else:
                     dim = (data[0], data[1])
                 
@@ -343,7 +307,7 @@ class EvalCellTransposeData3D(CellTransposeData):
             label_vol.append(new_label_vol)
             original_dim.append(new_origin_dim)
         
-        return data_vol, label_vol, self.l_list[index], X, dX, original_dim
+        return data_vol, label_vol, self.l_list[index], plane, original_dim
 
     def __getitem__(self, index):
-        return self.processing(index)
+        return self.process_eval_3D(index)

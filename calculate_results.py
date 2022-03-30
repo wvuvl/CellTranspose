@@ -17,7 +17,6 @@ from cellpose_src.metrics import average_precision
 sns.set()
 
 
-# TODO: Yet to be updated to work again for this project
 def create_confusion_matrix(y_true, y_pred, classes, normalize=None):
     # Get data into confusion matrix (array)
     num_classes = len(classes)
@@ -52,7 +51,7 @@ def create_confusion_matrix(y_true, y_pred, classes, normalize=None):
         sns.heatmap(conf_pivot, annot=True, cmap="BuGn", fmt='g', cbar=False)
 
 
-def produce_logfile(args, epochs, ttt, tte, num_workers):
+def produce_logfile(args, epochs, ttt, tte):
     with open(os.path.join(args.results_dir, 'logfile.txt'), 'w') as log:
         if args.train_only:
             log.write('train-only\n')
@@ -79,7 +78,6 @@ def produce_logfile(args, epochs, ttt, tte, num_workers):
                 log.write('Training dataset(s): {}\n'.format(args.train_dataset))
             log.write('Learning rate: {}; Momentum: {}\n'.format(args.learning_rate, args.momentum))
             log.write('Epochs: {}; Batch size: {}\n'.format(epochs, args.batch_size))
-            log.write('GPUs: {}\n'.format(num_workers))
             log.write('Pretrained model: {}\n'.format(args.pretrained_model))
             log.write('\n')
             log.write('Validation dataset(s): {}\n'.format(args.val_dataset))
