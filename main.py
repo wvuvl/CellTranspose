@@ -43,7 +43,7 @@ parser.add_argument('--pretrained-model', help='Location of pretrained model to 
 parser.add_argument('--train-only', help='Only perform training, no evaluation (mutually exclusive with "eval-only").',
                     action='store_true')
 parser.add_argument('--eval-only', help='Only perform evaluation, no training (mutually exclusive with "train-only").',
-                    action='store_true',)
+                    action='store_true')
 parser.add_argument('--do-adaptation', help='Whether to perform domain adaptation or standard training.',
                     action='store_true')
 parser.add_argument('--no-adaptation-loss', help='Train directly using standard loss on target samples'
@@ -72,8 +72,6 @@ parser.add_argument('--target-flows', help='The directory(s) containing pre-calc
 
 # Validation data
 parser.add_argument('--val-dataset', help='The directory(s) containing data to be used for validation.', nargs='+')
-parser.add_argument('--val-from-3D', help='Whether the input validation data is 3D: assumes 2D if set to False.',
-                    action='store_true')
 
 # Test data
 parser.add_argument('--test-dataset', help='The directory(s) containing data to be used for testing.', nargs='+')
@@ -95,13 +93,23 @@ assert not (args.train_only and args.eval_only), 'Cannot pass in "train-only" an
 device = device('cuda' if is_available() else 'cpu')
 empty_cache()
 
+# TODO pass in assertion for target labels necessary for evaluation
 args.median_diams = (args.median_diams, args.median_diams)
 args.patch_size = (args.patch_size, args.patch_size)
 args.min_overlap = (args.min_overlap, args.min_overlap)
 ttt = None
 tte = None
 train_losses = None
-target_dataset = None
+if args.target_dataset is not None:
+    target_dataset = TrainCellTransposeData('Target', args.target_dataset, args.n_chan, pf_dirs=args.target_flows,
+                                            do_3D=args.do_3D, from_3D=args.target_from_3D,
+                                            crop_size=args.patch_size, has_flows=False, batch_size=args.batch_size,
+                                            resize=Resize(args.median_diams))
+    rs = RandomSampler(target_dataset, replacement=False)
+    bs = BatchSampler(rs, args.batch_size, True)
+    target_dl = DataLoader(target_dataset, batch_sampler=bs)
+else:
+    target_dataset = None
 
 model = CellTranspose(channels=args.n_chan, device=device)
 model = nn.DataParallel(model)
@@ -145,14 +153,11 @@ if not args.eval_only:
     if args.do_adaptation:
         sas_class_loss = SASMaskLoss(nn.BCEWithLogitsLoss(reduction='mean'))
         c_flow_loss = ContrastiveFlowLoss(nn.MSELoss(reduction='mean'))
-        target_dataset = TrainCellTransposeData('Target', args.target_dataset, args.n_chan, pf_dirs=args.target_flows,
-                                                do_3D=args.do_3D, from_3D=args.target_from_3D,
-                                                crop_size=args.patch_size, has_flows=False, batch_size=args.batch_size,
-                                                resize=Resize(args.median_diams))
-        target_dataset.process_training_data(args.patch_size, args.min_overlap, batch_size=args.batch_size, has_flows=True)
-        rs = RandomSampler(target_dataset, replacement=False)
-        bs = BatchSampler(rs, args.batch_size, True)
-        target_dl = DataLoader(target_dataset, batch_sampler=bs)
+        # target_dataset = TrainCellTransposeData('Target', args.target_dataset, args.n_chan, pf_dirs=args.target_flows,
+        #                                         do_3D=args.do_3D, from_3D=args.target_from_3D,
+        #                                         crop_size=args.patch_size, has_flows=False, batch_size=args.batch_size,
+        #                                         resize=Resize(args.median_diams))
+        # target_dataset.process_training_data(args.patch_size, args.min_overlap, batch_size=args.batch_size, has_flows=True)
 
         start_train = time.time()
         scheduler = StepLR(optimizer, step_size=1, gamma=args.step_gamma)
@@ -177,7 +182,7 @@ if not args.eval_only:
 if not args.train_only:
     start_eval = time.time()
     if target_dataset is not None:
-        target_labels = target_dataset.labels
+        target_labels = target_dataset.target_label_samples
     else:
         target_labels = None
     if not args.test_from_3D:
@@ -191,7 +196,7 @@ if not args.train_only:
     else:
         test_dataset_3D = EvalCellTransposeData3D('3D_test', args.test_dataset, args.n_chan, do_3D=args.do_3D,
                                                   from_3D=args.test_from_3D, evaluate=True,
-                                                  resize=Resize(args.median_diams), target_labels=target_labels)
+                                                  resize=Resize(args.median_diams, target_labels=target_labels))
         eval_dl_3D = DataLoader(test_dataset_3D, batch_size=1, shuffle=False)
         eval_network_3D(model, eval_dl_3D, device, patch_per_batch=args.eval_batch_size,
                         patch_size=args.patch_size, min_overlap=args.min_overlap, results_dir=args.results_dir)

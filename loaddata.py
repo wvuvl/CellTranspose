@@ -15,7 +15,7 @@ import random
 import numpy as np
 
 from transforms import reformat, normalize1stto99th, Resize, random_horizontal_flip, labels_to_flows,\
-    generate_patches, diam_range_3D
+    generate_patches
 
 
 class CellTransposeData(Dataset):
@@ -80,7 +80,7 @@ class CellTransposeData(Dataset):
         self.original_dims = []
 
         if from_3D:
-            print(">>>Implementing 2D model on 3D...")
+            print(">>> Utilizing 2D model for evaluation on 3D volumes...")
         else:
             for ind in tqdm(range(len(self.d_list)), desc='Loading {} Dataset...'.format(split_name)):
                 ext = os.path.splitext(self.d_list[ind])[-1]
@@ -99,17 +99,17 @@ class CellTransposeData(Dataset):
                 else:
                     new_pf = None
                 if resize is not None:
-                    new_data, new_label, original_dim = resize(new_data, new_label, new_pf)
+                    new_data, new_label, original_dim, _ = resize(new_data, new_label, new_pf)
                     self.original_dims.append(original_dim)
                 self.data.append(new_data)
                 self.labels.append(new_label)
 
+        self.target_data_samples = self.data
+        self.target_label_samples = self.labels
         if self.split_name.lower() == 'target' and len(self.data) < batch_size and not from_3D and not do_3D:
-            ds = self.data
-            ls = self.labels
             for _ in range(1, math.ceil(batch_size / len(self.data))):
-                self.data = self.data+ds
-                self.labels = self.labels+ls
+                self.data = self.data + self.target_data_samples
+                self.labels = self.labels + self.target_label_samples
 
         self.data_samples = self.data
         self.label_samples = self.labels
@@ -143,7 +143,7 @@ class TrainCellTransposeData(CellTransposeData):
             label_samples = tensor([])
             for i in tqdm(range(len(self.data)), desc='Preprocessing training data once only...'):
                 try:
-                    data, labels, dim = self.resize(self.data[i], self.labels[i],
+                    data, labels, dim, _ = self.resize(self.data[i], self.labels[i],
                                                     random_scale=random.uniform(0.75, 1.25))
                     data, labels = random_horizontal_flip(data, labels)
                     data, labels = train_generate_rand_crop(unsqueeze(data, 0), labels,
@@ -168,7 +168,7 @@ class TrainCellTransposeData(CellTransposeData):
         samples_generated = []
         data, labels = self.data[index], self.labels[index]
         try:
-            data, labels, dim = self.resize(data, labels, random_scale=random.uniform(0.75, 1.25))
+            data, labels, dim, _ = self.resize(data, labels, random_scale=random.uniform(0.75, 1.25))
             data, labels = random_horizontal_flip(data, labels)
             data, labels = train_generate_rand_crop(unsqueeze(data, 0), labels, crop=crop_size, lbl_flows=has_flows)
             if labels.ndim == 3:
@@ -185,8 +185,8 @@ class TrainCellTransposeData(CellTransposeData):
         else:
             return self.data[index], self.labels[index]
 
-    # def __len__(self):
-    #     return len(self.data)
+    def __len__(self):
+        return len(self.data)
 
 
 def train_generate_rand_crop(data, label=None, crop=(112, 112), lbl_flows=False):
@@ -273,7 +273,6 @@ class EvalCellTransposeData3D(CellTransposeData):
             raw_data_vol = cv2.imread(self.d_list[index], -1).astype('float')
             raw_label_vol = cv2.imread(self.l_list[index], -1).astype('int16')
 
-        diam = np.percentile(np.array(diam_range_3D(raw_label_vol)), 75)
         axis = ('Z', 'Y', 'X')
         plane = ('YX', 'ZX', 'ZY')
         TP = [(0, 1, 2), (1, 0, 2), (2, 0, 1)]
@@ -281,13 +280,13 @@ class EvalCellTransposeData3D(CellTransposeData):
         label_vol = []
         original_dim = []
         
-        print(f">>>Image path: {self.d_list[index]}")   
+        print(f">>> Image path: {self.d_list[index]}")
         for ind in range(len(plane)):
-            print(f">>>Processing 3D data on {new_data.shape[0]} {plane[ind]} planes in {axis[ind]} direction...")
             new_data = raw_data_vol.transpose(TP[ind])
+            print(f">>> Processing 3D data on {new_data.shape[0]} {plane[ind]} planes in {axis[ind]} direction...")
             new_label = raw_label_vol.transpose(TP[ind])
             new_data_vol = []
-            new_label_vol = []
+            # new_label_vol = []
             new_origin_dim = []
             for i in range(len(new_data)):
                 d = reformat(as_tensor(new_data[i]), self.n_chan)
@@ -295,19 +294,19 @@ class EvalCellTransposeData3D(CellTransposeData):
                 label = reformat(as_tensor(new_label[i]))
                 
                 if self.resize is not None:
-                    data, label, dim = self.resize(data, label, diameter=diam)
+                    data, label, dim, diam = self.resize(data, label)
                 else:
                     dim = (data[0], data[1])
                 
                 new_data_vol.append(data)
-                new_label_vol.append(label)
+                # new_label_vol.append(label)
                 new_origin_dim.append(dim)
                 
             data_vol.append(new_data_vol)
-            label_vol.append(new_label_vol)
+            # label_vol.append(new_label_vol)
             original_dim.append(new_origin_dim)
         
-        return data_vol, label_vol, self.l_list[index], plane, original_dim
+        return data_vol, self.d_list[index], plane, original_dim, diam
 
     def __getitem__(self, index):
         return self.process_eval_3D(index)

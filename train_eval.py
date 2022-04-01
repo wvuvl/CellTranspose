@@ -197,33 +197,36 @@ def eval_network_3D(model: nn.Module, data_loader: DataLoader, device,
                     patch_per_batch, patch_size, min_overlap, results_dir):
     model.eval()
     with no_grad():
-        for (data_vol, label_vol, label_files, plane, dim) in data_loader:
+        for (data_vol, data_files, plane, dim, cell_metric) in data_loader:
             pred_yx = []
             pred_zx = []
             pred_zy = []
         
             for index in range(len(plane)):
 
-                for (sample_data, sample_labels, origin_dim) in tqdm(zip(data_vol[index], label_vol[index], dim[index]),
-                                                                     desc=f'Processing {plane[index]}'):
+                for (sample_data, origin_dim) in tqdm(zip(data_vol[index], dim[index]),
+                                                      desc=f'>>> Processing {plane[index]}'):
+                # for (sample_data, sample_labels, origin_dim) in tqdm(zip(data_vol[index], label_vol[index], dim[index]),
+                #                                                      desc=f'Processing {plane[index]}'):
+
                     resized_dims = (sample_data.shape[2], sample_data.shape[3])
                     padding = sample_data.shape[2] < patch_size[0] or sample_data.shape[3] < patch_size[1]
                     # Add padding if image is smaller than patch size in at least one dimension
                     if padding:
                         sd = zeros((sample_data.shape[0], sample_data.shape[1], max(patch_size[0], sample_data.shape[2]),
                                     max(patch_size[1], sample_data.shape[3])))
-                        sl = zeros((sample_labels.shape[0], sample_labels.shape[1], max(patch_size[0], sample_data.shape[2]),
-                                    max(patch_size[1], sample_labels.shape[3])))
+                        # sl = zeros((sample_labels.shape[0], sample_labels.shape[1], max(patch_size[0], sample_data.shape[2]),
+                        #             max(patch_size[1], sample_labels.shape[3])))
                         set_corner = (max(0, (patch_size[0] - sample_data.shape[2]) // 2),
                                       max(0, (patch_size[1] - sample_data.shape[3]) // 2))
                         sd[:, :, set_corner[0]:set_corner[0] + sample_data.shape[2],
                            set_corner[1]:set_corner[1] + sample_data.shape[3]] = sample_data
-                        sl[:, :, set_corner[0]:set_corner[0] + sample_labels.shape[2],
-                           set_corner[1]:set_corner[1] + sample_labels.shape[3]] = sample_labels
+                        # sl[:, :, set_corner[0]:set_corner[0] + sample_labels.shape[2],
+                        #    set_corner[1]:set_corner[1] + sample_labels.shape[3]] = sample_labels
                         sample_data = sd
-                        sample_labels = sl
+                        # sample_labels = sl
                         resized_dims = (sample_data.shape[2], sample_data.shape[3])
-                    sample_data, _ = generate_patches(sample_data, squeeze(sample_labels, dim=0), patch=patch_size,
+                    sample_data = generate_patches(sample_data, patch=patch_size,
                                                       min_overlap=min_overlap, lbl_flows=False)
                     predictions = tensor([]).to(device)
 
@@ -245,15 +248,14 @@ def eval_network_3D(model: nn.Module, data_loader: DataLoader, device,
                         pred_zy.append(predictions)
 
             pred_yx, pred_zy, pred_zx = np.array(pred_yx), np.array(pred_zy), np.array(pred_zx)
-            run_3D_masks(pred_yx, pred_zy, pred_zx, label_files, results_dir)
+            run_3D_masks(pred_yx, pred_zy, pred_zx, data_files, results_dir, cell_metric)
 
 
 # adapted from cellpose original implementation
 # TODO: does not work for patch size smaller than at least one image dimension, padding required
-def run_3D_masks(pred_yx, pred_zy, pred_zx, label_name, results_dir):
-    
+def run_3D_masks(pred_yx, pred_zy, pred_zx, data_name, results_dir, cell_metric):
 
-    yf = np.zeros((3, 3, pred_yx.shape[1], pred_yx.shape[2], pred_yx.shape[3]), np.float32)
+    yf = np.zeros((3, 3, pred_yx.shape[0], pred_yx.shape[2], pred_yx.shape[3]), np.float32)
     
     yf[0] = pred_yx.transpose(1, 0, 2, 3) #predicted yx
     yf[1] = pred_zy.transpose(1, 2, 3, 0) #predicted zy, transposed to yx
@@ -261,13 +263,13 @@ def run_3D_masks(pred_yx, pred_zy, pred_zx, label_name, results_dir):
     
     cellprob = yf[0][0] + yf[1][0] + yf[2][0]
     dP = np.stack((yf[1][1] + yf[2][1], yf[0][1] + yf[1][2], yf[0][2] + yf[2][2]), axis=0)
-    mask = np.array(followflows3D(dP, cellprob))
+    mask = np.array(followflows3D(dP, cellprob, cell_metric))
     
-    print(f">>>Total masks found in 3D volume: ", len(np.unique(mask))-1)
+    print(f">>> Total masks found in 3D volume: ", len(np.unique(mask))-1)
     
     label_list = []
-    for i in range(len(label_name)):
-        label_list.append(label_name[i][label_name[i].rfind('/')+1: label_name[i].rfind('.')])
+    for i in range(len(data_name)):
+        label_list.append(data_name[i][data_name[i].rfind('/') + 1: data_name[i].rfind('.')])
                     
     with open(os.path.join(results_dir, label_list[0] + '_raw_masks_flows.pkl'), 'wb') as rmf_pkl:
         pickle.dump(yf, rmf_pkl)

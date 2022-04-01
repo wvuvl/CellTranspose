@@ -13,38 +13,34 @@ import torchvision.transforms.functional as TF
 class Resize(object):
     def __init__(self, default_med, target_labels=None):
         self.default_med = default_med
-        self.target_labels = target_labels
+        self.diams = []
+        if target_labels is not None:
+            for t_label in target_labels:
+                t_cf = copy.deepcopy(torch.squeeze(t_label, dim=0))
+                t_cf = remove_cut_cells(t_cf)
+                self.diams = self.diams + diam_range(t_cf)
 
-    def __call__(self, x, y, pf=None, random_scale=1.0, diameter=None):
+    def __call__(self, x, y, pf=None, random_scale=1.0):
         original_dims = y.shape[1], y.shape[2]
-        x, y = resize_from_labels(x, y, self.default_med, pf, random_scale=random_scale,
-                                  target_labels=self.target_labels)
-        return x, y, original_dims
+        x, y, cm = resize_from_labels(x, y, self.default_med, pf, random_scale=random_scale, diams=self.diams)
+        return x, y, original_dims, cm
 
 
-def resize_from_labels(x, y, default_med, pf=None, random_scale=1.0, target_labels=None):
-    unq = torch.unique(y)
-    if len(unq) == 1 and unq == 0:
-        return x, y
-
-    # calculate diameters, using only full cells in the given image or images
-    if target_labels is None:
+def resize_from_labels(x, y, default_med, pf=None, random_scale=1.0, diams=[]):
+    # TODO: Make it possible to resize without y (will need to be reflected in evaluation (2d and 3d) code)
+    if len(diams) == 0:
+        unq = torch.unique(y)
+        if len(unq) == 1 and unq == 0:
+            return x, y, None
+        # calculate diameters, using only full cells in the given image or images
         y_cf = copy.deepcopy(torch.squeeze(y, dim=0))
         y_cf = remove_cut_cells(y_cf)
         diams = diam_range(y_cf)
-        med = np.percentile(np.array(diams), 75)*random_scale
-        med = med if med > 12 else 12  # Note: following work from TissueNet
-    else:
-        diams = []
-        for t_label in target_labels:
-            t_cf = copy.deepcopy(torch.squeeze(t_label, dim=0))
-            t_cf = remove_cut_cells(t_cf)
-            diams = diams + diam_range(t_cf)
-        med = np.percentile(np.array(diams), 75)*random_scale
-        med = med if med > 12 else 12
 
-    if med > 0:
-        rescale_w, rescale_h = default_med[0] / med, default_med[1] / med
+    cell_metric = np.percentile(np.array(diams), 75)*random_scale
+    cell_metric = cell_metric if cell_metric > 12 else 12  # Note: following work from TissueNet
+    if cell_metric > 0:
+        rescale_w, rescale_h = default_med[0] / cell_metric, default_med[1] / cell_metric
         x = np.transpose(x.numpy(), (1, 2, 0))
         x = cv2.resize(x, (int(x.shape[1] * rescale_w), int(x.shape[0] * rescale_h)),
                        interpolation=cv2.INTER_LINEAR)
@@ -61,10 +57,10 @@ def resize_from_labels(x, y, default_med, pf=None, random_scale=1.0, target_labe
                             interpolation=cv2.INTER_LINEAR)
             pf = np.transpose(pf, (2, 0, 1))
             pf[0] = (pf[0] > 0.5).astype(np.float32)
-            return torch.tensor(x), torch.tensor(pf)
-        return torch.tensor(x), torch.tensor(y)
+            return torch.tensor(x), torch.tensor(pf), cell_metric
+        return torch.tensor(x), torch.tensor(y), cell_metric
     else:
-        return x, y
+        return x, y, cell_metric
 
 
 def reformat(x, n_chan=1):
@@ -142,13 +138,13 @@ def followflows(flows):
     return masks
 
 
-def followflows3D(dP, cellprob):
-
-
+def followflows3D(dP, cellprob, cell_metric):
     """
     Combines follow_flows, get_masks, and fill_holes_and_remove_small_masks from Cellpose implementation
     """
-    niter = 400; interp = True; use_gpu = True; cellprob_threshold = 0.0; flow_threshold = 0.4; min_size = 1400
+    niter = 400; interp = True; use_gpu = True; cellprob_threshold = 0.0; flow_threshold = 0.4
+    # Smallest size of calculated mask allowed; masks lower than this value will be removed
+    min_size = (cell_metric ** 3) / 125
     masks = compute_masks(dP, cellprob, niter=niter, interp=interp, use_gpu=use_gpu, mask_threshold=cellprob_threshold,
                           flow_threshold=flow_threshold, min_size=min_size)
     return masks
@@ -165,20 +161,24 @@ def generate_patches(data, label=None, patch=(96, 96), min_overlap=(64, 64), lbl
     y_patches = np.linspace(0, data.shape[2] - patch[1], num_y_patches, dtype=int)
 
     patch_data = torch.empty((data.shape[0] * num_x_patches * num_y_patches, data.shape[1], patch[0], patch[1]))
-    if lbl_flows:
-        patch_label = torch.empty((num_x_patches * num_y_patches, 3, patch[0], patch[1]))
-    else:
-        patch_label = torch.empty((label.shape[0] * num_x_patches * num_y_patches, patch[0], patch[1]))
+    if label is not None:
+        if lbl_flows:
+            patch_label = torch.empty((num_x_patches * num_y_patches, 3, patch[0], patch[1]))
+        else:
+            patch_label = torch.empty((label.shape[0] * num_x_patches * num_y_patches, patch[0], patch[1]))
 
     for i in range(num_x_patches):
         for j in range(num_y_patches):
             d_patch = data[0, :, y_patches[j]:y_patches[j] + patch[1], x_patches[i]:x_patches[i] + patch[0]]
             patch_data[num_y_patches * i + j] = d_patch
-            if lbl_flows:
-                l_patch = label[:, y_patches[j]:y_patches[j] + patch[1], x_patches[i]:x_patches[i] + patch[0]]
-            else:
-                l_patch = label[0, y_patches[j]:y_patches[j] + patch[1], x_patches[i]:x_patches[i] + patch[0]]
-            patch_label[num_y_patches * i + j] = l_patch
+            if label is not None:
+                if lbl_flows:
+                    l_patch = label[:, y_patches[j]:y_patches[j] + patch[1], x_patches[i]:x_patches[i] + patch[0]]
+                else:
+                    l_patch = label[0, y_patches[j]:y_patches[j] + patch[1], x_patches[i]:x_patches[i] + patch[0]]
+                patch_label[num_y_patches * i + j] = l_patch
+    if label is None:
+        return patch_data
     return patch_data, patch_label
 
 
@@ -269,20 +269,20 @@ def diam_range(masks):
     return diams
 
 
-def diam_range_3D(masks):
-    masks = np.int32(masks)
-    x_ranges = []
-    y_ranges = []
-    z_ranges = []
-    diams = []
-    uniques = np.unique(masks)[1:]
-    for u in uniques:
-        inds = np.where(masks == u)
-        x_ranges.append(np.amax(inds[2]) - np.amin(inds[2]))
-        y_ranges.append(np.amax(inds[1]) - np.amin(inds[1]))
-        z_ranges.append(np.amax(inds[0]) - np.amin(inds[0]))
-        diams.append(int((x_ranges[-1] * y_ranges[-1] * z_ranges[-1]) ** (1 / 3)))
-    return diams
+# def diam_range_3D(masks):
+#     masks = np.int32(masks)
+#     x_ranges = []
+#     y_ranges = []
+#     z_ranges = []
+#     diams = []
+#     uniques = np.unique(masks)[1:]
+#     for u in uniques:
+#         inds = np.where(masks == u)
+#         x_ranges.append(np.amax(inds[2]) - np.amin(inds[2]))
+#         y_ranges.append(np.amax(inds[1]) - np.amin(inds[1]))
+#         z_ranges.append(np.amax(inds[0]) - np.amin(inds[0]))
+#         diams.append(int((x_ranges[-1] * y_ranges[-1] * z_ranges[-1]) ** (1 / 3)))
+#     return diams
 
 
 def cell_range(masks, mask_val):
