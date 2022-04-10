@@ -81,6 +81,10 @@ parser.add_argument('--test-from-3D', help='Whether the input test data is 3D: a
 # Note: do-3D not currently implemented. Can be used for further development with volumetric approach
 parser.add_argument('--do-3D', help='Whether or not to use CellTranspose3D (Must use 3D volumes).', action='store_true')
 
+# Note: currently, only implemented for 2D, must perform AP calculation manually for 3D
+# Calculate results
+parser.add_argument('--calculate-ap', help='Calculates average precision if labeled data is provided.', action='store_true')
+
 args = parser.parse_args()
 
 print(args.results_dir)
@@ -143,7 +147,7 @@ if not args.eval_only:
 
     if args.val_dataset is not None:
         val_dataset = EvalCellTransposeData('Validation', args.val_dataset, args.n_chan, do_3D=args.do_3D,
-                                            from_3D=args.val_from_3D, resize=Resize(args.median_diams))
+                                            resize=Resize(args.median_diams))
         val_dataset.pre_generate_validation_patches(patch_size=args.patch_size, min_overlap=args.min_overlap)
         val_dl = DataLoader(val_dataset, batch_size=args.batch_size, shuffle=False)
     else:
@@ -174,6 +178,7 @@ if not args.eval_only:
                                                  scheduler=scheduler, device=device, n_epochs=args.epochs)
     # compiled_model = jit.script(model)
     # jit.save(compiled_model, os.path.join(args.results_dir, 'trained_model.pt'))
+    save(model.state_dict(), os.path.join(args.results_dir, 'trained_model.pt'))
     end_train = time.time()
     ttt = time.strftime("%H:%M:%S", time.gmtime(end_train - start_train))
     print('Time to train: {}'.format(ttt))
@@ -190,9 +195,10 @@ if not args.train_only:
                                              from_3D=args.test_from_3D, evaluate=True,
                                              resize=Resize(args.median_diams, target_labels=target_labels))
         eval_dl = DataLoader(test_dataset, batch_size=1, shuffle=False)
-        masks, prediction_list, label_list = eval_network(model, eval_dl, device, patch_per_batch=args.eval_batch_size,
+        masks, prediction_list, data_list = eval_network(model, eval_dl, device, patch_per_batch=args.eval_batch_size,
                                                           patch_size=args.patch_size, min_overlap=args.min_overlap)
-        save_pred(masks, test_dataset, prediction_list, label_list, args.results_dir, args.dataset_name)
+        
+        save_pred(masks, test_dataset, prediction_list, data_list, args.results_dir, args.dataset_name, args.calculate_ap)
     else:
         test_dataset_3D = EvalCellTransposeData3D('3D_test', args.test_dataset, args.n_chan, do_3D=args.do_3D,
                                                   from_3D=args.test_from_3D, evaluate=True,

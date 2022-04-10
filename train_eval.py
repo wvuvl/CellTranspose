@@ -145,13 +145,14 @@ def eval_network(model: nn.Module, data_loader: DataLoader, device, patch_per_ba
     model.eval()
     with no_grad():
         masks = []
-        label_list = []
+        data_list = []
         pred_list = []
-        for (sample_data, sample_labels, label_files, original_dims) in tqdm(data_loader, desc='Evaluating Test Dataset'):
+        for (sample_data, sample_labels, data_files, original_dims) in tqdm(data_loader, desc='Evaluating Test Dataset'):
             resized_dims = (sample_data.shape[2], sample_data.shape[3])
             padding = sample_data.shape[2] < patch_size[0] or sample_data.shape[3] < patch_size[1]
+            
             # Add padding if image is smaller than patch size in at least one dimension
-            if padding:
+            if padding and sample_labels.numel() != 0:
                 unpadded_dims = resized_dims
                 sd = zeros((sample_data.shape[0], sample_data.shape[1], max(patch_size[0], sample_data.shape[2]),
                             max(patch_size[1], sample_data.shape[3])))
@@ -166,8 +167,15 @@ def eval_network(model: nn.Module, data_loader: DataLoader, device, patch_per_ba
                 sample_data = sd
                 sample_labels = sl
                 resized_dims = (sample_data.shape[2], sample_data.shape[3])
-            sample_data, _ = generate_patches(sample_data, squeeze(sample_labels, dim=0), patch=patch_size,
+            
+            
+            if sample_labels.numel() != 0: 
+                sample_data, _ = generate_patches(sample_data, squeeze(sample_labels, dim=0), patch=patch_size,
                                               min_overlap=min_overlap, lbl_flows=False)
+            else:
+                sample_data = generate_patches(sample_data, patch=patch_size,
+                                              min_overlap=min_overlap, lbl_flows=False)
+                
             predictions = tensor([]).to(device)
 
             for patch_ind in range(0, len(sample_data), patch_per_batch):
@@ -177,8 +185,8 @@ def eval_network(model: nn.Module, data_loader: DataLoader, device, patch_per_ba
 
             predictions = recombine_patches(predictions, resized_dims, min_overlap)
             pred_list.append(predictions.cpu().numpy()[0])
-            for i in range(len(label_files)):
-                    label_list.append(label_files[i][label_files[i].rfind('/')+1: label_files[i].rfind('.')])
+            for i in range(len(data_files)):
+                    data_list.append(data_files[i][data_files[i].rfind('/')+1: data_files[i].rfind('.')])
 
             sample_mask = followflows(predictions)
             sample_mask = np.transpose(sample_mask.numpy(), (1, 2, 0))
@@ -189,7 +197,7 @@ def eval_network(model: nn.Module, data_loader: DataLoader, device, patch_per_ba
                                      interpolation=cv2.INTER_NEAREST)
             masks.append(sample_mask)
 
-    return masks, pred_list, label_list
+    return masks, pred_list, data_list
 
 
 # Evaluation - due to image size mismatches, must currently be run one image at a time

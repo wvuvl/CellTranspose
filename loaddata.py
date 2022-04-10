@@ -3,7 +3,7 @@ Data Loader implementation, specifically designed for in-house datasets. Code wi
 custom dataloaders for new data.
 """
 from torch.utils.data import Dataset
-from torch import empty, as_tensor, tensor, cat, unsqueeze, float32
+from torch import Tensor, empty, as_tensor, tensor, cat, unsqueeze, float32
 import torch.nn.functional as F
 import os
 import math
@@ -60,15 +60,20 @@ class CellTransposeData(Dataset):
 
         self.d_list = []
         self.l_list = []
+        
+        
+        
         for dir_i in data_dirs:
             self.d_list = self.d_list + sorted([dir_i + os.sep + 'data' + os.sep + f for f in
                                                 os.listdir(os.path.join(dir_i, 'data')) if f.lower()
                                                .endswith('.tiff') or f.lower().endswith('.tif')
                                                 or f.lower().endswith('.png')])
-            self.l_list = self.l_list + sorted([dir_i + os.sep + 'labels' + os.sep + f for f in
-                                                os.listdir(os.path.join(dir_i, 'labels')) if f.lower()
-                                               .endswith('.tiff') or f.lower().endswith('.tif')
-                                                or f.lower().endswith('.png')])
+            
+            if os.path.exists(os.path.join(dir_i,'labels')):
+                self.l_list = self.l_list + sorted([dir_i + os.sep + 'labels' + os.sep + f for f in
+                                                    os.listdir(os.path.join(dir_i, 'labels')) if f.lower()
+                                                .endswith('.tiff') or f.lower().endswith('.tif')
+                                                    or f.lower().endswith('.png')])
         if pf_dirs is not None:
             self.pf_list = []
             for dir_i in pf_dirs:
@@ -78,21 +83,35 @@ class CellTransposeData(Dataset):
         self.data = []
         self.labels = []
         self.original_dims = []
-
+        self.lbl_len = len(self.l_list)
+        
+        if self.lbl_len == 0: 
+            assert self.evaluate == True,\
+                '>>> Folder containing labelled images does not exist, cannot continue without it for training OR validation purposes...'
+            print('>>> Folder containing labelled images does not exist, continueing without it for evaluation purposes...')
+            
         if from_3D:
-            print(">>> Utilizing 2D model for evaluation on 3D volumes...")
+            print('>>> Utilizing 2D model for evaluation on 3D volumes...')
         else:
             for ind in tqdm(range(len(self.d_list)), desc='Loading {} Dataset...'.format(split_name)):
                 ext = os.path.splitext(self.d_list[ind])[-1]
                 if ext == '.tif' or ext == '.tiff':
                     new_data = as_tensor(tifffile.imread(self.d_list[ind]).astype('float'))
-                    new_label = as_tensor(tifffile.imread(self.l_list[ind]).astype('int16'))
+                    if self.lbl_len != 0: 
+                        new_label = as_tensor(tifffile.imread(self.l_list[ind]).astype('int16'))
                 else:
                     new_data = as_tensor(cv2.imread(self.d_list[ind], -1).astype('float'))
-                    new_label = as_tensor(cv2.imread(self.l_list[ind], -1).astype('int16'))
+                    if self.lbl_len != 0: 
+                        new_label = as_tensor(cv2.imread(self.l_list[ind], -1).astype('int16'))
+                
                 new_data = reformat(new_data, n_chan)
                 new_data = normalize1stto99th(new_data)
-                new_label = reformat(new_label)
+
+                if self.lbl_len != 0:
+                    new_label = reformat(new_label)
+                else:
+                    new_label = []
+
                 if pf_dirs is not None:
                     new_pf = tifffile.imread(self.pf_list[ind])
                     new_pf = new_pf.reshape(1, new_pf.shape[0], new_pf.shape[1], new_pf.shape[2])
@@ -106,10 +125,12 @@ class CellTransposeData(Dataset):
 
         self.target_data_samples = self.data
         self.target_label_samples = self.labels
+        
         if self.split_name.lower() == 'target' and len(self.data) < batch_size and not from_3D and not do_3D:
             for _ in range(1, math.ceil(batch_size / len(self.data))):
                 self.data = self.data + self.target_data_samples
-                self.labels = self.labels + self.target_label_samples
+                if self.lbl_len != 0: 
+                    self.labels = self.labels + self.target_label_samples
 
         self.data_samples = self.data
         self.label_samples = self.labels
@@ -232,27 +253,43 @@ class EvalCellTransposeData(CellTransposeData):
     def pre_generate_validation_patches(self, patch_size, min_overlap):
         self.data_samples = tensor([])
         self.label_samples = tensor([])
-        new_l_list = []
+        new_d_list = []
         new_original_dims = []
-        for (data, labels, label_fname, original_dim) in tzip(self.data, self.labels, self.l_list, self.original_dims,
+        for (data, labels, data_fname, original_dim) in tzip(self.data, self.labels, self.d_list, self.original_dims,
                                                               desc='Processing Validation Dataset...'):
+            
+
+            
+
             if data.shape[1] >= patch_size[0] and data.shape[2] >= patch_size[1]:
-                data, labels = generate_patches(unsqueeze(data, 0), labels, patch=patch_size,
+                if len(labels) != 0: 
+                    data, labels = generate_patches(unsqueeze(data, 0), labels, patch=patch_size,
                                                 min_overlap=min_overlap, lbl_flows=False)
-                labels = as_tensor(np.array([labels_to_flows(labels[i].numpy()) for i in range(len(labels))]))
+                    labels = as_tensor(np.array([labels_to_flows(labels[i].numpy()) for i in range(len(labels))]))
+                else:
+                     data = generate_patches(unsqueeze(data, 0), patch=patch_size,
+                                                min_overlap=min_overlap, lbl_flows=False)
+
                 self.data_samples = cat((self.data_samples, data))
                 self.label_samples = cat((self.label_samples, labels))
+
                 for _ in range(len(data)):
-                    new_l_list.append(label_fname)
+                    new_d_list.append(data_fname)
                     new_original_dims.append(original_dim)
-        self.l_list = new_l_list
+        self.d_list = new_d_list
         self.original_dims = new_original_dims
 
     def __getitem__(self, index):
-        if self.evaluate and not self.from_3D:
-            return self.data_samples[index], self.label_samples[index], self.l_list[index], self.original_dims[index]
+        
+        if len(self.label_samples) == 0:
+            label = []
         else:
-            return self.data_samples[index], self.label_samples[index]
+            label = self.label_samples[index]
+
+        if self.evaluate and not self.from_3D:
+            return self.data_samples[index], label, self.d_list[index], self.original_dims[index]
+        else:
+            return self.data_samples[index], label
 
 
 # final version of 3D validation dataloader
@@ -268,10 +305,10 @@ class EvalCellTransposeData3D(CellTransposeData):
 
         if ext == '.tif' or ext == '.tiff':
             raw_data_vol = tifffile.imread(self.d_list[index]).astype('float')
-            raw_label_vol = tifffile.imread(self.l_list[index]).astype('int16')
+            #raw_label_vol = tifffile.imread(self.l_list[index]).astype('int16')
         else:
             raw_data_vol = cv2.imread(self.d_list[index], -1).astype('float')
-            raw_label_vol = cv2.imread(self.l_list[index], -1).astype('int16')
+            #raw_label_vol = cv2.imread(self.l_list[index], -1).astype('int16')
 
         axis = ('Z', 'Y', 'X')
         plane = ('YX', 'ZX', 'ZY')
@@ -284,15 +321,15 @@ class EvalCellTransposeData3D(CellTransposeData):
         for ind in range(len(plane)):
             new_data = raw_data_vol.transpose(TP[ind])
             print(f">>> Processing 3D data on {new_data.shape[0]} {plane[ind]} planes in {axis[ind]} direction...")
-            new_label = raw_label_vol.transpose(TP[ind])
+            #new_label = raw_label_vol.transpose(TP[ind])
             new_data_vol = []
             # new_label_vol = []
             new_origin_dim = []
             for i in range(len(new_data)):
                 d = reformat(as_tensor(new_data[i]), self.n_chan)
                 data = normalize1stto99th(d)
-                label = reformat(as_tensor(new_label[i]))
-                
+                #label = reformat(as_tensor(new_label[i]))
+                label = []
                 if self.resize is not None:
                     data, label, dim, diam = self.resize(data, label)
                 else:

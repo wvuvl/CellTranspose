@@ -21,7 +21,7 @@ class Resize(object):
                 self.diams = self.diams + diam_range(t_cf)
 
     def __call__(self, x, y, pf=None, random_scale=1.0):
-        original_dims = y.shape[1], y.shape[2]
+        original_dims = x.shape[1], x.shape[2]
         x, y, cm = resize_from_labels(x, y, self.default_med, pf, random_scale=random_scale, diams=self.diams)
         return x, y, original_dims, cm
 
@@ -29,6 +29,9 @@ class Resize(object):
 def resize_from_labels(x, y, default_med, pf=None, random_scale=1.0, diams=[]):
     # TODO: Make it possible to resize without y (will need to be reflected in evaluation (2d and 3d) code)
     if len(diams) == 0:
+        assert len(y) != 0,\
+            '>>> Labels data does not exist, cannot process resize from labels...'
+
         unq = torch.unique(y)
         if len(unq) == 1 and unq == 0:
             return x, y, None
@@ -48,9 +51,11 @@ def resize_from_labels(x, y, default_med, pf=None, random_scale=1.0, diams=[]):
             x = x[np.newaxis, :]
         else:
             x = np.transpose(x, (2, 0, 1))
-        y = np.transpose(y.numpy(), (1, 2, 0))
-        y = cv2.resize(y, (int(y.shape[1] * rescale_w), int(y.shape[0] * rescale_h)),
-                       interpolation=cv2.INTER_NEAREST)[np.newaxis, :]
+
+        if len(y) != 0:    
+            y = np.transpose(y.numpy(), (1, 2, 0))
+            y = cv2.resize(y, (int(y.shape[1] * rescale_w), int(y.shape[0] * rescale_h)),
+                        interpolation=cv2.INTER_NEAREST)[np.newaxis, :]
         if pf is not None:
             pf = np.transpose(pf[0], (1, 2, 0))
             pf = cv2.resize(pf, (int(pf.shape[1] * rescale_w), int(pf.shape[0] * rescale_h)),
