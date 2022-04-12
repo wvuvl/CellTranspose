@@ -46,8 +46,8 @@ parser.add_argument('--eval-only', help='Only perform evaluation, no training (m
                     action='store_true')
 parser.add_argument('--do-adaptation', help='Whether to perform domain adaptation or standard training.',
                     action='store_true')
-parser.add_argument('--no-adaptation-loss', help='Train directly using standard loss on target samples'
-                                                 ' (for experimentation purposes)', action='store_true')
+parser.add_argument('--no-adaptation-loss', help='Train directly using standard loss on target samples (for'
+                                                 ' experimentation use, can usually ignore this)', action='store_true')
 parser.add_argument('--save-dataset', help='Name of directory to save training dataset to:'
                                            ' if None, will not save dataset.')
 parser.add_argument('--load-from-torch', help='If true, assumes dataset is being loaded from torch files, with no'
@@ -157,11 +157,6 @@ if not args.eval_only:
     if args.do_adaptation:
         sas_class_loss = SASMaskLoss(nn.BCEWithLogitsLoss(reduction='mean'))
         c_flow_loss = ContrastiveFlowLoss(nn.MSELoss(reduction='mean'))
-        # target_dataset = TrainCellTransposeData('Target', args.target_dataset, args.n_chan, pf_dirs=args.target_flows,
-        #                                         do_3D=args.do_3D, from_3D=args.target_from_3D,
-        #                                         crop_size=args.patch_size, has_flows=False, batch_size=args.batch_size,
-        #                                         resize=Resize(args.median_diams))
-        # target_dataset.process_training_data(args.patch_size, args.min_overlap, batch_size=args.batch_size, has_flows=True)
 
         start_train = time.time()
         scheduler = StepLR(optimizer, step_size=1, gamma=args.step_gamma)
