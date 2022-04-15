@@ -26,7 +26,8 @@ In order to produce a model prior to adaptation, the following command template 
 --train-dataset <\path\to\training\dataset> [--val-dataset <\path\to\validation\dataset>] --test-dataset
 <\path\to\test\dataset> [--calculate-ap]</code>
 
-For 3-D training (and testing) data, the following template should be used.
+For 3-D training data: the dataset containing 2-D slices should be passed in
+For 3-D testing data: the following template should be used.
 
 <code> python3 main.py --dataset-name <"dataset_name"> --results-dir <\path\to\results\dir>
 --train-dataset <\path\to\training\dataset> [--val-dataset <\path\to\validation\dataset>]
@@ -52,8 +53,6 @@ With a newly trained/adapted model, segmentations can be obtained directly:
 
 <code> python3 main.py --dataset-name <"dataset_name"> --results-dir <\path\to\results\dir>
 --pretrained-model <\path\to\pretrained\model> --eval-only --test-dataset <\path\to\test\dataset> [--calculate-ap]</code>
-
-Note that AP
 
 ###Additional Parameters
 
