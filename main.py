@@ -119,7 +119,7 @@ model = CellTranspose(channels=args.n_chan, device=device)
 model = nn.DataParallel(model)
 model.to(device)
 if args.pretrained_model is not None:
-    model.load_state_dict(load(args.pretrained_model, map_location=device))  # TODO: Remove map_location from load
+    model.load_state_dict(load(args.pretrained_model, map_location=device))
 
 if not args.eval_only:
     class_loss = ClassLoss(nn.BCEWithLogitsLoss(reduction='mean'))

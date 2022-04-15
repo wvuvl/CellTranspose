@@ -1,6 +1,6 @@
 """
 Data Loader implementation, specifically designed for in-house datasets. Code will be designed to reflect flexibility in
-custom dataloaders for new data.
+custom data loaders for new data.
 """
 from torch.utils.data import Dataset
 from torch import Tensor, empty, as_tensor, tensor, cat, unsqueeze, float32
@@ -13,9 +13,7 @@ import tifffile
 import cv2
 import random
 import numpy as np
-
-from transforms import reformat, normalize1stto99th, Resize, random_horizontal_flip, labels_to_flows,\
-    generate_patches
+from transforms import reformat, normalize1stto99th, Resize, random_horizontal_flip, labels_to_flows, generate_patches
 
 
 class CellTransposeData(Dataset):
@@ -52,17 +50,13 @@ class CellTransposeData(Dataset):
         """
         self.do_3D = do_3D
         self.from_3D = from_3D
-
         self.split_name = split_name
         self.evaluate = evaluate
         self.d_list_3D = []
         self.l_list_3D = []
-
         self.d_list = []
         self.l_list = []
-        
-        
-        
+
         for dir_i in data_dirs:
             self.d_list = self.d_list + sorted([dir_i + os.sep + 'data' + os.sep + f for f in
                                                 os.listdir(os.path.join(dir_i, 'data')) if f.lower()
@@ -106,12 +100,10 @@ class CellTransposeData(Dataset):
                 
                 new_data = reformat(new_data, n_chan)
                 new_data = normalize1stto99th(new_data)
-
                 if self.lbl_len != 0:
                     new_label = reformat(new_label)
                 else:
                     new_label = []
-
                 if pf_dirs is not None:
                     new_pf = tifffile.imread(self.pf_list[ind])
                     new_pf = new_pf.reshape(1, new_pf.shape[0], new_pf.shape[1], new_pf.shape[2])
@@ -280,12 +272,10 @@ class EvalCellTransposeData(CellTransposeData):
         self.original_dims = new_original_dims
 
     def __getitem__(self, index):
-        
         if len(self.label_samples) == 0:
             label = []
         else:
             label = self.label_samples[index]
-
         if self.evaluate and not self.from_3D:
             return self.data_samples[index], label, self.d_list[index], self.original_dims[index]
         else:
@@ -305,44 +295,33 @@ class EvalCellTransposeData3D(CellTransposeData):
 
         if ext == '.tif' or ext == '.tiff':
             raw_data_vol = tifffile.imread(self.d_list[index]).astype('float')
-            #raw_label_vol = tifffile.imread(self.l_list[index]).astype('int16')
         else:
             raw_data_vol = cv2.imread(self.d_list[index], -1).astype('float')
-            #raw_label_vol = cv2.imread(self.l_list[index], -1).astype('int16')
 
         axis = ('Z', 'Y', 'X')
         plane = ('YX', 'ZX', 'ZY')
         TP = [(0, 1, 2), (1, 0, 2), (2, 0, 1)]
         data_vol = []
-        label_vol = []
         original_dim = []
         
         print(f">>> Image path: {self.d_list[index]}")
         for ind in range(len(plane)):
             new_data = raw_data_vol.transpose(TP[ind])
             print(f">>> Processing 3D data on {new_data.shape[0]} {plane[ind]} planes in {axis[ind]} direction...")
-            #new_label = raw_label_vol.transpose(TP[ind])
             new_data_vol = []
-            # new_label_vol = []
             new_origin_dim = []
             for i in range(len(new_data)):
                 d = reformat(as_tensor(new_data[i]), self.n_chan)
                 data = normalize1stto99th(d)
-                #label = reformat(as_tensor(new_label[i]))
                 label = []
                 if self.resize is not None:
                     data, label, dim, diam = self.resize(data, label)
                 else:
                     dim = (data[0], data[1])
-                
                 new_data_vol.append(data)
-                # new_label_vol.append(label)
                 new_origin_dim.append(dim)
-                
             data_vol.append(new_data_vol)
-            # label_vol.append(new_label_vol)
             original_dim.append(new_origin_dim)
-        
         return data_vol, self.d_list[index], plane, original_dim, diam
 
     def __getitem__(self, index):

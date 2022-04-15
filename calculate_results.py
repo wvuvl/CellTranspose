@@ -1,7 +1,6 @@
 """
 Utility code for various performance metrics
 """
-from torch import squeeze, as_tensor
 import numpy as np
 import pandas as pd
 import seaborn as sns
@@ -10,8 +9,6 @@ import tifffile
 import cv2
 import pickle
 import matplotlib.pyplot as plt
-
-from transforms import reformat
 from cellpose_src.metrics import average_precision
 
 sns.set()
@@ -153,7 +150,6 @@ def save_pred(masks, test_dataset, prediction_list, data_list, results_dir, data
                     else:
                         label = cv2.imread(l, -1).astype('int32')
 
-                    #label = squeeze(reformat(label), dim=0).numpy().astype('int16')
                     labels.append(label)
                 tau = np.arange(0.0, 1.01, 0.01)
                 ap_info = average_precision(labels, masks, threshold=tau)

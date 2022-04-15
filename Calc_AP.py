@@ -23,9 +23,6 @@ masks = []
 labels = []
 filenames = []
 
-# for file in sorted(i for i in os.listdir(args.mask_path) if i.endswith('.npy')):
-#     masks.append(np.load(os.path.join(args.mask_path, file), allow_pickle=True).item()['masks'])
-
 for file in sorted(os.listdir(args.mask_path)):
     if tif_or_png_pred == '.png':
         masks.append(cv2.imread(os.path.join(args.mask_path, file), -1))

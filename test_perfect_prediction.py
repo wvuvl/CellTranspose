@@ -64,7 +64,6 @@ for i in range(len(masks)):
 labels = []
 for l in dataset.l_list:
     label = as_tensor(cv2.imread(l, -1).astype('int16'))
-    # label = as_tensor(tifffile.imread(l).astype('int16'))
     label = squeeze(reformat(label), dim=0).numpy()
     labels.append(label)
 with open(os.path.join(results_dir, 'counted_cells.txt'), 'w') as cc:

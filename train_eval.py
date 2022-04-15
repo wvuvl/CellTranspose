@@ -177,7 +177,6 @@ def eval_network(model: nn.Module, data_loader: DataLoader, device, patch_per_ba
                                               min_overlap=min_overlap, lbl_flows=False)
                 
             predictions = tensor([]).to(device)
-
             for patch_ind in range(0, len(sample_data), patch_per_batch):
                 sample_data_patches = sample_data[patch_ind:patch_ind + patch_per_batch].float().to(device)
                 p = model(sample_data_patches)
@@ -214,25 +213,17 @@ def eval_network_3D(model: nn.Module, data_loader: DataLoader, device,
 
                 for (sample_data, origin_dim) in tqdm(zip(data_vol[index], dim[index]),
                                                       desc=f'>>> Processing {plane[index]}'):
-                # for (sample_data, sample_labels, origin_dim) in tqdm(zip(data_vol[index], label_vol[index], dim[index]),
-                #                                                      desc=f'Processing {plane[index]}'):
-
                     resized_dims = (sample_data.shape[2], sample_data.shape[3])
                     padding = sample_data.shape[2] < patch_size[0] or sample_data.shape[3] < patch_size[1]
                     # Add padding if image is smaller than patch size in at least one dimension
                     if padding:
                         sd = zeros((sample_data.shape[0], sample_data.shape[1], max(patch_size[0], sample_data.shape[2]),
                                     max(patch_size[1], sample_data.shape[3])))
-                        # sl = zeros((sample_labels.shape[0], sample_labels.shape[1], max(patch_size[0], sample_data.shape[2]),
-                        #             max(patch_size[1], sample_labels.shape[3])))
                         set_corner = (max(0, (patch_size[0] - sample_data.shape[2]) // 2),
                                       max(0, (patch_size[1] - sample_data.shape[3]) // 2))
                         sd[:, :, set_corner[0]:set_corner[0] + sample_data.shape[2],
                            set_corner[1]:set_corner[1] + sample_data.shape[3]] = sample_data
-                        # sl[:, :, set_corner[0]:set_corner[0] + sample_labels.shape[2],
-                        #    set_corner[1]:set_corner[1] + sample_labels.shape[3]] = sample_labels
                         sample_data = sd
-                        # sample_labels = sl
                         resized_dims = (sample_data.shape[2], sample_data.shape[3])
                     sample_data = generate_patches(sample_data, patch=patch_size,
                                                       min_overlap=min_overlap, lbl_flows=False)
@@ -246,7 +237,7 @@ def eval_network_3D(model: nn.Module, data_loader: DataLoader, device,
                     predictions = recombine_patches(predictions, resized_dims, min_overlap).cpu().numpy()[0]
                     predictions = predictions.transpose(1, 2, 0)
                     predictions = transforms.resize_image(predictions, origin_dim[0].item(), origin_dim[1].item())
-                    
+
                     predictions = predictions.transpose(2, 0, 1)
                     if index == 0:
                         pred_yx.append(predictions)
