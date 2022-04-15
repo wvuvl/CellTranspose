@@ -1,10 +1,22 @@
 #Few-Shot Domain-Adaptive Cell Segmentation with Cellpose
 
-This code base can be utilized in a number of ways, including for initial model training, adaptation, and evaluation on
-both 2-D and 3-D data.
+This code base can be utilized in a number of ways, including for initial model training, adaptation, and evaluation on both 2-D and 3-D data.
 
-All lines of code assume the default parameters to be used (contained within <code>main.py</code> – if new default
+All code examples below assume the default parameters to be used (contained within <code>main.py</code> – if new default
 values are needed, they can be updated here. Additionally, these can be passed in as parameter arguments).
+
+##Dataset structure
+This code has been implemented to handle both png and tiff data. It is expected that each dataset is comprised of two folders, named "data" and "labels", set in the root directory. All images should be set in the "data" folder while all masks should be set in the "labels" folder; any subdirectories will be ignored. Visually, the dataset should be organized as follows:
+
+    - </root/folder>
+        - /data
+            - vol1.tiff
+            ...
+            - voln.tiff
+        - /labels
+            - lbl1.tiff
+            ...
+            - lbln.tiff
 
 ##Training an Initial Model/Direct Training
 
@@ -12,13 +24,15 @@ In order to produce a model prior to adaptation, the following command template 
 
 <code> python3 main.py --dataset-name <"dataset_name"> --results-dir <\path\to\results\dir>
 --train-dataset <\path\to\training\dataset> [--val-dataset <\path\to\validation\dataset>] --test-dataset
-<\path\to\test\dataset> --calculate-ap</code>
+<\path\to\test\dataset> [--calculate-ap]</code>
 
 For 3-D training (and testing) data, the following template should be used.
 
 <code> python3 main.py --dataset-name <"dataset_name"> --results-dir <\path\to\results\dir>
---train-dataset <\path\to\training\dataset> --train-from-3D [--val-dataset <\path\to\validation\dataset>]
---test-dataset <\path\to\test\dataset> --test-from-3D --calculate-ap</code>
+--train-dataset <\path\to\training\dataset> [--val-dataset <\path\to\validation\dataset>]
+--test-dataset <\path\to\test\dataset> --test-from-3D</code>
+
+Note that due to memory constraints, AP calculation cannot occur for 3-D data. Instead, once the initial code has been run, it should be followed by <code>Calc_AP.py</code>.
 
 It should also be noted that training can be broken into separate training and evaluation steps (via
 <code>--train-only</code> and <code>--eval-only</code>), but since this is not likely to be used, we only show options
@@ -32,14 +46,14 @@ Adaptation, specifically only for training and not evaluation, should be complet
 --pretrained-model <\path\to\pretrained\model> --do-adaptation --train-only --train-dataset <\path\to\training\dataset>
 --target-dataset <\path\to\target\dataset> [--val-dataset <\path\to\validation\dataset>]</code>
 
-3-D works in the same manner with the added "from-3D" parameters for training, validation, and/or target data.
-
 ##Performing Segmentation Using a Pretrained Model
 
 With a newly trained/adapted model, segmentations can be obtained directly:
 
 <code> python3 main.py --dataset-name <"dataset_name"> --results-dir <\path\to\results\dir>
---pretrained-model <\path\to\pretrained\model> --eval-only --test-dataset <\path\to\test\dataset> --calculate-ap</code>
+--pretrained-model <\path\to\pretrained\model> --eval-only --test-dataset <\path\to\test\dataset> [--calculate-ap]</code>
+
+Note that AP
 
 ###Additional Parameters
 

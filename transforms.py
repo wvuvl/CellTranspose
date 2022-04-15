@@ -29,8 +29,7 @@ class Resize(object):
 def resize_from_labels(x, y, default_med, pf=None, random_scale=1.0, diams=[]):
     # TODO: Make it possible to resize without y (will need to be reflected in evaluation (2d and 3d) code)
     if len(diams) == 0:
-        assert len(y) != 0,\
-            '>>> Labels data does not exist, cannot process resize from labels...'
+        assert len(y) != 0, 'Target sample labels not found; resizing target data for evaluation cannot be completed.'
 
         unq = torch.unique(y)
         if len(unq) == 1 and unq == 0:
@@ -272,22 +271,6 @@ def diam_range(masks):
         y_ranges.append(np.amax(inds[0]) - np.amin(inds[0]))
         diams.append(int(math.sqrt(x_ranges[-1] * y_ranges[-1])))
     return diams
-
-
-# def diam_range_3D(masks):
-#     masks = np.int32(masks)
-#     x_ranges = []
-#     y_ranges = []
-#     z_ranges = []
-#     diams = []
-#     uniques = np.unique(masks)[1:]
-#     for u in uniques:
-#         inds = np.where(masks == u)
-#         x_ranges.append(np.amax(inds[2]) - np.amin(inds[2]))
-#         y_ranges.append(np.amax(inds[1]) - np.amin(inds[1]))
-#         z_ranges.append(np.amax(inds[0]) - np.amin(inds[0]))
-#         diams.append(int((x_ranges[-1] * y_ranges[-1] * z_ranges[-1]) ** (1 / 3)))
-#     return diams
 
 
 def cell_range(masks, mask_val):
