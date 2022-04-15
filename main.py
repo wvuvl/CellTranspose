@@ -81,9 +81,9 @@ parser.add_argument('--test-from-3D', help='Whether the input test data is 3D: a
 # Note: do-3D not currently implemented. Can be used for further development with volumetric approach
 parser.add_argument('--do-3D', help='Whether or not to use CellTranspose3D (Must use 3D volumes).', action='store_true')
 
-# Note: currently, only implemented for 2D, must perform AP calculation manually for 3D
-# Calculate results
-parser.add_argument('--calculate-ap', help='Calculates average precision if labeled data is provided.', action='store_true')
+# Calculate results - Note: currently only implemented for 2D, must perform AP calculation manually for 3D
+parser.add_argument('--calculate-ap', help='Calculates average precision if labeled data is provided.',
+                    action='store_true')
 
 args = parser.parse_args()
 
