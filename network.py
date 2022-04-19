@@ -183,7 +183,7 @@ class UpBlock(nn.Module):
         return z_2
 
 
-class CellTranspose(nn.Module):
+class CellTransposeModel(nn.Module):
     def __init__(self, channels: int, device='cuda'):
         super().__init__()
         self.device = device
