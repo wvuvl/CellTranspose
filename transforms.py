@@ -27,7 +27,6 @@ class Resize(object):
 
 
 def resize_from_labels(x, y, default_med, pf=None, random_scale=1.0, diams=[]):
-    # TODO: Make it possible to resize without y (will need to be reflected in evaluation (2d and 3d) code)
     if len(diams) == 0:
         assert len(y) != 0, 'Target sample labels not found; resizing target data for evaluation cannot be completed.'
 

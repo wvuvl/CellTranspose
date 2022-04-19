@@ -186,7 +186,7 @@ class UpBlock(nn.Module):
 class CellTranspose(nn.Module):
     def __init__(self, channels: int, device='cuda'):
         super().__init__()
-        self.device = device  # TODO: Removing this should be fine
+        self.device = device
         self.d_block1 = DownBlock(channels, 32, pool=False)
         self.d_block2 = DownBlock(32, 64)
         self.d_block3 = DownBlock(64, 128)

@@ -97,7 +97,6 @@ assert not (args.train_only and args.eval_only), 'Cannot pass in "train-only" an
 device = device('cuda' if is_available() else 'cpu')
 empty_cache()
 
-# TODO pass in assertion for target labels necessary for evaluation
 args.median_diams = (args.median_diams, args.median_diams)
 args.patch_size = (args.patch_size, args.patch_size)
 args.min_overlap = (args.min_overlap, args.min_overlap)

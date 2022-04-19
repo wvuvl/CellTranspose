@@ -251,14 +251,13 @@ def eval_network_3D(model: nn.Module, data_loader: DataLoader, device,
 
 
 # adapted from cellpose original implementation
-# TODO: does not work for patch size smaller than at least one image dimension, padding required
 def run_3D_masks(pred_yx, pred_zy, pred_zx, data_name, results_dir, cell_metric):
 
     yf = np.zeros((3, 3, pred_yx.shape[0], pred_yx.shape[2], pred_yx.shape[3]), np.float32)
     
-    yf[0] = pred_yx.transpose(1, 0, 2, 3) #predicted yx
-    yf[1] = pred_zy.transpose(1, 2, 3, 0) #predicted zy, transposed to yx
-    yf[2] = pred_zx.transpose(1, 2, 0, 3) #predicted zx, transposed to yx
+    yf[0] = pred_yx.transpose(1, 0, 2, 3)  # predicted yx
+    yf[1] = pred_zy.transpose(1, 2, 3, 0)  # predicted zy, transposed to yx
+    yf[2] = pred_zx.transpose(1, 2, 0, 3)  # predicted zx, transposed to yx
     
     cellprob = yf[0][0] + yf[1][0] + yf[2][0]
     dP = np.stack((yf[1][1] + yf[2][1], yf[0][1] + yf[1][2], yf[0][2] + yf[2][2]), axis=0)
