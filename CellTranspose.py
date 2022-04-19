@@ -9,7 +9,7 @@ import time
 
 from transforms import Resize
 from loaddata import TrainCellTransposeData, EvalCellTransposeData, EvalCellTransposeData3D
-from CellTranspose2D import CellTranspose, ClassLoss, FlowLoss, SASMaskLoss, ContrastiveFlowLoss
+from network import CellTranspose, ClassLoss, FlowLoss, SASMaskLoss, ContrastiveFlowLoss
 from train_eval import train_network, adapt_network, eval_network, eval_network_3D
 from calculate_results import produce_logfile, plot_loss, save_pred
 
