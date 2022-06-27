@@ -73,17 +73,16 @@ def reformat(x, n_chan=1):
     """
     if x.dim() == 2:
         x = x.view(1, x.shape[0], x.shape[1])
-        x = torch.cat((x, torch.zeros((n_chan - 1, x.shape[1], x.shape[2]))))
     elif x.dim() == 3:
         if x.shape[2] > x.shape[0]:
             x = x.permute(1, 2, 0)
         info_chans = [len(torch.unique(x[:, :, i])) > 1 for i in range(x.shape[2])]
         x = x[:, :, info_chans]
         x = torch.tensor(np.transpose(x.numpy(), (2, 0, 1))[:n_chan])  # Remove any additional channels
-        # Concatenate empty channels if image has fewer than the specified number of channels
-        if x.shape[0] < n_chan:
-            zeros = torch.zeros((n_chan - x.shape[0]), x.shape[1], x.shape[2])
-            x = torch.cat((x, zeros))
+    # Concatenate copies of other channels if image has fewer than the specified number of channels
+    if x.shape[0] < n_chan:
+        x = torch.tile(x, (math.ceil(n_chan/x.shape[0]), 1, 1))
+        x = x[:n_chan]
     return x
 
 
