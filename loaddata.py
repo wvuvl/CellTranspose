@@ -487,7 +487,7 @@ class EvalCellTransposeData3D(CellTransposeData):
                 data = normalize1stto99th(d)
                 label = []
                 if self.resize is not None:
-                    data, label, dim, diam = self.resize(data, label, anisotropy=self.anisotropy[ind])
+                    data, label, dim, diam = self.resize(data, label, anisotropy=int(self.anisotropy[ind]))
                 else:
                     dim = (data[0], data[1])
                 new_data_vol.append(data)
