@@ -45,7 +45,7 @@ for file in sorted(os.listdir(args.label_path)):
 with open(os.path.join(args.mask_path, 'counted_cells.txt'), 'w') as cc:
     predicted_count = 0
     true_count = 0
-    for i in range(len(args.masks)):
+    for i in range(len(masks)):
         num_masks = len(np.unique(masks[i]))-1
         num_labels = len(np.unique(masks[i]))-1
         cc.write('{}:\nPredicted: {}; True: {}\n'.format(filenames[i], num_masks, num_labels))
