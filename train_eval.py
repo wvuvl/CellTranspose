@@ -10,6 +10,7 @@ import tifffile
 from statistics import mean
 from transforms import followflows, followflows3D, generate_patches, recombine_patches
 from cellpose_src import transforms
+from seg_contrast import PixelContrastMorphologyLoss, PixelContrastLoss, PixelContrastMorphologyLossWithGaussianBlur
 
 def train_network(model, train_dl, val_dl, class_loss, flow_loss, optimizer, scheduler, device, n_epochs):
     train_losses = []
@@ -26,7 +27,7 @@ def train_network(model, train_dl, val_dl, class_loss, flow_loss, optimizer, sch
             sample_data = sample_data.to(device)
             sample_labels = sample_labels.to(device)
             optimizer.zero_grad()
-            output = model(sample_data)
+            output, _ = model(sample_data)
             mask_loss = class_loss(output, sample_labels)
             grad_loss = flow_loss(output, sample_labels)
             train_loss = mask_loss + grad_loss
@@ -34,7 +35,77 @@ def train_network(model, train_dl, val_dl, class_loss, flow_loss, optimizer, sch
             train_loss.backward()
             optimizer.step()
 
-        scheduler.step()
+        if e >= 250 or n_epochs <= 10: scheduler.step()
+        
+        train_epoch_loss = mean(train_epoch_losses)
+        train_losses.append(train_epoch_loss)
+        if val_dl is not None:
+            val_epoch_loss = validate_network(model, val_dl, flow_loss, class_loss, device)
+            val_losses.append(val_epoch_loss)
+            print('Train loss: {:.3f}; Validation loss: {:.3f}'.format(train_epoch_loss, val_epoch_loss))
+        else:
+            print('Train loss: {:.3f}'.format(train_epoch_loss))
+
+    print('Train time: {}'.format(time.strftime("%H:%M:%S", time.gmtime(time.time() - start_train))))
+    return train_losses, val_losses
+
+def train_network_with_flow_contrast(model, train_dl, val_dl, class_loss, flow_loss, optimizer, scheduler, device, n_epochs, 
+                                     mask_contrast_loss, cosine_loss, contrastive_flow_loss, k, gamma_1, gamma_2, n_thresh, temperature):
+    train_losses = []
+    val_losses = []
+    start_train = time.time()
+
+    # seg_morphology_contrast_with_gaussian_blur = PixelContrastMorphologyLossWithGaussianBlur()
+    seg_morphology_contrast = PixelContrastMorphologyLoss()
+    # seg_contrast = PixelContrastLoss()
+    
+    print('Beginning network training.\n')
+    for e in range(1, n_epochs + 1):
+        train_epoch_losses = []
+        model.train()
+        print(scheduler.get_last_lr())
+        for (sample_data_1, sample_data_2, sample_labels, _, org_within, org_boundary) in tqdm(train_dl, desc='Training with pix contrast - Epoch {}/{}'.format(e, n_epochs)):
+            
+            sample_data_1 = sample_data_1.to(device)
+            sample_labels = sample_labels.to(device)
+            org_within = org_within.to(device)
+            org_boundary = org_boundary.to(device)
+            # sample_data_2 = sample_data_2.to(device)
+            
+            optimizer.zero_grad()
+            output_1, output_1_rep = model(sample_data_1)
+            # output_2, output_2_rep = model(sample_data_2)
+            
+            mask_loss_1 = class_loss(output_1, sample_labels)
+            grad_loss_1 = flow_loss(output_1, sample_labels)
+            # mask_loss_2 = class_loss(output_2, sample_labels)
+            # grad_loss_2 = flow_loss(output_2, sample_labels)
+            
+            
+            # mask_contrast = mask_contrast_loss(output_2[:,0], sample_labels_2[:, 0],
+            #                                               output_1[:, 0], sample_labels_1[:, 0],
+            #                                               margin=10, gamma_1=gamma_1, lam=0.5)
+            
+            # flow_contrast_loss = contrastive_flow_loss(output_1[:, 1:], sample_labels_1,
+            #                                                      output_2[:, 1:], sample_labels_2,
+            #                                                      k=k, gamma_2=gamma_2, n_thresh=n_thresh,
+            #                                                      temperature=temperature)
+            
+            # train_loss = mask_loss_1 + mask_loss_2 + grad_loss_1 + grad_loss_2 + mask_contrast
+            
+            
+            # pix_contrast = 0.1*seg_morphology_contrast_with_gaussian_blur(output_1_rep, output_2_rep, org_within[:,0], org_boundary[:,0],output_1[:,0], output_2[:,0])
+            pix_contrast = 0.1*seg_morphology_contrast(output_1_rep, org_within[:,0], org_boundary[:,0],output_1[:,0])  
+            # pix_contrast = 0.1*seg_contrast(output_1_rep, sample_labels[:,0],output_1[:,0])  
+            
+            train_loss = mask_loss_1 + grad_loss_1 + pix_contrast
+            
+            train_epoch_losses.append(train_loss.item())
+            train_loss.backward()
+            optimizer.step()
+
+        if e >= 400 or n_epochs <= 10: scheduler.step()
+        
         train_epoch_loss = mean(train_epoch_losses)
         train_losses.append(train_epoch_loss)
         if val_dl is not None:
@@ -53,6 +124,7 @@ def adapt_network(model: nn.Module, source_dl, target_dl, val_dl, sas_mask_loss,
                   k, gamma_1, gamma_2, n_thresh, temperature):
     train_losses = []
     val_losses = []
+    seg_morphology_contrast = PixelContrastMorphologyLoss()
     print('Beginning domain adaptation.\n')
 
     # Assume # of target samples << # of source samples
@@ -65,23 +137,32 @@ def adapt_network(model: nn.Module, source_dl, target_dl, val_dl, sas_mask_loss,
         train_target_flow_losses = []
         target_dl_iter = iter(target_dl)
 
-        for i, (source_sample_data, source_sample_labels) in enumerate(tqdm(
+        for i, (source_sample_data, _, source_sample_labels, _, org_sample_within, org_sample_boundary) in enumerate(tqdm(
                 source_dl, desc='Training - Epoch {}/{}'.format(e, n_epochs))):
             optimizer.zero_grad()
 
             source_sample_data = source_sample_data.to(device)
             source_sample_labels = source_sample_labels.to(device)
-            source_output = model(source_sample_data)
+            org_sample_within = org_sample_within.to(device)
+            org_sample_boundary = org_sample_boundary.to(device)
+            source_output,_ = model(source_sample_data)
 
             try:
                 target_sample = next(target_dl_iter)
             except StopIteration:
                 target_dl_iter = iter(target_dl)
                 target_sample = next(target_dl_iter)
+                
             target_sample_data = target_sample[0].to(device)
-            target_sample_labels = target_sample[1].to(device)
-            target_output = model(target_sample_data)
+            target_sample_labels = target_sample[2].to(device)
+            target_sample_within = target_sample[4].to(device)
+            target_sample_boundary = target_sample[5].to(device)
+            target_output,target_rep = model(target_sample_data)
+            
+            pix_morphology_loss = 0.1*seg_morphology_contrast(target_rep, target_sample_within[:,0], target_sample_boundary[:,0],target_output[:,0])
+            
             if not train_direct:
+                                 
                 if e <= n_epochs/2:
                     adaptation_class_loss = sas_mask_loss(source_output[:, 0], source_sample_labels[:, 0],
                                                           target_output[:, 0], target_sample_labels[:, 0],
@@ -94,16 +175,18 @@ def adapt_network(model: nn.Module, source_dl, target_dl, val_dl, sas_mask_loss,
                                                                  temperature=temperature)
                     target_flow_loss = flow_loss(target_output, target_sample_labels)
                     f_loss = target_flow_loss + adaptation_flow_loss
-                    train_loss = c_loss + f_loss
+                    curr_loss = c_loss + f_loss
                 else:
                     target_class_loss = class_loss(target_output, target_sample_labels)
                     target_flow_loss = flow_loss(target_output, target_sample_labels)
-                    train_loss = target_class_loss + target_flow_loss
+                    curr_loss = target_class_loss + target_flow_loss
             else:
                 target_class_loss = class_loss(target_output, target_sample_labels)
                 target_flow_loss = flow_loss(target_output, target_sample_labels)
-                train_loss = target_class_loss + target_flow_loss
+                curr_loss = target_class_loss + target_flow_loss
 
+            train_loss = curr_loss + pix_morphology_loss
+            
             train_epoch_losses.append(train_loss.item())
             train_target_class_losses.append(target_class_loss.item())
             train_target_flow_losses.append(target_flow_loss.item())
@@ -124,6 +207,81 @@ def adapt_network(model: nn.Module, source_dl, target_dl, val_dl, sas_mask_loss,
     print('Train time: {}'.format(time.strftime("%H:%M:%S", time.gmtime(time.time() - start_train))))
     return train_losses, val_losses
 
+# def adapt_network(model: nn.Module, source_dl, target_dl, val_dl, sas_mask_loss, contrastive_flow_loss,
+#                   class_loss, flow_loss, train_direct, optimizer, scheduler, device, n_epochs,
+#                   k, gamma_1, gamma_2, n_thresh, temperature):
+#     train_losses = []
+#     val_losses = []
+#     print('Beginning domain adaptation.\n')
+
+#     # Assume # of target samples << # of source samples
+#     start_train = time.time()
+#     for e in range(1, n_epochs + 1):
+#         model.train()
+#         print(scheduler.get_last_lr())
+#         train_epoch_losses = []
+#         train_target_class_losses = []
+#         train_target_flow_losses = []
+#         target_dl_iter = iter(target_dl)
+
+#         for i, (source_sample_data, source_sample_labels) in enumerate(tqdm(
+#                 source_dl, desc='Training - Epoch {}/{}'.format(e, n_epochs))):
+#             optimizer.zero_grad()
+
+#             source_sample_data = source_sample_data.to(device)
+#             source_sample_labels = source_sample_labels.to(device)
+#             source_output,_ = model(source_sample_data)
+
+#             try:
+#                 target_sample = next(target_dl_iter)
+#             except StopIteration:
+#                 target_dl_iter = iter(target_dl)
+#                 target_sample = next(target_dl_iter)
+#             target_sample_data = target_sample[0].to(device)
+#             target_sample_labels = target_sample[1].to(device)
+#             target_output,_ = model(target_sample_data)
+#             if not train_direct:
+#                 if e <= n_epochs/2:
+#                     adaptation_class_loss = sas_mask_loss(source_output[:, 0], source_sample_labels[:, 0],
+#                                                           target_output[:, 0], target_sample_labels[:, 0],
+#                                                           margin=10, gamma_1=gamma_1, lam=0.5)
+#                     target_class_loss = class_loss(target_output, target_sample_labels)
+#                     c_loss = target_class_loss + adaptation_class_loss
+#                     adaptation_flow_loss = contrastive_flow_loss(source_output[:, 1:], source_sample_labels,
+#                                                                  target_output[:, 1:], target_sample_labels,
+#                                                                  k=k, gamma_2=gamma_2, n_thresh=n_thresh,
+#                                                                  temperature=temperature)
+#                     target_flow_loss = flow_loss(target_output, target_sample_labels)
+#                     f_loss = target_flow_loss + adaptation_flow_loss
+#                     train_loss = c_loss + f_loss
+#                 else:
+#                     target_class_loss = class_loss(target_output, target_sample_labels)
+#                     target_flow_loss = flow_loss(target_output, target_sample_labels)
+#                     train_loss = target_class_loss + target_flow_loss
+#             else:
+#                 target_class_loss = class_loss(target_output, target_sample_labels)
+#                 target_flow_loss = flow_loss(target_output, target_sample_labels)
+#                 train_loss = target_class_loss + target_flow_loss
+
+#             train_epoch_losses.append(train_loss.item())
+#             train_target_class_losses.append(target_class_loss.item())
+#             train_target_flow_losses.append(target_flow_loss.item())
+#             train_loss.backward()
+#             optimizer.step()
+
+#         if e <= n_epochs/2:
+#             scheduler.step()
+#         train_losses.append(mean(train_epoch_losses))
+#         if val_dl is not None:
+#             val_epoch_loss = validate_network(model, val_dl, flow_loss, class_loss, device)
+#             val_losses.append(val_epoch_loss)
+#             print('Train loss: {:.3f}; Validation loss: {:.3f}'.format(mean(train_epoch_losses), val_epoch_loss))
+#         else:
+#             print('Train loss: {:.3f}'.format(mean(train_epoch_losses)))
+
+
+#     print('Train time: {}'.format(time.strftime("%H:%M:%S", time.gmtime(time.time() - start_train))))
+#     return train_losses, val_losses
 
 def validate_network(model, data_loader, flow_loss, class_loss, device):
     model.eval()
@@ -132,7 +290,7 @@ def validate_network(model, data_loader, flow_loss, class_loss, device):
         for (val_sample_data, val_sample_labels) in tqdm(data_loader, desc='Performing validation'):
             val_sample_data = val_sample_data.to(device)
             val_sample_labels = val_sample_labels.to(device)
-            output = model(val_sample_data)
+            output, _ = model(val_sample_data)
             grad_loss = flow_loss(output, val_sample_labels).item()
             mask_loss = class_loss(output, val_sample_labels).item()
             val_loss = grad_loss + mask_loss
@@ -179,7 +337,9 @@ def eval_network(model: nn.Module, data_loader: DataLoader, device, patch_per_ba
             predictions = tensor([]).to(device)
             for patch_ind in range(0, len(sample_data), patch_per_batch):
                 sample_data_patches = sample_data[patch_ind:patch_ind + patch_per_batch].float().to(device)
-                p = model(sample_data_patches)
+                
+                # p = model(sample_data_patches)
+                p,_ = model(sample_data_patches)
                 predictions = cat((predictions, p))
 
             predictions = recombine_patches(predictions, resized_dims, min_overlap)
@@ -231,7 +391,7 @@ def eval_network_3D(model: nn.Module, data_loader: DataLoader, device,
 
                     for patch_ind in range(0, len(sample_data), patch_per_batch):
                         sample_data_patches = sample_data[patch_ind:patch_ind + patch_per_batch].float().to(device)
-                        p = model(sample_data_patches)
+                        p, _ = model(sample_data_patches)
                         predictions = cat((predictions, p))
 
                     predictions = recombine_patches(predictions, resized_dims, min_overlap).cpu().numpy()[0]

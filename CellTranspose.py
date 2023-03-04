@@ -8,9 +8,10 @@ import os
 import time
 
 from transforms import Resize
-from loaddata import TrainCellTransposeData, EvalCellTransposeData, EvalCellTransposeData3D
-from network import CellTransposeModel, ClassLoss, FlowLoss, SASMaskLoss, ContrastiveFlowLoss
-from train_eval import train_network, adapt_network, eval_network, eval_network_3D
+from loaddata import TrainCellTransposeData,TrainCellTransposeData_with_contrast, EvalCellTransposeData, EvalCellTransposeData3D
+# from network import CellTransposeModel, ClassLoss, FlowLoss, SASMaskLoss, ContrastiveFlowLoss, Flow_Contrast_Loss
+from network_rep import CellTransposeModel, ClassLoss, FlowLoss, SASMaskLoss, ContrastiveFlowLoss, Flow_Contrast_Loss
+from train_eval import train_network, train_network_with_flow_contrast, adapt_network, eval_network, eval_network_3D
 from calculate_results import produce_logfile, plot_loss, save_pred
 
 parser = argparse.ArgumentParser()
@@ -22,7 +23,7 @@ parser.add_argument('--learning-rate', type=float, default=0.01)
 parser.add_argument('--momentum', type=float, default=0.9)
 parser.add_argument('--weight-decay', type=float, default=1e-5)
 parser.add_argument('--batch-size', type=int, default=2)
-parser.add_argument('--eval-batch-size', type=int, default=256)
+parser.add_argument('--eval-batch-size', type=int, default=128)
 parser.add_argument('--epochs', type=int, default=10)
 parser.add_argument('--step-gamma', type=float, default=0.1)
 parser.add_argument('--k', type=int, default=20)
@@ -41,6 +42,8 @@ parser.add_argument('--dataset-name', help='Name of dataset to use for reporting
 parser.add_argument('--results-dir', help='Folder in which to save experiment results.')
 parser.add_argument('--pretrained-model', help='Location of pretrained model to load in. Default: None')
 parser.add_argument('--train-only', help='Only perform training, no evaluation (mutually exclusive with "eval-only").',
+                    action='store_true')
+parser.add_argument('--use-contrast', help='using flow contrast machanism while training the model.',
                     action='store_true')
 parser.add_argument('--eval-only', help='Only perform evaluation, no training (mutually exclusive with "train-only").',
                     action='store_true')
@@ -104,13 +107,19 @@ ttt = None
 tte = None
 train_losses = None
 if args.target_dataset is not None:
-    target_dataset = TrainCellTransposeData('Target', args.target_dataset, args.n_chan, pf_dirs=args.target_flows,
+    
+    target_dataset = TrainCellTransposeData_with_contrast('Target', args.target_dataset, args.n_chan, pf_dirs=args.target_flows,
                                             do_3D=args.do_3D, from_3D=args.target_from_3D,
                                             crop_size=args.patch_size, has_flows=False, batch_size=args.batch_size,
                                             resize=Resize(args.median_diams))
+    
+    # target_dataset = TrainCellTransposeData('Target', args.target_dataset, args.n_chan, pf_dirs=args.target_flows,
+    #                                         do_3D=args.do_3D, from_3D=args.target_from_3D,
+    #                                         crop_size=args.patch_size, has_flows=False, batch_size=args.batch_size,
+    #                                         resize=Resize(args.median_diams))
     rs = RandomSampler(target_dataset, replacement=False)
     bs = BatchSampler(rs, args.batch_size, True)
-    target_dl = DataLoader(target_dataset, batch_sampler=bs)
+    target_dl = DataLoader(target_dataset, batch_sampler=bs) #, num_workers=6)
 else:
     target_dataset = None
 
@@ -131,18 +140,26 @@ if not args.eval_only:
     else:
         if not args.do_adaptation:
             args.process_each_epoch = True
-        train_dataset = TrainCellTransposeData('Training', args.train_dataset, args.n_chan, do_3D=args.do_3D,
-                                               from_3D=args.train_from_3D, crop_size=args.patch_size, has_flows=False,
-                                               batch_size=args.batch_size, resize=Resize(args.median_diams),
-                                               preprocessed_data=args.load_train_from_npy,
-                                               proc_every_epoch=args.process_each_epoch, result_dir=args.results_dir)
-    
+        
+        # if not args.use_contrast:
+        #     train_dataset = TrainCellTransposeData('Training', args.train_dataset, args.n_chan, do_3D=args.do_3D,
+        #                                         from_3D=args.train_from_3D, crop_size=args.patch_size, has_flows=False,
+        #                                         batch_size=args.batch_size, resize=Resize(args.median_diams),
+        #                                         preprocessed_data=args.load_train_from_npy,
+        #                                         proc_every_epoch=args.process_each_epoch, result_dir=args.results_dir)
+        # else: 
+        train_dataset = TrainCellTransposeData_with_contrast('Training', args.train_dataset, args.n_chan, do_3D=args.do_3D,
+                                            from_3D=args.train_from_3D, crop_size=args.patch_size, has_flows=False,
+                                            batch_size=args.batch_size, resize=Resize(args.median_diams),
+                                            preprocessed_data=args.load_train_from_npy,
+                                            proc_every_epoch=args.process_each_epoch, result_dir=args.results_dir)
+                    
     if args.save_dataset:
         print('Saving Training Dataset... ', end='')
         save(train_dataset, args.save_dataset)
         print('Saved.')
 
-    train_dl = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, drop_last=True)
+    train_dl = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, drop_last=True)#, num_workers=6)
 
     if args.val_dataset is not None:
         val_dataset = EvalCellTransposeData('Validation', args.val_dataset, args.n_chan, do_3D=args.do_3D,
@@ -168,8 +185,18 @@ if not args.eval_only:
     else:
         start_train = time.time()
         scheduler = CosineAnnealingLR(optimizer, T_max=args.epochs, eta_min=args.learning_rate/100, last_epoch=-1)
-        train_losses, val_losses = train_network(model, train_dl, val_dl, class_loss, flow_loss, optimizer=optimizer,
-                                                 scheduler=scheduler, device=device, n_epochs=args.epochs)
+        if not args.use_contrast:
+            train_losses, val_losses = train_network(model, train_dl, val_dl, class_loss, flow_loss, optimizer=optimizer,
+                                                    scheduler=scheduler, device=device, n_epochs=args.epochs,)
+        else:
+            mask_contrast_loss = SASMaskLoss(nn.BCEWithLogitsLoss(reduction='mean'))
+            flow_contrast_loss = Flow_Contrast_Loss(nn.MSELoss(reduction='mean'))
+            cosine_loss = nn.CosineSimilarity()
+            train_losses, val_losses = train_network_with_flow_contrast(model, train_dl, val_dl, class_loss, flow_loss, optimizer=optimizer,
+                                                scheduler=scheduler, device=device, n_epochs=args.epochs, mask_contrast_loss = mask_contrast_loss, cosine_loss=cosine_loss,
+                                                contrastive_flow_loss=flow_contrast_loss, 
+                                                k=args.k, gamma_1=args.gamma_1, gamma_2=args.gamma_2, n_thresh=args.n_thresh, temperature=args.temperature)
+            
     # compiled_model = jit.script(model)
     # jit.save(compiled_model, os.path.join(args.results_dir, 'trained_model.pt'))
     save(model.state_dict(), os.path.join(args.results_dir, 'trained_model.pt'))

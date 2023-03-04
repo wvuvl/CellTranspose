@@ -2,8 +2,9 @@
 Data Loader implementation, specifically designed for in-house datasets. Code will be designed to reflect flexibility in
 custom data loaders for new data.
 """
+import torch
 from torch.utils.data import Dataset
-from torch import Tensor, empty, as_tensor, tensor, cat, unsqueeze, float32
+from torch import Tensor, empty, as_tensor, tensor, cat, unsqueeze, float32, zeros
 import torch.nn.functional as F
 import os
 import math
@@ -13,8 +14,9 @@ import tifffile
 import cv2
 import random
 import numpy as np
-from transforms import reformat, normalize1stto99th, Resize, random_horizontal_flip, labels_to_flows, generate_patches
-
+from transforms import reformat, normalize1stto99th, Resize, random_horizontal_flip, labels_to_flows, generate_patches, gaussian_blurr
+import copy
+from skimage.segmentation import find_boundaries
 
 class CellTransposeData(Dataset):
     """
@@ -98,23 +100,44 @@ class CellTransposeData(Dataset):
                     if self.lbl_len != 0: 
                         new_label = as_tensor(cv2.imread(self.l_list[ind], -1).astype('int16'))
                 
-                new_data = reformat(new_data, n_chan)
-                new_data = normalize1stto99th(new_data)
-                if self.lbl_len != 0:
+                if self.lbl_len != 0 and len(torch.unique(new_label)) > 1:
+                    new_data = reformat(new_data, n_chan)
+                    new_data = normalize1stto99th(new_data)
                     new_label = reformat(new_label)
-                else:
+                   
+                    if pf_dirs is not None:
+                        new_pf = tifffile.imread(self.pf_list[ind])
+                        new_pf = new_pf.reshape(1, new_pf.shape[0], new_pf.shape[1], new_pf.shape[2])
+                    else:
+                        new_pf = None
+                    if resize is not None:
+                        new_data, new_label, original_dim, _ = resize(new_data, new_label, new_pf)
+                        self.original_dims.append(original_dim)
+                    
+                    self.data.append(new_data)
+                    self.labels.append(new_label)
+                
+                elif self.lbl_len == 0:
+                    new_data = reformat(new_data, n_chan)
+                    new_data = normalize1stto99th(new_data)
                     new_label = []
-                if pf_dirs is not None:
-                    new_pf = tifffile.imread(self.pf_list[ind])
-                    new_pf = new_pf.reshape(1, new_pf.shape[0], new_pf.shape[1], new_pf.shape[2])
+                    
+                    if pf_dirs is not None:
+                        new_pf = tifffile.imread(self.pf_list[ind])
+                        new_pf = new_pf.reshape(1, new_pf.shape[0], new_pf.shape[1], new_pf.shape[2])
+                    else:
+                        new_pf = None
+                    
+                    if resize is not None:
+                        new_data, new_label, original_dim, _ = resize(new_data, new_label, new_pf)
+                        self.original_dims.append(original_dim)
+                    
+                    self.data.append(new_data)
+                    self.labels.append(new_label)
+            
                 else:
-                    new_pf = None
-                if resize is not None:
-                    new_data, new_label, original_dim, _ = resize(new_data, new_label, new_pf)
-                    self.original_dims.append(original_dim)
-                self.data.append(new_data)
-                self.labels.append(new_label)
-
+                    print(f"Found no labels - Skipping this file: {self.d_list[ind]}")
+                    
         self.target_data_samples = self.data
         self.target_label_samples = self.labels
         
@@ -129,7 +152,6 @@ class CellTransposeData(Dataset):
 
     def __len__(self):
         return len(self.d_list) if (self.do_3D or self.from_3D) else len(self.data)
-
 
 class TrainCellTransposeData(CellTransposeData):
     def __init__(self, split_name, data_dirs, n_chan, pf_dirs=None, do_3D=False, from_3D=False, evaluate=False,
@@ -156,8 +178,7 @@ class TrainCellTransposeData(CellTransposeData):
             label_samples = tensor([])
             for i in tqdm(range(len(self.data)), desc='Preprocessing training data once only...'):
                 try:
-                    data, labels, dim, _ = self.resize(self.data[i], self.labels[i],
-                                                    random_scale=random.uniform(0.75, 1.25))
+                    data, labels, dim, _ = self.resize(self.data[i], self.labels[i],random_scale=random.uniform(0.75, 1.25))
                     data, labels = random_horizontal_flip(data, labels)
                     data, labels = train_generate_rand_crop(unsqueeze(data, 0), labels,
                                                             crop=crop_size, lbl_flows=has_flows)
@@ -181,7 +202,7 @@ class TrainCellTransposeData(CellTransposeData):
         samples_generated = []
         data, labels = self.data[index], self.labels[index]
         try:
-            data, labels, dim, _ = self.resize(data, labels, random_scale=random.uniform(0.75, 1.25))
+            data, labels, dim, _ = self.resize(data, labels,random_scale=random.uniform(0.75, 1.25))
             data, labels = random_horizontal_flip(data, labels)
             data, labels = train_generate_rand_crop(unsqueeze(data, 0), labels, crop=crop_size, lbl_flows=has_flows)
             if labels.ndim == 3:
@@ -200,37 +221,186 @@ class TrainCellTransposeData(CellTransposeData):
 
     def __len__(self):
         return len(self.data)
+    
+class TrainCellTransposeData_with_contrast(CellTransposeData):
+    def __init__(self, split_name, data_dirs, n_chan, pf_dirs=None, do_3D=False, from_3D=False, evaluate=False,
+                 crop_size=(112, 112), has_flows=False, batch_size=1, resize: Resize = None,
+                 preprocessed_data=None, proc_every_epoch=True, result_dir=None):
+        self.resize = resize
+        self.crop_size = crop_size
+        self.has_flows = has_flows
+        self.from_3D = from_3D
+        self.preprocessed_data = preprocessed_data
+        self.do_every_epoch = proc_every_epoch
+        
+        if self.preprocessed_data is None:
+            super().__init__(split_name, data_dirs, n_chan, pf_dirs=pf_dirs, do_3D=do_3D,
+                             from_3D=from_3D, evaluate=evaluate, batch_size=batch_size, resize=None)
+        
+        if self.preprocessed_data is not None:
+            print('Training preprocessed data provided...')
+            self.data = as_tensor(np.load(os.path.join(self.preprocessed_data, 'train_preprocessed_data.npy')))
+            self.labels = as_tensor(np.load(os.path.join(self.preprocessed_data, 'train_preprocessed_labels.npy')))
+        
+        elif self.do_every_epoch is False and self.preprocessed_data is None:
+            
+            data_samples = tensor([])
+            label_samples = tensor([])
+            all_org_within_lbls = tensor([])
+            all_org_boundaries_lbls = tensor([])
+            for i in tqdm(range(len(self.data)), desc='Preprocessing training data once only...'):
+                try:
+                    data, labels, dim, _ = self.resize(self.data[i], self.labels[i],random_scale=random.uniform(0.75, 1.25))
+                    data, labels = random_horizontal_flip(data, labels)
+                    
+                    data_crop_1, labels_crop_1 = train_generate_rand_crop(unsqueeze(data, 0), labels,
+                                                            crop=crop_size, lbl_flows=has_flows)
+                    
+                    data_crop_2 = gaussian_blurr(copy.deepcopy(data_crop_1))
+                    
+                    # data_crop_1 = gaussian_blurr(data_crop_1)
+                    
+                    original_lbl = copy.deepcopy(labels_crop_1)
+                    
+                    org_within_lbls = []
+                    org_boundaries_lbls = []
+                    for i in range(len(labels_crop_1)):
+                        msk = labels_crop_1[i].numpy()
+                        msk_within = copy.deepcopy(msk)
+                        msk_boundary = copy.deepcopy(msk)
+                        boundary = find_boundaries(msk, mode="thick").astype(np.uint16)
+                        indices = np.where(boundary==1)
+                        diff_indices = np.where(boundary!=1)
+                        msk_within[indices] = 0
+                        msk_boundary[diff_indices] = 0
+                        org_within_lbls.append(msk_within)
+                        org_boundaries_lbls.append(msk_boundary)
+                    
+                    org_within_lbls = as_tensor(np.array(org_within_lbls), dtype=float32)
+                    org_boundaries_lbls = as_tensor(np.array(org_boundaries_lbls), dtype=float32)
+            
+                    if labels.ndim == 3:
+                        labels_crop_1 = as_tensor(np.array([labels_to_flows(labels_crop_1[i].numpy()) for i in range(len(labels_crop_1))]),
+                                           dtype=float32)
+                    
+                    data = cat((data_crop_1, data_crop_2))
+                    labels = cat((labels_crop_1, labels_crop_1))
+                    
+                    data_samples = cat((data_samples, data.unsqueeze(0)))
+                    label_samples = cat((label_samples, labels.unsqueeze(0)))
+                    all_org_within_lbls = cat((all_org_within_lbls, org_within_lbls.unsqueeze(0)))
+                    all_org_boundaries_lbls = cat((all_org_boundaries_lbls, org_boundaries_lbls.unsqueeze(0)))
+                except RuntimeError:
+                    print('Caught Size Mismatch.')
+            self.data = data_samples
+            self.labels = label_samples
+            self.all_org_within_lbls = all_org_within_lbls
+            self.all_org_boundaries_lbls = all_org_boundaries_lbls
+            if result_dir is not None: 
+                np.save(os.path.join(result_dir, 'train_preprocessed_data.npy'), self.data.cpu().detach().numpy())
+                np.save(os.path.join(result_dir, 'train_preprocessed_labels.npy'), self.labels.cpu().detach().numpy())
+
+    # Augmentations and tiling applied to input data (for training and adaptation) -
+    # separated from DataLoader to allow for possibility of running only once or once per epoch
+    def process_training_data(self, index, crop_size, has_flows=False):
+        samples_generated = []
+        data, labels = self.data[index], self.labels[index]
+        try:
+            data, labels, dim, _ = self.resize(data, labels ,random_scale=random.uniform(0.75, 1.25))
+            data, labels = random_horizontal_flip(data, labels)
+            data_crop_1, labels_crop_1 = train_generate_rand_crop(unsqueeze(data, 0), labels,
+                                                            crop=crop_size, lbl_flows=has_flows)
+            
+            
+            data_crop_2 = gaussian_blurr(copy.deepcopy(data_crop_1))
+            
+            # data_crop_1 = gaussian_blurr(data_crop_1)
+            
+            original_lbl = copy.deepcopy(labels_crop_1)
+            
+            org_within_lbls = []
+            org_boundaries_lbls = []
+            for i in range(len(labels_crop_1)):
+                msk = labels_crop_1[i].numpy()
+                msk_within = copy.deepcopy(msk)
+                msk_boundary = copy.deepcopy(msk)
+                boundary = find_boundaries(msk, mode="thick").astype(np.uint16)
+                indices = np.where(boundary==1)
+                diff_indices = np.where(boundary!=1)
+                msk_within[indices] = 0
+                msk_boundary[diff_indices] = 0
+                org_within_lbls.append(msk_within)
+                org_boundaries_lbls.append(msk_boundary)
+            
+            org_within_lbls = as_tensor(np.array(org_within_lbls), dtype=float32)
+            org_boundaries_lbls = as_tensor(np.array(org_boundaries_lbls), dtype=float32)
+            
+            if labels.ndim == 3:
+                labels_crop_1 = as_tensor(np.array([labels_to_flows(labels_crop_1[i].numpy()) for i in range(len(labels_crop_1))]),
+                                    dtype=float32)
+            
+            return data_crop_1[0], data_crop_2[0], labels_crop_1[0], labels_crop_1[0], org_within_lbls, org_boundaries_lbls
+        
+        except RuntimeError:
+            print('Caught Size Mismatch.')
+            samples_generated.append(-1)
+
+    def __getitem__(self, index):
+        if self.preprocessed_data is None and self.do_every_epoch:
+            return self.process_training_data(index, self.crop_size, has_flows=self.has_flows)
+        else:
+            return self.data[index][0], self.data[index][1], self.labels[index][0], self.labels[index][1], self.all_org_within_lbls[index], self.all_org_boundaries_lbls[index]
+
+    def __len__(self):
+        return len(self.data)
 
 
 def train_generate_rand_crop(data, label=None, crop=(112, 112), lbl_flows=False):
-    if data.shape[3] < crop[0]:
-        pad_x = math.ceil((crop[0] - data.shape[3]) / 2)
-        data = F.pad(data, (pad_x, pad_x))
-        label = F.pad(label, (pad_x, pad_x))
+    
+    less_labels = True
+    while less_labels == True:
+        # print("while from train generate rand crop")  
+        if data.shape[3] < crop[0]:
+            pad_x = math.ceil((crop[0] - data.shape[3]) / 2)
+            data = F.pad(data, (pad_x, pad_x))
+            label = F.pad(label, (pad_x, pad_x))
 
-    if data.shape[2] < crop[1]:
-        pad_y = math.ceil((crop[1] - data.shape[2]) / 2)
-        data = F.pad(data, (0, 0, pad_y, pad_y))
-        label = F.pad(label, (0, 0, pad_y, pad_y))
+        if data.shape[2] < crop[1]:
+            pad_y = math.ceil((crop[1] - data.shape[2]) / 2)
+            data = F.pad(data, (0, 0, pad_y, pad_y))
+            label = F.pad(label, (0, 0, pad_y, pad_y))
 
-    x_max = data.shape[3] - crop[0]
-    y_max = data.shape[2] - crop[1]
-    patch_data = empty((data.shape[0] * 1 * 1, data.shape[1], crop[0], crop[1]))
-    if lbl_flows:
-        patch_label = empty((1 * 1, 3, crop[0], crop[1]))
-    else:
-        patch_label = empty((label.shape[0] * 1 * 1, crop[0], crop[1]))
-    i = random.randint(0, x_max)
-    j = random.randint(0, y_max)
-    d_patch = data[0, :, j:j + crop[1], i:i + crop[0]]
-    patch_data[0] = d_patch
+        x_max = data.shape[3] - crop[0]
+        y_max = data.shape[2] - crop[1]
+        patch_data = zeros((data.shape[0] * 1 * 1, data.shape[1], crop[0], crop[1]))
+        if lbl_flows:
+            patch_label = zeros((1 * 1, 3, crop[0], crop[1]))
+        else:
+            patch_label = zeros((label.shape[0] * 1 * 1, crop[0], crop[1]))
+        i = random.randint(0, x_max)
+        j = random.randint(0, y_max)
+        d_patch = data[0, :, j:j + crop[1], i:i + crop[0]]
+        patch_data[0] = d_patch
 
-    if lbl_flows:
-        l_patch = label[:, j:j + crop[1], i:i + crop[0]]
-    else:
-        l_patch = label[0, j:j + crop[1], i:i + crop[0]]
-    patch_label[0] = l_patch
+        if lbl_flows:
+            l_patch = label[:, j:j + crop[1], i:i + crop[0]]
+        else:
+            l_patch = label[0, j:j + crop[1], i:i + crop[0]]
+        patch_label[0] = l_patch
 
+        # if len(torch.unique(patch_label)) < 5: 
+        #     print("# of cells encoutered less than 5, recalculating the crop ", torch.unique(patch_label))
+        # else:        
+        #     less_labels = False
+
+        
+        if len(torch.unique(patch_label)) > 1: less_labels = False
+        # else: print("# of cells encoutered less than 1, recalculating the crop ", torch.unique(patch_label))
+        
+        if  True in torch.isnan(patch_label) or True in  torch.isnan(patch_data):
+            # less_labels = False 
+            print("found nan value")
+        
     return patch_data, patch_label
 
 
