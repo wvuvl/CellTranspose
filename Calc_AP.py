@@ -64,6 +64,8 @@ with open(os.path.join(args.mask_path, 'counted_cells.txt'), 'w') as cc:
     tp_overall = np.sum(ap_info[1], axis=0).astype('int32')
     fp_overall = np.sum(ap_info[2], axis=0).astype('int32')
     fn_overall = np.sum(ap_info[3], axis=0).astype('int32')
+    f1_overall = tp_overall / (tp_overall + 0.5 * (fp_overall+ fn_overall))
+    
     plt.figure()
     plt.plot(tau, ap_overall)
     plt.title('Average Precision for CellTranspose')
@@ -71,10 +73,19 @@ with open(os.path.join(args.mask_path, 'counted_cells.txt'), 'w') as cc:
     plt.ylabel('Average Precision')
     plt.yticks(np.arange(0, 1.01, step=0.2))
     plt.savefig(os.path.join(args.mask_path, 'AP Results'))
-    cc.write('\nAP Results at IoU threshold 0.5: AP = {}\nTrue Postive: {}; False Positive: {};'
-            'False Negative: {}\n'.format(ap_overall[51], tp_overall[51], fp_overall[51], fn_overall[51]))
-    print('AP Results at IoU threshold 0.5: AP = {}\nTrue Postive: {}; False Positive: {}; '
-        'False Negative: {}'.format(ap_overall[51], tp_overall[51], fp_overall[51], fn_overall[51]))
+    
+    plt.figure()
+    plt.plot(tau, f1_overall)
+    plt.title('F1 Score for CellTranspose')
+    plt.xlabel(r'IoU Matching Threshold $\tau$')
+    plt.ylabel('F1 Score')
+    plt.yticks(np.arange(0, 1.01, step=0.2))
+    plt.savefig(os.path.join(args.mask_path, 'F1 Score'))
+    
+    cc.write('\nAP Results at IoU threshold 0.5: AP = {}\nF1 score at IoU threshold 0.5: F1 = {} \nTrue Postive: {}; False Positive: {};'
+            'False Negative: {}\n'.format(ap_overall[51], f1_overall[51], tp_overall[51], fp_overall[51], fn_overall[51]))
+    print('AP Results at IoU threshold 0.5: AP = {}\nF1 score at IoU threshold 0.5: F1 = {} \nTrue Postive: {}; False Positive: {}; '
+        'False Negative: {}'.format(ap_overall[51], f1_overall[51], tp_overall[51], fp_overall[51], fn_overall[51]))
     false_error = (fp_overall[51] + fn_overall[51]) / (tp_overall[51] + fn_overall[51])
     cc.write('Total false error rate: {:.6f}'.format(false_error))
     print('Total false error rate: {:.6f}'.format(false_error))
