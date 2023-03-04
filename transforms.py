@@ -26,7 +26,7 @@ class Resize(object):
         return x, y, original_dims, cm
 
 
-def resize_from_labels(x, y, default_med, pf=None, random_scale=1.0, diams=[], anisotropy=1.0):
+def resize_from_labels(x, y, default_med, pf=None, random_scale=1.0, diams=[]):
     if len(diams) == 0:
         assert len(y) != 0, 'Target sample labels not found; resizing target data for evaluation cannot be completed.'
 
@@ -43,8 +43,8 @@ def resize_from_labels(x, y, default_med, pf=None, random_scale=1.0, diams=[], a
     if cell_metric > 0:
         rescale_w, rescale_h = default_med[0] / cell_metric, default_med[1] / cell_metric
         x = np.transpose(x.numpy(), (1, 2, 0))
-        x = cv2.resize(x, (int(x.shape[1] * rescale_w), int((x.shape[0] * rescale_h)/anisotropy)),
-                       interpolation=cv2.INTER_LINEAR)
+        x = cv2.resize(x, (int(x.shape[1] * rescale_w), int(x.shape[0] * rescale_h)),
+                       interpolation=cv2.INTER_AREA)
         if x.ndim == 2:
             x = x[np.newaxis, :]
         else:
@@ -52,11 +52,11 @@ def resize_from_labels(x, y, default_med, pf=None, random_scale=1.0, diams=[], a
 
         if len(y) != 0:    
             y = np.transpose(y.numpy(), (1, 2, 0))
-            y = cv2.resize(y, (int(y.shape[1] * rescale_w), int((y.shape[0] * rescale_h)/anisotropy)),
+            y = cv2.resize(y, (int(y.shape[1] * rescale_w), int(y.shape[0] * rescale_h)),
                         interpolation=cv2.INTER_NEAREST)[np.newaxis, :]
         if pf is not None:
             pf = np.transpose(pf[0], (1, 2, 0))
-            pf = cv2.resize(pf, (int(pf.shape[1] * rescale_w), int((pf.shape[0] * rescale_h)/anisotropy)),
+            pf = cv2.resize(pf, (int(pf.shape[1] * rescale_w), int(pf.shape[0] * rescale_h)),
                             interpolation=cv2.INTER_LINEAR)
             pf = np.transpose(pf, (2, 0, 1))
             pf[0] = (pf[0] > 0.5).astype(np.float32)
@@ -105,7 +105,10 @@ def random_horizontal_flip(x, y):
         y = TF.hflip(y)
     return x, y
 
-
+def gaussian_blurr(x):
+    sigma_val = random.uniform(0.1, 2.0)
+    return TF.gaussian_blur(x,kernel_size=(5,5), sigma=(sigma_val, sigma_val))
+    
 def random_rotate(x, y):
     angle = random.random() * 360
     return TF.rotate(x, angle), TF.rotate(y, angle)
