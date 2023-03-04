@@ -458,7 +458,7 @@ class EvalCellTransposeData3D(CellTransposeData):
                  from_3D=False, evaluate=False, resize: Resize = None, anisotropy = (1.0, 1.0, 1.0)):
         self.resize = resize
         self.n_chan = n_chan
-        self.anisotropy = anisotropy
+        self.anisotropy = (1.0, anisotropy[0], anisotropy[0])
         
         super().__init__(split_name, data_dirs, n_chan, do_3D=do_3D, from_3D=from_3D, evaluate=evaluate, resize=resize)
     
