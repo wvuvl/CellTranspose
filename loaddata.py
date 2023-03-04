@@ -406,7 +406,7 @@ def train_generate_rand_crop(data, label=None, crop=(112, 112), lbl_flows=False)
 
 class EvalCellTransposeData(CellTransposeData):
     def __init__(self, split_name, data_dirs, n_chan, pf_dirs=None, do_3D=False, from_3D=False,
-                 evaluate=False, resize: Resize = None):
+                 evaluate=False, resize: Resize = None, ):
         self.from_3D = from_3D
         super().__init__(split_name, data_dirs, n_chan, pf_dirs=pf_dirs, do_3D=do_3D, from_3D=from_3D,
                          evaluate=evaluate, resize=resize)
@@ -455,9 +455,11 @@ class EvalCellTransposeData(CellTransposeData):
 # final version of 3D validation dataloader
 class EvalCellTransposeData3D(CellTransposeData):
     def __init__(self, split_name, data_dirs, n_chan, do_3D=False,
-                 from_3D=False, evaluate=False, resize: Resize = None):
+                 from_3D=False, evaluate=False, resize: Resize = None, anisotropy = (1.0, 1.0, 1.0)):
         self.resize = resize
         self.n_chan = n_chan
+        self.anisotropy = anisotropy
+        
         super().__init__(split_name, data_dirs, n_chan, do_3D=do_3D, from_3D=from_3D, evaluate=evaluate, resize=resize)
     
     def process_eval_3D(self, index):
@@ -485,7 +487,7 @@ class EvalCellTransposeData3D(CellTransposeData):
                 data = normalize1stto99th(d)
                 label = []
                 if self.resize is not None:
-                    data, label, dim, diam = self.resize(data, label)
+                    data, label, dim, diam = self.resize(data, label, anisotropy=self.anisotropy[ind])
                 else:
                     dim = (data[0], data[1])
                 new_data_vol.append(data)

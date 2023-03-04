@@ -26,7 +26,7 @@ class Resize(object):
         return x, y, original_dims, cm
 
 
-def resize_from_labels(x, y, default_med, pf=None, random_scale=1.0, diams=[]):
+def resize_from_labels(x, y, default_med, pf=None, random_scale=1.0, diams=[], anisotropy=1.0):
     if len(diams) == 0:
         assert len(y) != 0, 'Target sample labels not found; resizing target data for evaluation cannot be completed.'
 
@@ -43,7 +43,7 @@ def resize_from_labels(x, y, default_med, pf=None, random_scale=1.0, diams=[]):
     if cell_metric > 0:
         rescale_w, rescale_h = default_med[0] / cell_metric, default_med[1] / cell_metric
         x = np.transpose(x.numpy(), (1, 2, 0))
-        x = cv2.resize(x, (int(x.shape[1] * rescale_w), int(x.shape[0] * rescale_h)),
+        x = cv2.resize(x, (int(x.shape[1] * rescale_w), int((x.shape[0] * rescale_h)/anisotropy)),
                        interpolation=cv2.INTER_LINEAR)
         if x.ndim == 2:
             x = x[np.newaxis, :]
@@ -52,11 +52,11 @@ def resize_from_labels(x, y, default_med, pf=None, random_scale=1.0, diams=[]):
 
         if len(y) != 0:    
             y = np.transpose(y.numpy(), (1, 2, 0))
-            y = cv2.resize(y, (int(y.shape[1] * rescale_w), int(y.shape[0] * rescale_h)),
+            y = cv2.resize(y, (int(y.shape[1] * rescale_w), int((y.shape[0] * rescale_h)/anisotropy)),
                         interpolation=cv2.INTER_NEAREST)[np.newaxis, :]
         if pf is not None:
             pf = np.transpose(pf[0], (1, 2, 0))
-            pf = cv2.resize(pf, (int(pf.shape[1] * rescale_w), int(pf.shape[0] * rescale_h)),
+            pf = cv2.resize(pf, (int(pf.shape[1] * rescale_w), int((pf.shape[0] * rescale_h)/anisotropy)),
                             interpolation=cv2.INTER_LINEAR)
             pf = np.transpose(pf, (2, 0, 1))
             pf[0] = (pf[0] > 0.5).astype(np.float32)
