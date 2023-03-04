@@ -6,7 +6,6 @@ from torch.optim import SGD
 from torch.optim.lr_scheduler import CosineAnnealingLR, StepLR
 import os
 import time
-
 from transforms import Resize
 from loaddata import TrainCellTransposeData,TrainCellTransposeData_with_contrast, EvalCellTransposeData, EvalCellTransposeData3D
 # from network import CellTransposeModel, ClassLoss, FlowLoss, SASMaskLoss, ContrastiveFlowLoss, Flow_Contrast_Loss
@@ -80,6 +79,9 @@ parser.add_argument('--val-dataset', help='The directory(s) containing data to b
 parser.add_argument('--test-dataset', help='The directory(s) containing data to be used for testing.', nargs='+')
 parser.add_argument('--test-from-3D', help='Whether the input test data is 3D: assumes 2D if set to False.',
                     action='store_true')
+parser.add_argument('--anisotropyX', help='Anisotropy for 3D data, X axis, default to 1.', default=1.0)
+parser.add_argument('--anisotropyY', help='Anisotropy for 3D data, Y axis, default to 1.', default=1.0)
+parser.add_argument('--anisotropyZ', help='Anisotropy for 3D data, Z axis, default to 1.', default=1.0)
 
 # Note: do-3D not currently implemented. Can be used for further development with volumetric approach
 parser.add_argument('--do-3D', help='Whether or not to use CellTranspose3D (Must use 3D volumes).', action='store_true')
@@ -222,7 +224,9 @@ if not args.train_only:
     else:
         test_dataset_3D = EvalCellTransposeData3D('3D_test', args.test_dataset, args.n_chan, do_3D=args.do_3D,
                                                   from_3D=args.test_from_3D, evaluate=True,
-                                                  resize=Resize(args.median_diams, target_labels=target_labels))
+                                                  resize=Resize(args.median_diams, target_labels=target_labels),
+                                                  anisotropy=(args.anisotropyZ, args.anisotropyY, args.anisotropyX))
+        
         eval_dl_3D = DataLoader(test_dataset_3D, batch_size=1, shuffle=False)
         eval_network_3D(model, eval_dl_3D, device, patch_per_batch=args.eval_batch_size,
                         patch_size=args.patch_size, min_overlap=args.min_overlap, results_dir=args.results_dir)
