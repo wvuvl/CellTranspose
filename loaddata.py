@@ -178,7 +178,7 @@ class TrainCellTransposeData(CellTransposeData):
             label_samples = tensor([])
             for i in tqdm(range(len(self.data)), desc='Preprocessing training data once only...'):
                 try:
-                    data, labels, dim, _ = self.resize(self.data[i], self.labels[i],random_scale=random.uniform(0.9, 1.1))
+                    data, labels, dim, _ = self.resize(self.data[i], self.labels[i],random_scale=random.uniform(0.75, 1.25))
                     data, labels = random_horizontal_flip(data, labels)
                     data, labels = train_generate_rand_crop(unsqueeze(data, 0), labels,
                                                             crop=crop_size, lbl_flows=has_flows)
@@ -202,7 +202,7 @@ class TrainCellTransposeData(CellTransposeData):
         samples_generated = []
         data, labels = self.data[index], self.labels[index]
         try:
-            data, labels, dim, _ = self.resize(data, labels,random_scale=random.uniform(0.9, 1.1))
+            data, labels, dim, _ = self.resize(data, labels,random_scale=random.uniform(0.75, 1.25))
             data, labels = random_horizontal_flip(data, labels)
             data, labels = train_generate_rand_crop(unsqueeze(data, 0), labels, crop=crop_size, lbl_flows=has_flows)
             if labels.ndim == 3:
@@ -250,7 +250,7 @@ class TrainCellTransposeData_with_contrast(CellTransposeData):
             all_org_boundaries_lbls = tensor([])
             for i in tqdm(range(len(self.data)), desc='Preprocessing training data once only...'):
                 try:
-                    data, labels, dim, _ = self.resize(self.data[i], self.labels[i],random_scale=random.uniform(0.9, 1.1))
+                    data, labels, dim, _ = self.resize(self.data[i], self.labels[i],random_scale=random.uniform(0.75, 1.25))
                     data, labels = random_horizontal_flip(data, labels)
                     
                     data_crop_1, labels_crop_1 = train_generate_rand_crop(unsqueeze(data, 0), labels,
@@ -306,7 +306,7 @@ class TrainCellTransposeData_with_contrast(CellTransposeData):
         samples_generated = []
         data, labels = self.data[index], self.labels[index]
         try:
-            data, labels, dim, _ = self.resize(data, labels ,random_scale=random.uniform(0.9, 1.1))
+            data, labels, dim, _ = self.resize(data, labels ,random_scale=random.uniform(0.75, 1.25))
             data, labels = random_horizontal_flip(data, labels)
             data_crop_1, labels_crop_1 = train_generate_rand_crop(unsqueeze(data, 0), labels,
                                                             crop=crop_size, lbl_flows=has_flows)
