@@ -400,7 +400,7 @@ def eval_network_3D(model: nn.Module, data_loader: DataLoader, device,
                     if padding:
                         predictions = predictions[set_corner[0]:set_corner[0]+unpadded_dims[0],
                                             set_corner[1]:set_corner[1]+unpadded_dims[1]]
-                    predictions = transforms.resize_image(predictions, origin_dim[0].item(), origin_dim[1].item())
+                    predictions = transforms.resize_image(predictions, origin_dim[0].item(), origin_dim[1].item(), interpolation=cv2.INTER_NEAREST)
 
                     predictions = predictions.transpose(2, 0, 1)
                     if index == 0:
