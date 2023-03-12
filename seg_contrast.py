@@ -146,7 +146,7 @@ class PixelContrastLoss(nn.Module):
 
 
 class PixelContrastMorphologyLoss(nn.Module):
-    def __init__(self):
+    def __init__(self, easy_contrast=True):
         super(PixelContrastMorphologyLoss, self).__init__()
 
         configer_contrast =  {
@@ -160,7 +160,7 @@ class PixelContrastMorphologyLoss(nn.Module):
                             "loss_weight": 0.1,
                             "use_rmi": False
                             }
-    
+        self.easy_contrast = easy_contrast
         self.temperature = configer_contrast['temperature']
         self.base_temperature = configer_contrast['base_temperature']
         self.max_samples = configer_contrast['max_samples']
@@ -204,50 +204,53 @@ class PixelContrastMorphologyLoss(nn.Module):
 
             for cls_id in this_classes:
                 
-                # mask belong to the boundary of the cell
-                hard_indices = (this_y_boundary == cls_id).nonzero()
-                
-                # belong to whithin the cell
-                easy_indices = (this_y_within == cls_id).nonzero()
-                
-                # # mask belong to the boundary of the cell + not predicted
-                # hard_indices = ((this_y_boundary == cls_id) & (this_y != 1)).nonzero()
-                
-                # # belong to whithin the cell + not 0
-                # easy_indices = ((this_y_within == cls_id) & (this_y != 0)).nonzero()
-
-                num_hard = hard_indices.shape[0]
-                num_easy = easy_indices.shape[0]
-
-                if num_hard >= n_view / 2 and num_easy >= n_view / 2:
-                    num_hard_keep = n_view // 2
-                    num_easy_keep = n_view - num_hard_keep
-                elif num_hard >= n_view / 2:
-                    num_easy_keep = num_easy
-                    num_hard_keep = n_view - num_easy_keep
-                elif num_easy >= n_view / 2:
-                    num_hard_keep = num_hard
-                    num_easy_keep = n_view - num_hard_keep
-                else:
-                    logger.info('this shoud be never touched! {} {} {}'.format(num_hard, num_easy, n_view))
-                    raise Exception
-
-                perm = torch.randperm(num_hard)
-                hard_indices = hard_indices[perm[:num_hard_keep]]
-                perm = torch.randperm(num_easy)
-                easy_indices = easy_indices[perm[:num_easy_keep]]
-                indices = torch.cat((hard_indices, easy_indices), dim=0)
-
-                # # just easy
+                if self.easy_contrast:
+                    # just easy
                                
-                # # belong to whithin the cell
-                # easy_indices = (this_y_within == cls_id).nonzero()
-        
-                # num_easy = easy_indices.shape[0]
+                    # belong to whithin the cell
+                    easy_indices = (this_y_within == cls_id).nonzero()
+            
+                    num_easy = easy_indices.shape[0]
+                    
+                    perm = torch.randperm(num_easy)
+                    easy_indices = easy_indices[perm[:n_view]]
+                    indices = easy_indices
+                else:     
+                    # mask belong to the boundary of the cell
+                    hard_indices = (this_y_boundary == cls_id).nonzero()
+                    
+                    # belong to whithin the cell
+                    easy_indices = (this_y_within == cls_id).nonzero()
+                    
+                    # # mask belong to the boundary of the cell + not predicted
+                    # hard_indices = ((this_y_boundary == cls_id) & (this_y != 1)).nonzero()
+                    
+                    # # belong to whithin the cell + not 0
+                    # easy_indices = ((this_y_within == cls_id) & (this_y != 0)).nonzero()
+
+                    num_hard = hard_indices.shape[0]
+                    num_easy = easy_indices.shape[0]
+
+                    if num_hard >= n_view / 2 and num_easy >= n_view / 2:
+                        num_hard_keep = n_view // 2
+                        num_easy_keep = n_view - num_hard_keep
+                    elif num_hard >= n_view / 2:
+                        num_easy_keep = num_easy
+                        num_hard_keep = n_view - num_easy_keep
+                    elif num_easy >= n_view / 2:
+                        num_hard_keep = num_hard
+                        num_easy_keep = n_view - num_hard_keep
+                    else:
+                        logger.info('this shoud be never touched! {} {} {}'.format(num_hard, num_easy, n_view))
+                        raise Exception
+
+                    perm = torch.randperm(num_hard)
+                    hard_indices = hard_indices[perm[:num_hard_keep]]
+                    perm = torch.randperm(num_easy)
+                    easy_indices = easy_indices[perm[:num_easy_keep]]
+                    indices = torch.cat((hard_indices, easy_indices), dim=0)
+
                 
-                # perm = torch.randperm(num_easy)
-                # easy_indices = easy_indices[perm[:n_view]]
-                # indices = easy_indices
                 
                 X_[X_ptr, :, :] = X[ii, indices, :].squeeze(1)
                 y_[X_ptr] = cls_id

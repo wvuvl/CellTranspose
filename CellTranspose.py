@@ -47,6 +47,8 @@ parser.add_argument('--use-contrast', help='using flow contrast machanism while 
                     action='store_true')
 parser.add_argument('--eval-only', help='Only perform evaluation, no training (mutually exclusive with "train-only").',
                     action='store_true')
+parser.add_argument('--easy-contrast', help='easy contrast for the contrastive morphology loss.',
+                    action='store_true')
 parser.add_argument('--do-adaptation', help='Whether to perform domain adaptation or standard training.',
                     action='store_true')
 parser.add_argument('--no-adaptation-loss', help='Train directly using standard loss on target samples (for'
@@ -190,7 +192,7 @@ if not args.eval_only:
                                                  optimizer=optimizer, scheduler=scheduler, device=device,
                                                  n_epochs=args.epochs, k=args.k, gamma_1=args.gamma_1,
                                                  gamma_2=args.gamma_2, n_thresh=args.n_thresh,
-                                                 temperature=args.temperature)
+                                                 temperature=args.temperature, easy_contrast=args.easy_contrast)
     else:
         start_train = time.time()
         scheduler = CosineAnnealingLR(optimizer, T_max=args.epochs, eta_min=args.learning_rate/100, last_epoch=-1)

@@ -121,10 +121,10 @@ def train_network_with_flow_contrast(model, train_dl, val_dl, class_loss, flow_l
 
 def adapt_network(model: nn.Module, source_dl, target_dl, val_dl, sas_mask_loss, contrastive_flow_loss,
                   class_loss, flow_loss, train_direct, optimizer, scheduler, device, n_epochs,
-                  k, gamma_1, gamma_2, n_thresh, temperature):
+                  k, gamma_1, gamma_2, n_thresh, temperature, easy_contrast=True):
     train_losses = []
     val_losses = []
-    seg_morphology_contrast = PixelContrastMorphologyLoss()
+    seg_morphology_contrast = PixelContrastMorphologyLoss(easy_contrast)
     print('Beginning domain adaptation.\n')
 
     # Assume # of target samples << # of source samples
