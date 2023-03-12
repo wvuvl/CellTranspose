@@ -35,6 +35,7 @@ parser.add_argument('--median-diams', type=int,
                          ' that this variable remains the same as the given model.', default=30)
 parser.add_argument('--patch-size', type=int, help='Size of image patches with which to tile.', default=112)
 parser.add_argument('--min-overlap', type=int, help='Amount of overlap to use for tiling during testing.', default=84)
+parser.add_argument('--rand-resize-measure', type=float, help='random resize measure between (1-n) and (1+n).', default=0.)
 
 # Control
 parser.add_argument('--dataset-name', help='Name of dataset to use for reporting results (omit the word "Dataset").')
@@ -64,6 +65,8 @@ parser.add_argument('--train-from-3D', help='Whether the input training source d
                     action='store_true')
 
 # Target data
+parser.add_argument('--random-shots', help='automated shots finding', action='store_true')
+parser.add_argument('--num-shots', type=int, default=3)
 parser.add_argument('--target-dataset',
                     help='The directory containing target data to be used for domain adaptation. Note: if do-adaptation'
                          ' is set to False, this parameter will be ignored.', nargs='+')
@@ -79,9 +82,9 @@ parser.add_argument('--val-dataset', help='The directory(s) containing data to b
 parser.add_argument('--test-dataset', help='The directory(s) containing data to be used for testing.', nargs='+')
 parser.add_argument('--test-from-3D', help='Whether the input test data is 3D: assumes 2D if set to False.',
                     action='store_true')
-parser.add_argument('--anisotropyX', help='Anisotropy for 3D data, X axis, default to 1.', default=1.0)
-parser.add_argument('--anisotropyY', help='Anisotropy for 3D data, Y axis, default to 1.', default=1.0)
-parser.add_argument('--anisotropyZ', help='Anisotropy for 3D data, Z axis, default to 1.', default=1.0)
+parser.add_argument('--anisotropyX', type=float, help='Anisotropy for 3D data, X axis, default to 1.', default=1.0)
+parser.add_argument('--anisotropyY', type=float, help='Anisotropy for 3D data, Y axis, default to 1.', default=1.0)
+parser.add_argument('--anisotropyZ', type=float, help='Anisotropy for 3D data, Z axis, default to 1.', default=1.0)
 
 # Note: do-3D not currently implemented. Can be used for further development with volumetric approach
 parser.add_argument('--do-3D', help='Whether or not to use CellTranspose3D (Must use 3D volumes).', action='store_true')
@@ -110,15 +113,19 @@ tte = None
 train_losses = None
 if args.target_dataset is not None:
     
-    target_dataset = TrainCellTransposeData_with_contrast('Target', args.target_dataset, args.n_chan, pf_dirs=args.target_flows,
+    target_dataset = TrainCellTransposeData_with_contrast('Target', args.target_dataset, args.n_chan, rand_shots=args.random_shots, num_shots=args.num_shots,
+                                            pf_dirs=args.target_flows,
                                             do_3D=args.do_3D, from_3D=args.target_from_3D,
                                             crop_size=args.patch_size, has_flows=False, batch_size=args.batch_size,
-                                            resize=Resize(args.median_diams))
+                                            resize=Resize(args.median_diams), random_resize=args.rand_resize_measure,
+                                            result_dir=args.results_dir)
     
-    # target_dataset = TrainCellTransposeData('Target', args.target_dataset, args.n_chan, pf_dirs=args.target_flows,
+    # target_dataset = TrainCellTransposeData('Target', args.target_dataset, args.n_chan, , rand_shots=args.random_shots, num_shots=args.num_shots,
+    #                                           pf_dirs=args.target_flows,
     #                                         do_3D=args.do_3D, from_3D=args.target_from_3D,
     #                                         crop_size=args.patch_size, has_flows=False, batch_size=args.batch_size,
-    #                                         resize=Resize(args.median_diams))
+    #                                         resize=Resize(args.median_diams), random_resize=args.rand_resize_measure,
+    #                                           result_dir=args.results_dir)
     rs = RandomSampler(target_dataset, replacement=False)
     bs = BatchSampler(rs, args.batch_size, True)
     target_dl = DataLoader(target_dataset, batch_sampler=bs) #, num_workers=6)
@@ -146,13 +153,13 @@ if not args.eval_only:
         # if not args.use_contrast:
         #     train_dataset = TrainCellTransposeData('Training', args.train_dataset, args.n_chan, do_3D=args.do_3D,
         #                                         from_3D=args.train_from_3D, crop_size=args.patch_size, has_flows=False,
-        #                                         batch_size=args.batch_size, resize=Resize(args.median_diams),
+        #                                         batch_size=args.batch_size, resize=Resize(args.median_diams), random_resize=args.rand_resize_measure,
         #                                         preprocessed_data=args.load_train_from_npy,
         #                                         proc_every_epoch=args.process_each_epoch, result_dir=args.results_dir)
         # else: 
         train_dataset = TrainCellTransposeData_with_contrast('Training', args.train_dataset, args.n_chan, do_3D=args.do_3D,
                                             from_3D=args.train_from_3D, crop_size=args.patch_size, has_flows=False,
-                                            batch_size=args.batch_size, resize=Resize(args.median_diams),
+                                            batch_size=args.batch_size, resize=Resize(args.median_diams), random_resize=args.rand_resize_measure,
                                             preprocessed_data=args.load_train_from_npy,
                                             proc_every_epoch=args.process_each_epoch, result_dir=args.results_dir)
                     

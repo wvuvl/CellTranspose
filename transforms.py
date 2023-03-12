@@ -259,9 +259,9 @@ def recombine_patches(labels, im_dims, min_overlap):
     return recombined_labels
 
 
-def diam_range(masks):
+def diam_range(masks, remove_cut_cells=False):
     masks = np.int32(masks)
-    masks = remove_cut_cells(masks)
+    if remove_cut_cells: masks = remove_cut_cells(masks)
     x_ranges = []
     y_ranges = []
     diams = []

@@ -16,7 +16,6 @@ def diameters(masks):
     return md, counts**0.5
 
 
-
 def calc_median_dim(dir, plot=False):
     median_list = []
     count_list = []
@@ -30,7 +29,7 @@ def calc_median_dim(dir, plot=False):
     print( f'median of median: {np.median(median_list)} \n median of total: {np.median(count_list)}\n')
     
     if plot:
-        plt.hist(count_list)
+        plt.hist(median_list)
         plt.xlabel(f'Diameter')
         plt.ylabel('Number of Cells')
         plt.show()
@@ -43,23 +42,26 @@ def calc_median_dim(dir, plot=False):
 #     dir = f"/media/ramzaveri/5400C9CC66E778B9/Ram/work/cell_analysis/datasets/datasets/BBBC006/BBBC006/z_{num}/test/labels"
 #     calc_median_dim(dir)
     
-# TissueNet 1.0 
-platforms = ["imc", "codex", "cycif", "mibi", "vectra", "mxif"]
-tissues = ["breast", "gi", "immune", "lung", "pancreas", "skin"]
+# # TissueNet 1.0 
+# platforms = ["imc", "codex", "cycif", "mibi", "vectra", "mxif"]
+# tissues = ["breast", "gi", "immune", "lung", "pancreas", "skin"]
 
-# Platform Specific
-for platform in platforms:
-    for tissue in tissues:
-        dir = f'/media/ramzaveri/5400C9CC66E778B9/Ram/work/cell_analysis/datasets/datasets/tissuenet_v1.0/tissuenet_1.0/test/specialist_updated_mask/platform_specific/{platform}/{tissue}/labels'
+# # Platform Specific
+# for platform in platforms:
+#     for tissue in tissues:
+#         dir = f'/media/ramzaveri/5400C9CC66E778B9/Ram/work/cell_analysis/datasets/datasets/tissuenet_v1.0/tissuenet_1.0/test/specialist_updated_mask/platform_specific/{platform}/{tissue}/labels'
         
-        if os.path.exists(dir):
-            print(f"\n{platform}-{tissue}: ")
-            calc_median_dim(dir)
-# tissue specific
-for tissue in tissues:
-    for platform in platforms:
-        dir = f'/media/ramzaveri/5400C9CC66E778B9/Ram/work/cell_analysis/datasets/datasets/tissuenet_v1.0/tissuenet_1.0/test/specialist_updated_mask/tissue_specific/{tissue}/{platform}/labels'
+#         if os.path.exists(dir):
+#             print(f"\n{platform}-{tissue}: ")
+#             calc_median_dim(dir)
+# # tissue specific
+# for tissue in tissues:
+#     for platform in platforms:
+#         dir = f'/media/ramzaveri/5400C9CC66E778B9/Ram/work/cell_analysis/datasets/datasets/tissuenet_v1.0/tissuenet_1.0/test/specialist_updated_mask/tissue_specific/{tissue}/{platform}/labels'
         
-        if os.path.exists(dir): 
-            print(f"\n{tissue}-{platform}: ")
-            calc_median_dim(dir)
+#         if os.path.exists(dir): 
+#             print(f"\n{tissue}-{platform}: ")
+#             calc_median_dim(dir)
+
+dir = '/media/ramzaveri/5400C9CC66E778B9/Ram/work/cell_analysis/datasets/datasets/BBBC006/BBBC006/z_00/test/labels'
+calc_median_dim(dir, plot=True)
