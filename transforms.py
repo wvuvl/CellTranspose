@@ -149,7 +149,7 @@ def followflows3D(dP, cellprob, cell_metric):
     """
     niter = 400; interp = True; use_gpu = True; cellprob_threshold = 0.0; flow_threshold = 0.4
     # Smallest size of calculated mask allowed; masks lower than this value will be removed
-    min_size = (cell_metric ** 3) / 125
+    min_size = (cell_metric ** 3) / (2*10) # smallest cell [(4/3) * PI * (d^3)/(2^3)] * 0.1 
     masks = compute_masks(dP, cellprob, niter=niter, interp=interp, use_gpu=use_gpu, mask_threshold=cellprob_threshold,
                           flow_threshold=flow_threshold, min_size=min_size)
     return masks

@@ -377,6 +377,7 @@ def eval_network_3D(model: nn.Module, data_loader: DataLoader, device,
                     padding = sample_data.shape[2] < patch_size[0] or sample_data.shape[3] < patch_size[1]
                     # Add padding if image is smaller than patch size in at least one dimension
                     if padding:
+                        unpadded_dims = resized_dims
                         sd = zeros((sample_data.shape[0], sample_data.shape[1], max(patch_size[0], sample_data.shape[2]),
                                     max(patch_size[1], sample_data.shape[3])))
                         set_corner = (max(0, (patch_size[0] - sample_data.shape[2]) // 2),
@@ -396,7 +397,10 @@ def eval_network_3D(model: nn.Module, data_loader: DataLoader, device,
 
                     predictions = recombine_patches(predictions, resized_dims, min_overlap).cpu().numpy()[0]
                     predictions = predictions.transpose(1, 2, 0)
-                    predictions = transforms.resize_image(predictions, origin_dim[0].item(), origin_dim[1].item())
+                    if padding:
+                        predictions = predictions[set_corner[0]:set_corner[0]+unpadded_dims[0],
+                                            set_corner[1]:set_corner[1]+unpadded_dims[1]]
+                    predictions = transforms.resize_image(predictions, origin_dim[0].item(), origin_dim[1].item(), interpolation=cv2.INTER_NEAREST)
 
                     predictions = predictions.transpose(2, 0, 1)
                     if index == 0:
