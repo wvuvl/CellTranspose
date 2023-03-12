@@ -157,8 +157,7 @@ class CellTransposeData(Dataset):
         if self.split_name.lower() == 'target' and len(self.data) < batch_size and not from_3D and not do_3D:
             for _ in range(1, math.ceil(batch_size / len(self.data))):
                 self.data = self.data + self.target_data_samples
-                if self.lbl_len != 0: 
-                    self.labels = self.labels + self.target_label_samples
+                self.labels = self.labels + self.target_label_samples
 
         self.data_samples = self.data
         self.label_samples = self.labels
