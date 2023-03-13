@@ -59,6 +59,8 @@ parser.add_argument('--load-from-torch', help='If true, assumes dataset is being
                                               ' preprocessing required.', action='store_true')
 parser.add_argument('--process-each-epoch', help='If true, assumes processing occurs every epoch.', action='store_true')
 parser.add_argument('--load-train-from-npy', help='If provided, assumes training data is being loaded from npy files.')
+parser.add_argument('--num-workers', type=int,
+                    help='number of workers for the dataloader', default=0)
 
 # Training data
 parser.add_argument('--train-dataset', help='The directory(s) containing (source) data to be used for training.',
@@ -130,7 +132,7 @@ if args.target_dataset is not None:
     #                                           result_dir=args.results_dir)
     rs = RandomSampler(target_dataset, replacement=False)
     bs = BatchSampler(rs, args.batch_size, True)
-    target_dl = DataLoader(target_dataset, batch_sampler=bs) #, num_workers=6)
+    target_dl = DataLoader(target_dataset, batch_sampler=bs, num_workers=args.num_workers)
 else:
     target_dataset = None
 
@@ -170,7 +172,7 @@ if not args.eval_only:
         save(train_dataset, args.save_dataset)
         print('Saved.')
 
-    train_dl = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, drop_last=True)#, num_workers=6)
+    train_dl = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, drop_last=True , num_workers=args.num_workers)
 
     if args.val_dataset is not None:
         val_dataset = EvalCellTransposeData('Validation', args.val_dataset, args.n_chan, do_3D=args.do_3D,
