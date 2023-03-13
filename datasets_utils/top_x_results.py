@@ -16,15 +16,16 @@ def find_top_x(path, x=5):
     for version in tqdm(os.listdir(path)):
         files_path = os.path.join(path, version)
         
-        for file in os.listdir(files_path):
-            
-            if file.endswith('AP_Results.pkl'):
-                # print(f'{file}')
-                with open (os.path.join(files_path,file), 'rb') as f:
-                    tau, ap_overall, tp_overall, fp_overall, fn_overall, false_error = pk.load(f,encoding='utf-8')
+        if os.path.isdir(files_path):
+            for file in os.listdir(files_path):
                 
-                res[os.path.join(files_path,file)]=ap_overall[51]
-                # print(f'{version}:    {ap_overall[51]:.4f}')
+                if file.endswith('AP_Results.pkl'):
+                    # print(f'{file}')
+                    with open (os.path.join(files_path,file), 'rb') as f:
+                        tau, ap_overall, tp_overall, fp_overall, fn_overall, false_error = pk.load(f,encoding='utf-8')
+                    
+                    res[os.path.join(files_path,file)]=ap_overall[51]
+                    # print(f'{version}:    {ap_overall[51]:.4f}')
     
     sortedList = sorted(res.items(), key=operator.itemgetter(1),reverse=True)[:x]
     
