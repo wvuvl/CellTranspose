@@ -4,6 +4,7 @@ import pickle as pk
 from tqdm import tqdm
 import operator
 import matplotlib.pyplot as plt
+import argparse
 
 def find_top_x(path, x=5):
     
@@ -71,20 +72,22 @@ def calc_avg_std(sorted_list, save_path=None, plot=False):
         plt.xlabel(r'IoU Matching Threshold $\tau$')
         plt.ylabel('F1 Score')
         plt.yticks(np.arange(0, 1.01, step=0.2))
-        plt.show()
         
         if save_path is not None:
             plt.savefig(os.path.join(save_path, 'AVG AP Results'))
             plt.savefig(os.path.join(save_path, 'AVG F1 Score'))
 
-
         
        
         
 if __name__ == '__main__':
-    path = '/mnt/12F9CADD61CB0337/results/cell_analysis/morphology_loss_pretrained_adaptation_results/BBBC006/01'
-    save_path = ''
-    sorted_list = find_top_x(path)
-    calc_avg_std(sorted_list, plot=True)
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--res-path')
+    parser.add_argument('--save-path',default=None)
+    args = parser.parse_args()
+
+    sorted_list = find_top_x(args.res_path)
+    
+    calc_avg_std(sorted_list,args.save_path, plot=True)
     
     
