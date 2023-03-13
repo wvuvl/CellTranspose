@@ -64,7 +64,9 @@ def calc_avg_std(sorted_list, save_path=None, plot=False):
         plt.xlabel(r'IoU Matching Threshold $\tau$')
         plt.ylabel('Average Precision')
         plt.yticks(np.arange(0, 1.01, step=0.2))
-        
+        if save_path is not None:
+            plt.savefig(os.path.join(save_path, 'AVG AP Results'))
+            
         plt.figure()
         plt.plot(TAU, mean_F1)
         plt.fill_between(TAU, mean_F1- std_F1, mean_F1 + std_F1, color='#888888', alpha=0.4)
@@ -74,7 +76,6 @@ def calc_avg_std(sorted_list, save_path=None, plot=False):
         plt.yticks(np.arange(0, 1.01, step=0.2))
         
         if save_path is not None:
-            plt.savefig(os.path.join(save_path, 'AVG AP Results'))
             plt.savefig(os.path.join(save_path, 'AVG F1 Score'))
 
         
