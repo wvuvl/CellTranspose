@@ -279,3 +279,17 @@ def cell_range(masks, mask_val):
     x_range = np.amax(inds[1]) - np.amin(inds[1])
     y_range = np.amax(inds[0]) - np.amin(inds[0])
     return int(math.sqrt(x_range * y_range))
+
+# from cellpose src
+def remove_small_mask(label, min_mask_size=15):
+    mask_unique, mask_counts = np.unique(label, return_counts=True)
+    mask_unique = mask_unique[1:]
+    mask_counts = mask_counts[1:]
+    indices = []
+    for idx,i in enumerate(mask_counts):
+        if i < min_mask_size:
+            indices.append(idx)
+    for i in indices:
+        label[np.where(label==mask_unique[i])] = 0
+        
+    return label

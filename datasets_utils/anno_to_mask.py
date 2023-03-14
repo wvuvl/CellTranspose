@@ -1,6 +1,44 @@
+"""
+Inspired from Cellpose 2.0
+
+"""
+
+
 import numpy as np
 import os
 from glob import glob
+
+
+def remove_overlaps_including_fragments(masks, medians, overlap_threshold=0.75):
+    """ replace overlapping mask pixels with mask id of closest mask
+        if mask fully within another mask, remove it
+        if there are fragments of the mask left, remove it
+        masks = Nmasks x Ly x Lx
+    """
+    cellpix = masks.sum(axis=0)
+    mask_id = np.ones(masks.shape[0], 'bool')
+    for i in masks.sum(axis=(1,2)).argsort():
+        npix = float(masks[i].sum())
+        noverlap = float(masks[i][cellpix > 1].sum())
+        if noverlap / npix >= overlap_threshold:
+            mask_id[i] = False
+            cellpix[masks[i]>0] -= 1
+            #print(cellpix.min())
+    print(f'removing {(~igood).sum()} masks')
+    masks = masks[mask_id]
+    medians = medians[mask_id]
+    cellpix = masks.sum(axis=0)
+    overlaps = np.array(np.nonzero(cellpix>1.0)).T
+    dists = ((overlaps[:,:,np.newaxis] - medians.T)**2).sum(axis=1)
+    tocell = np.argmin(dists, axis=1)
+    masks[:, overlaps[:,0], overlaps[:,1]] = 0
+    masks[tocell, overlaps[:,0], overlaps[:,1]] = 1
+
+    # labels should be 1 to mask.shape[0]
+    masks = masks.astype(int) * np.arange(1,masks.shape[0]+1,1,int)[:,np.newaxis,np.newaxis]
+    masks = masks.sum(axis=0)
+    return masks
+
 
 def remove_overlaps(masks, medians, overlap_threshold=0.75):
     """ replace overlapping mask pixels with mask id of closest mask
@@ -23,8 +61,8 @@ def remove_overlaps(masks, medians, overlap_threshold=0.75):
     overlaps = np.array(np.nonzero(cellpix>1.0)).T
     dists = ((overlaps[:,:,np.newaxis] - medians.T)**2).sum(axis=1)
     tocell = np.argmin(dists, axis=1)
-    masks[:, overlaps[:,0], overlaps[:,1]] = 0
-    masks[tocell, overlaps[:,0], overlaps[:,1]] = 1
+    [:, overlaps[:,0], overlaps[:,1]] = 0
+    masks[tocell, overlaps[:,0], overlaps[:,1]] =masks 1
 
     # labels should be 1 to mask.shape[0]
     masks = masks.astype(int) * np.arange(1,masks.shape[0]+1,1,int)[:,np.newaxis,np.newaxis]
@@ -78,6 +116,8 @@ def livecell_ann_to_masks(img_dir, annotation_file):
                 imsave(maskname, masks)
                 print(f'saved masks at {maskname}')
 
-img_dir = '/media/ramzaveri/5400C9CC66E778B9/Ram/work/cell_analysis/datasets/LiveCell/images/livecell_test_images'
-annotation_file = '/media/ramzaveri/5400C9CC66E778B9/Ram/work/cell_analysis/datasets/LiveCell/images/livecell_coco_test.json'
-livecell_ann_to_masks(img_dir, annotation_file)
+
+if __name__ == "__main__":
+    img_dir = '/mnt/5400C9CC66E778B9/Ram/work/cell_analysis/datasets/LiveCell/images/livecell_test_images'
+    annotation_file = '/mnt/5400C9CC66E778B9/Ram/work/cell_analysis/datasets/LiveCell/images/livecell_coco_test.json'
+    livecell_ann_to_masks(img_dir, annotation_file)

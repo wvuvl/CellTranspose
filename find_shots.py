@@ -7,21 +7,9 @@ from sys import maxsize
 import copy
 import numpy as np
 from tqdm import tqdm
-from transforms import labels_to_flows, remove_cut_cells, diam_range, cell_range  # Assumes domain-adaptive_cellular_instance-seg is added to interpreter path
+from transforms import labels_to_flows, remove_cut_cells, diam_range, cell_range, remove_small_mask  # Assumes domain-adaptive_cellular_instance-seg is added to interpreter path
 
 
-def remove_small_mask(label, min_mask_size=15):
-    mask_unique, mask_counts = np.unique(label, return_counts=True)
-    mask_unique = mask_unique[1:]
-    mask_counts = mask_counts[1:]
-    indices = []
-    for idx,i in enumerate(mask_counts):
-        if i < min_mask_size:
-            indices.append(idx)
-    for i in indices:
-        label[np.where(label==mask_unique[i])] = 0
-        
-    return label
 
 def select_sample_window(d, lbl, smpl_cntr, nominal_cell_metric, patch_size, scaling_factor, compute_flows=False):
     exemplar_cell = lbl[smpl_cntr]
