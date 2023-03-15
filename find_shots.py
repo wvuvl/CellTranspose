@@ -9,8 +9,6 @@ import numpy as np
 from tqdm import tqdm
 from transforms import labels_to_flows, remove_cut_cells, diam_range, cell_range, remove_small_mask  # Assumes domain-adaptive_cellular_instance-seg is added to interpreter path
 
-
-
 def select_sample_window(d, lbl, smpl_cntr, nominal_cell_metric, patch_size, scaling_factor, compute_flows=False):
     exemplar_cell = lbl[smpl_cntr]
     """if from_3d:
