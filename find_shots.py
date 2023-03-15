@@ -7,7 +7,7 @@ from sys import maxsize
 import copy
 import numpy as np
 from tqdm import tqdm
-from transforms import labels_to_flows, remove_cut_cells, diam_range, cell_range, remove_small_mask  # Assumes domain-adaptive_cellular_instance-seg is added to interpreter path
+from transforms import labels_to_flows, cell_range, remove_small_mask  # Assumes domain-adaptive_cellular_instance-seg is added to interpreter path
 
 def select_sample_window(d, lbl, smpl_cntr, nominal_cell_metric, patch_size, scaling_factor, compute_flows=False):
     exemplar_cell = lbl[smpl_cntr]
@@ -59,7 +59,7 @@ def random_shots(d_list, l_list, shots=3, patch_size=112, nominal_cell_metric=30
     total_masks=0
     
     curr_shot=0
-    while curr_shot<shots:
+    while len(data_shots)<shots:
         
         d_name = d_l_list[curr_shot][0]
         l_name = d_l_list[curr_shot][1]
@@ -89,8 +89,7 @@ def random_shots(d_list, l_list, shots=3, patch_size=112, nominal_cell_metric=30
         # Padding if size is not square
         if finalized_crop_label.shape[-1] != finalized_crop_label.shape[-2]:
             print('Malformed shape ({} x {}); skipping...\nAdding padding'.format(finalized_crop_label.shape[-1], finalized_crop_label.shape[-2]))
-            
-            
+                       
             # finalized_crop_label = remove_cut_cells(finalized_crop_label) # finalized_crop_label = remove_cut_cells(finalized_crop_label, flows=compute_flows) 
             
             dim = max(finalized_crop_label.shape)
