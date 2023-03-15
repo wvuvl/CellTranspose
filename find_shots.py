@@ -41,7 +41,7 @@ TODO: 3D functionality
 TODO: compute flow not functional
 """
 def random_shots(d_list, l_list, shots=3, patch_size=112, nominal_cell_metric=30, \
-                 scaling_factor=1.25, save_dir=None, from_3D=False, compute_flows=False):
+                 scaling_factor=1.25, save_dir=None, min_cells=5, from_3D=False, compute_flows=False):
     
     if save_dir is not None:
         os.makedirs(os.path.join(save_dir,str(shots)+'-shot', 'data'))
@@ -57,9 +57,12 @@ def random_shots(d_list, l_list, shots=3, patch_size=112, nominal_cell_metric=30
     data_shots = []
     labels_shots = []
     total_masks=0
-    for i in range(shots):
-        d_name = d_l_list[i][0]
-        l_name = d_l_list[i][1]
+    
+    curr_shot=0
+    while curr_shot<shots:
+        
+        d_name = d_l_list[curr_shot][0]
+        l_name = d_l_list[curr_shot][1]
         
         d_ext = os.path.splitext(d_name)[1]
         l_ext = os.path.splitext(l_name)[1]
@@ -109,23 +112,26 @@ def random_shots(d_list, l_list, shots=3, patch_size=112, nominal_cell_metric=30
             finalized_crop_label = remove_small_mask(new_crop_lable)
             finalized_crop_data = new_crop_data
 
-        
-        total_masks += len(np.unique(finalized_crop_label)[1:])
-        data_shots.append(finalized_crop_data)
-        labels_shots.append(finalized_crop_label)
-        
-        if save_dir is not None:
-            if d_ext == '.tif' or '.tiff': tiff.imwrite(os.path.join(save_dir,str(shots)+'-shot', 'data', 'Crop_'+os.path.basename(d_name)),finalized_crop_data)
-            else: cv2.imwrite(os.path.join(save_dir,str(shots)+'-shot', 'data', 'Crop_'+os.path.basename(d_name)), finalized_crop_data)
-            if l_ext == '.tif' or '.tiff': tiff.imwrite(os.path.join(save_dir,str(shots)+'-shot', 'labels', 'Crop_'+os.path.basename(l_name)), finalized_crop_label)
-            else: cv2.imwrite(os.path.join(save_dir,str(shots)+'-shot', 'labels', 'Crop_'+os.path.basename(l_name)), finalized_crop_label)
+        unique_finalized_masks =  len(np.unique(finalized_crop_label)[1:])
+        if unique_finalized_masks >= min_cells:
+            curr_shot += 1
+            data_shots.append(finalized_crop_data)
+            labels_shots.append(finalized_crop_label)
+            total_masks += unique_finalized_masks
             
-            # if compute_flows:
-            #     if d_ext == '.tif' or '.tiff': tiff.imwrite(os.path.join(save_dir,shots+'-shot_flows', 'data', 'Crop_'+os.path.basename(d_name)), finalized_crop_data)
-            #     else: cv2.imwrite(os.path.join(save_dir,shots+'-shot_flows', 'data', 'Crop_'+os.path.basename(d_name)), finalized_crop_data)
-            #     if l_ext == '.tif' or '.tiff': tiff.imwrite(os.path.join(save_dir,shots+'-shot_flows', 'labels', 'Crop_'+os.path.basename(l_name)), finalized_crop_label)
-            #     else: cv2.imwrite(os.path.join(save_dir,shots+'-shot_flows', 'labels', 'Crop_'+os.path.basename(l_name)), finalized_crop_label)
-            
+            if save_dir is not None:
+                if d_ext == '.tif' or '.tiff': tiff.imwrite(os.path.join(save_dir,str(shots)+'-shot', 'data', 'Crop_'+os.path.basename(d_name)),finalized_crop_data)
+                else: cv2.imwrite(os.path.join(save_dir,str(shots)+'-shot', 'data', 'Crop_'+os.path.basename(d_name)), finalized_crop_data)
+                if l_ext == '.tif' or '.tiff': tiff.imwrite(os.path.join(save_dir,str(shots)+'-shot', 'labels', 'Crop_'+os.path.basename(l_name)), finalized_crop_label)
+                else: cv2.imwrite(os.path.join(save_dir,str(shots)+'-shot', 'labels', 'Crop_'+os.path.basename(l_name)), finalized_crop_label)
+                
+                # if compute_flows:
+                #     if d_ext == '.tif' or '.tiff': tiff.imwrite(os.path.join(save_dir,shots+'-shot_flows', 'data', 'Crop_'+os.path.basename(d_name)), finalized_crop_data)
+                #     else: cv2.imwrite(os.path.join(save_dir,shots+'-shot_flows', 'data', 'Crop_'+os.path.basename(d_name)), finalized_crop_data)
+                #     if l_ext == '.tif' or '.tiff': tiff.imwrite(os.path.join(save_dir,shots+'-shot_flows', 'labels', 'Crop_'+os.path.basename(l_name)), finalized_crop_label)
+                #     else: cv2.imwrite(os.path.join(save_dir,shots+'-shot_flows', 'labels', 'Crop_'+os.path.basename(l_name)), finalized_crop_label)
+        else:
+            print(f'Masks collected for this shot are less than the user defined value - {min_cells}, therefore, moving to the next random image!')    
     print(f'Total masks collected: {total_masks}')
     
     return data_shots, labels_shots
