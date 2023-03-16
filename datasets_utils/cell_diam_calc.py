@@ -1,10 +1,9 @@
 import numpy as np
 import tifffile as tiff
-import imagecodecs
 import os
 import matplotlib.pyplot as plt
 from tqdm import tqdm
-
+import math
 
 def diameters(masks):
     _, counts = np.unique(np.int32(masks), return_counts=True)
@@ -26,14 +25,15 @@ def calc_median_dim(dir, plot=False):
         median_list = np.append(median_list, md)
         count_list = np.append(count_list, counts)
         
-    print( f'median of median: {np.median(median_list)} \n median of total: {np.median(count_list)}\n')
+    print( f'median of median: {math.ceil(np.median(median_list))} \n median of total: {math.ceil(np.median(count_list))}\n')
     
     if plot:
         plt.hist(median_list)
         plt.xlabel(f'Diameter')
         plt.ylabel('Number of Cells')
         plt.show()
-        
+    
+
     
 
 # BBBC006
@@ -63,5 +63,8 @@ def calc_median_dim(dir, plot=False):
 #             print(f"\n{tissue}-{platform}: ")
 #             calc_median_dim(dir)
 
-dir = '/mnt/12F9CADD61CB0337/results/cell_analysis/morphology_loss_pretrained_adaptation_results/LiveCell_refined/A172/shots_3/random_scale_0.25/02-generalized_to_LiveCell_A172-3-shot_pix_contrast_pretrained/3-shot/labels'
-calc_median_dim(dir, plot=True)
+
+for cell_type in ["A172", "BT474", "BV2", "Huh7", "MCF7", "SHSY5Y", "SkBr3", "SKOV3"]:
+    dir = f'/mnt/5400C9CC66E778B9/Ram/work/cell_analysis/datasets/datasets/LiveCell/livecell_split/split_data_refined/{cell_type}/train/labels'
+    print(f'{cell_type}: ')
+    calc_median_dim(dir)

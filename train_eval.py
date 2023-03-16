@@ -195,6 +195,10 @@ def adapt_network(model: nn.Module, source_dl, target_dl, val_dl, sas_mask_loss,
 
         if e <= n_epochs/2:
             scheduler.step()
+        if e == (n_epochs/2)+1:
+            for g in optimizer.param_groups:
+                g['lr'] = 0.001
+                
         train_losses.append(mean(train_epoch_losses))
         if val_dl is not None:
             val_epoch_loss = validate_network(model, val_dl, flow_loss, class_loss, device)

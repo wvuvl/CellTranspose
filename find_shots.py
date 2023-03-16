@@ -86,32 +86,32 @@ def random_shots(d_list, l_list, shots=3, patch_size=112, nominal_cell_metric=30
                 
         # finalized_crop_label = remove_cut_cells(finalized_crop_label)
         
-        # Padding if size is not square
-        if finalized_crop_label.shape[-1] != finalized_crop_label.shape[-2]:
-            print('Malformed shape ({} x {}); skipping...\nAdding padding'.format(finalized_crop_label.shape[-1], finalized_crop_label.shape[-2]))
+        # # Padding if size is not square
+        # if finalized_crop_label.shape[-1] != finalized_crop_label.shape[-2]:
+        #     print('Malformed shape ({} x {}); skipping...\nAdding padding'.format(finalized_crop_label.shape[-1], finalized_crop_label.shape[-2]))
                        
-            # finalized_crop_label = remove_cut_cells(finalized_crop_label) # finalized_crop_label = remove_cut_cells(finalized_crop_label, flows=compute_flows) 
+        #     # finalized_crop_label = remove_cut_cells(finalized_crop_label) # finalized_crop_label = remove_cut_cells(finalized_crop_label, flows=compute_flows) 
             
-            dim = max(finalized_crop_label.shape)
+        #     dim = max(finalized_crop_label.shape)
             
-            new_crop_lable = np.zeros((dim,dim), dtype=finalized_crop_label.dtype)
-            set_corner = (max(0, (new_crop_lable.shape[0]-finalized_crop_label.shape[0])//2),
-                              max(0, (new_crop_lable.shape[1]-finalized_crop_label.shape[1]) // 2))
+        #     new_crop_lable = np.zeros((dim,dim), dtype=finalized_crop_label.dtype)
+        #     set_corner = (max(0, (new_crop_lable.shape[0]-finalized_crop_label.shape[0])//2),
+        #                       max(0, (new_crop_lable.shape[1]-finalized_crop_label.shape[1]) // 2))
             
-            new_crop_lable[set_corner[0]:set_corner[0]+finalized_crop_label.shape[0], 
-                           set_corner[1]:set_corner[1]+finalized_crop_label.shape[1]] = finalized_crop_label
+        #     new_crop_lable[set_corner[0]:set_corner[0]+finalized_crop_label.shape[0], 
+        #                    set_corner[1]:set_corner[1]+finalized_crop_label.shape[1]] = finalized_crop_label
             
-            if len(finalized_crop_data.shape) > 2:
-                new_crop_data = np.zeros((finalized_crop_data.shape[0],dim,dim), dtype=finalized_crop_data.dtype)
-                new_crop_data[:,set_corner[0]:set_corner[0]+finalized_crop_data.shape[1], 
-                           set_corner[1]:set_corner[1]+finalized_crop_data.shape[2]] = finalized_crop_data
-            else:
-                new_crop_data = np.zeros((dim,dim), dtype=finalized_crop_data.dtype)
-                new_crop_data[set_corner[0]:set_corner[0]+finalized_crop_data.shape[0], 
-                           set_corner[1]:set_corner[1]+finalized_crop_data.shape[1]] = finalized_crop_data
+        #     if len(finalized_crop_data.shape) > 2:
+        #         new_crop_data = np.zeros((finalized_crop_data.shape[0],dim,dim), dtype=finalized_crop_data.dtype)
+        #         new_crop_data[:,set_corner[0]:set_corner[0]+finalized_crop_data.shape[1], 
+        #                    set_corner[1]:set_corner[1]+finalized_crop_data.shape[2]] = finalized_crop_data
+        #     else:
+        #         new_crop_data = np.zeros((dim,dim), dtype=finalized_crop_data.dtype)
+        #         new_crop_data[set_corner[0]:set_corner[0]+finalized_crop_data.shape[0], 
+        #                    set_corner[1]:set_corner[1]+finalized_crop_data.shape[1]] = finalized_crop_data
             
-            finalized_crop_label = remove_small_mask(new_crop_lable)
-            finalized_crop_data = new_crop_data
+        #     finalized_crop_label = remove_small_mask(new_crop_lable)
+        #     finalized_crop_data = new_crop_data
 
         unique_finalized_masks =  len(np.unique(finalized_crop_label)[1:])
         if unique_finalized_masks >= min_cells:
