@@ -83,7 +83,7 @@ def random_shots(d_list, l_list, shots=3, patch_size=112, nominal_cell_metric=30
                 running_masks=len(current_masks)
                 finalized_crop_data=crop_data
                 finalized_crop_label=crop_label
-                
+        
         # finalized_crop_label = remove_cut_cells(finalized_crop_label)
         
         # # Padding if size is not square
@@ -113,8 +113,10 @@ def random_shots(d_list, l_list, shots=3, patch_size=112, nominal_cell_metric=30
         #     finalized_crop_label = remove_small_mask(new_crop_lable)
         #     finalized_crop_data = new_crop_data
 
+        
         unique_finalized_masks =  len(np.unique(finalized_crop_label)[1:])
         if unique_finalized_masks >= min_cells:
+            print(f'Shape {finalized_crop_label.shape[-1]} x {finalized_crop_label.shape[-2]}')
             curr_shot += 1
             data_shots.append(finalized_crop_data)
             labels_shots.append(finalized_crop_label)
