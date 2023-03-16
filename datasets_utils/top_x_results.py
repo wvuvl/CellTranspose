@@ -5,6 +5,7 @@ from tqdm import tqdm
 import operator
 import matplotlib.pyplot as plt
 import argparse
+import tifffile as tiff
 
 def find_top_x(path, x=5):
     
@@ -34,7 +35,7 @@ def find_top_x(path, x=5):
 
     return sortedList
 
-def calc_avg_std(sorted_list, save_path=None, plot=False):
+def calc_avg_std(sorted_list, save_path=None, masks_saved=False):
     
     if save_path is not None and os.path.exists(save_path) == False: 
         os.makedirs(save_path)
@@ -57,29 +58,45 @@ def calc_avg_std(sorted_list, save_path=None, plot=False):
     std_AP = np.std(AP,axis=0)
     std_F1 = np.std(F1,axis=0)
     
-    if plot:
-        plt.figure()
-        plt.plot(TAU, mean_AP)
-        plt.fill_between(TAU, mean_AP - std_AP, mean_AP + std_AP, color='#888888', alpha=0.4)
-        plt.title(f'Average Precision (averaged over 5) - AP@0.5: {mean_AP[51]:.3f} ')
-        plt.xlabel(r'IoU Matching Threshold $\tau$')
-        plt.ylabel('Average Precision')
-        plt.yticks(np.arange(0, 1.01, step=0.2))
-        if save_path is not None:
-            plt.savefig(os.path.join(save_path, 'AVG AP Results'))
-            
-        plt.figure()
-        plt.plot(TAU, mean_F1)
-        plt.fill_between(TAU, mean_F1- std_F1, mean_F1 + std_F1, color='#888888', alpha=0.4)
-        plt.title(f'F1 Score (averaged over 5) - F1@0.5 {mean_F1[51]:.3f}')
-        plt.xlabel(r'IoU Matching Threshold $\tau$')
-        plt.ylabel('F1 Score')
-        plt.yticks(np.arange(0, 1.01, step=0.2))
+    if masks_saved:
+        masks = calc_avg_masks(sorted_list)
+    else:
+        masks = '-'
         
-        if save_path is not None:
-            plt.savefig(os.path.join(save_path, 'AVG F1 Score'))
+    plt.figure()
+    plt.plot(TAU, mean_AP)
+    plt.fill_between(TAU, mean_AP - std_AP, mean_AP + std_AP, color='#888888', alpha=0.4)
+    plt.title(f'Average Precision (averaged over 5) - AP@0.5: {mean_AP[51]:.3f}\nmasks {masks}')
+    plt.xlabel(r'IoU Matching Threshold $\tau$')
+    plt.ylabel('Average Precision')
+    plt.yticks(np.arange(0, 1.01, step=0.2))
+    if save_path is not None:
+        plt.savefig(os.path.join(save_path, 'AVG AP Results'))
+        
+    plt.figure()
+    plt.plot(TAU, mean_F1)
+    plt.fill_between(TAU, mean_F1- std_F1, mean_F1 + std_F1, color='#888888', alpha=0.4)
+    plt.title(f'F1 Score (averaged over 5) - F1@0.5 {mean_F1[51]:.3f}\nmasks {masks}')
+    plt.xlabel(r'IoU Matching Threshold $\tau$')
+    plt.ylabel('F1 Score')
+    plt.yticks(np.arange(0, 1.01, step=0.2))
+    
+    if save_path is not None:
+        plt.savefig(os.path.join(save_path, 'AVG F1 Score'))
 
-        
+def calc_avg_masks(sorted_list):
+   
+    total_masks=[]
+    for i in sorted_list:
+        dir_path = os.path.dirname(i)
+        for curr_path in os.listdir(dir_path):
+            curr_dir = os.path.join(dir_path, curr_dir)
+            if os.path.isdir(curr_dir) and curr_path.endswith('shot'):
+                l_dir = os.path.join(curr_dir,'labels')
+                for tiff_mask in l_dir:
+                    total_masks.append(np.unique(tiff.imread(os.path.join(l_dir,tiff_mask))[1:]))
+            
+    return int(np.average(total_masks))
        
         
 if __name__ == '__main__':
@@ -90,6 +107,6 @@ if __name__ == '__main__':
 
     sorted_list = find_top_x(args.res_path)
     
-    calc_avg_std(sorted_list,args.save_path, plot=True)
+    calc_avg_std(sorted_list,args.save_path)
     
     
