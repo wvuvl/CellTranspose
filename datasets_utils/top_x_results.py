@@ -88,14 +88,16 @@ def calc_avg_masks(sorted_list):
    
     total_masks=[]
     for i in sorted_list:
-        dir_path = os.path.dirname(i)
+        curr_masks=0
+        dir_path = os.path.dirname(i[0])
         for curr_path in os.listdir(dir_path):
-            curr_dir = os.path.join(dir_path, curr_dir)
+            curr_dir = os.path.join(dir_path, curr_path)
             if os.path.isdir(curr_dir) and curr_path.endswith('shot'):
                 l_dir = os.path.join(curr_dir,'labels')
-                for tiff_mask in l_dir:
-                    total_masks.append(np.unique(tiff.imread(os.path.join(l_dir,tiff_mask))[1:]))
-            
+                for tiff_mask in os.listdir(l_dir):
+                    curr_masks+=len(np.unique(tiff.imread(os.path.join(l_dir,tiff_mask))[1:]))
+        total_masks.append(curr_masks)
+    print(total_masks)
     return int(np.average(total_masks))
        
         
@@ -107,6 +109,6 @@ if __name__ == '__main__':
 
     sorted_list = find_top_x(args.res_path)
     
-    calc_avg_std(sorted_list,args.save_path)
+    calc_avg_std(sorted_list,args.save_path, masks_saved=True)
     
     
