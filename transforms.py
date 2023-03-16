@@ -11,23 +11,24 @@ import torchvision.transforms.functional as TF
 
 
 class Resize(object):
-    def __init__(self, default_med, target_labels=None):
+    def __init__(self, default_med, target_labels=None, target_diams=None):
         self.default_med = default_med
+        self.cell_metric = target_diams
         self.diams = []
-        if target_labels is not None:
-            for t_label in target_labels:
-                t_cf = copy.deepcopy(torch.squeeze(t_label, dim=0))
-                t_cf = remove_cut_cells(t_cf)
-                self.diams = self.diams + diam_range(t_cf)
+        if self.cell_metric is None and target_labels is not None:
+                for t_label in target_labels:
+                    t_cf = copy.deepcopy(torch.squeeze(t_label, dim=0))
+                    t_cf = remove_cut_cells(t_cf)
+                    self.diams = self.diams + diam_range(t_cf)
 
     def __call__(self, x, y, pf=None, random_scale=1.0, anisotropy=1.0):
         original_dims = x.shape[1], x.shape[2]
-        x, y, cm = resize_from_labels(x, y, self.default_med, pf, random_scale=random_scale, diams=self.diams, anisotropy=anisotropy)
+        x, y, cm = resize_from_labels(x, y, self.default_med, pf, random_scale=random_scale, diams=self.diams, anisotropy=anisotropy, cell_metric=self.cell_metric)
         return x, y, original_dims, cm
 
 
-def resize_from_labels(x, y, default_med, pf=None, random_scale=1.0, diams=[], anisotropy=1.0):
-    if len(diams) == 0:
+def resize_from_labels(x, y, default_med, pf=None, random_scale=1.0, diams=[], anisotropy=1.0, cell_metric=None):
+    if len(diams) == 0 and cell_metric is None:
         assert len(y) != 0, 'Target sample labels not found; resizing target data for evaluation cannot be completed.'
 
         unq = torch.unique(y)
@@ -38,7 +39,7 @@ def resize_from_labels(x, y, default_med, pf=None, random_scale=1.0, diams=[], a
         y_cf = remove_cut_cells(y_cf)
         diams = diam_range(y_cf)
 
-    cell_metric = np.percentile(np.array(diams), 75)*random_scale
+    cell_metric = cell_metric if cell_metric is not None else np.percentile(np.array(diams), 75)*random_scale
     cell_metric = cell_metric if cell_metric > 12 else 12  # Note: following work from TissueNet
     if cell_metric > 0:
         rescale_w, rescale_h = default_med[0] / cell_metric, default_med[1] / cell_metric

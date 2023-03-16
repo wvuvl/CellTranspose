@@ -78,6 +78,8 @@ parser.add_argument('--target-from-3D', help='Whether the input target data is 3
                     action='store_true')
 parser.add_argument('--target-flows', help='The directory(s) containing pre-calculated flows. If left empty,'
                                            ' flows will be calculated manually.', nargs='+')
+parser.add_argument('--target-diams', type=int,
+                    help='target diameter, used if given, otherwise computed', default=None)
 
 # Validation data
 parser.add_argument('--val-dataset', help='The directory(s) containing data to be used for validation.', nargs='+')
@@ -121,7 +123,7 @@ if args.target_dataset is not None:
                                             pf_dirs=args.target_flows,
                                             do_3D=args.do_3D, from_3D=args.target_from_3D,
                                             crop_size=args.patch_size, has_flows=False, batch_size=args.batch_size,
-                                            resize=Resize(args.median_diams), random_resize=args.rand_resize_measure,
+                                            resize=Resize(args.median_diams,  target_diams=args.target_diams), random_resize=args.rand_resize_measure,
                                             result_dir=args.results_dir)
     
     # target_dataset = TrainCellTransposeData('Target', args.target_dataset, args.n_chan, , rand_shots=args.random_shots, num_shots=args.num_shots,
@@ -227,7 +229,7 @@ if not args.train_only:
     if not args.test_from_3D:
         test_dataset = EvalCellTransposeData('Test', args.test_dataset, args.n_chan, do_3D=args.do_3D,
                                              from_3D=args.test_from_3D, evaluate=True,
-                                             resize=Resize(args.median_diams, target_labels=target_labels))
+                                             resize=Resize(args.median_diams, target_labels=target_labels, target_diams=args.target_diams))
         eval_dl = DataLoader(test_dataset, batch_size=1, shuffle=False)
         masks, prediction_list, data_list = eval_network(model, eval_dl, device, patch_per_batch=args.eval_batch_size,
                                                           patch_size=args.patch_size, min_overlap=args.min_overlap)
@@ -235,7 +237,7 @@ if not args.train_only:
     else:
         test_dataset_3D = EvalCellTransposeData3D('3D_test', args.test_dataset, args.n_chan, do_3D=args.do_3D,
                                                   from_3D=args.test_from_3D, evaluate=True,
-                                                  resize=Resize(args.median_diams, target_labels=target_labels),
+                                                  resize=Resize(args.median_diams, target_labels=target_labels, target_diams=args.target_diams),
                                                   anisotropy=(args.anisotropyZ, args.anisotropyY, args.anisotropyX))
         
         eval_dl_3D = DataLoader(test_dataset_3D, batch_size=1, shuffle=False)

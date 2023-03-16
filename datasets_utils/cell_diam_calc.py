@@ -63,5 +63,5 @@ def calc_median_dim(dir, plot=False):
 #             print(f"\n{tissue}-{platform}: ")
 #             calc_median_dim(dir)
 
-dir = '/media/ramzaveri/5400C9CC66E778B9/Ram/work/cell_analysis/datasets/datasets/BBBC006/BBBC006/z_00/test/labels'
+dir = '/mnt/12F9CADD61CB0337/results/cell_analysis/morphology_loss_pretrained_adaptation_results/LiveCell_refined/A172/shots_3/random_scale_0.25/02-generalized_to_LiveCell_A172-3-shot_pix_contrast_pretrained/3-shot/labels'
 calc_median_dim(dir, plot=True)
