@@ -105,7 +105,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--res-path')
     parser.add_argument('--save-path',default=None)
-    parser.add_argument('--mask-saved',default=False)
+    parser.add_argument('--mask-saved',action='store_true')
     parser.add_argument('--save-name',default='')
     args = parser.parse_args()
 
