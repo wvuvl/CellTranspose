@@ -35,7 +35,7 @@ def find_top_x(path, x=5):
 
     return sortedList
 
-def calc_avg_std(sorted_list, save_path=None, masks_saved=False):
+def calc_avg_std(sorted_list, save_path=None, masks_saved=False, save_name=''):
     
     if save_path is not None and os.path.exists(save_path) == False: 
         os.makedirs(save_path)
@@ -71,7 +71,7 @@ def calc_avg_std(sorted_list, save_path=None, masks_saved=False):
     plt.ylabel('Average Precision')
     plt.yticks(np.arange(0, 1.01, step=0.2))
     if save_path is not None:
-        plt.savefig(os.path.join(save_path, 'AVG AP Results'))
+        plt.savefig(os.path.join(save_path, f'{save_name}_AVG AP Results'))
         
     plt.figure()
     plt.plot(TAU, mean_F1)
@@ -82,7 +82,7 @@ def calc_avg_std(sorted_list, save_path=None, masks_saved=False):
     plt.yticks(np.arange(0, 1.01, step=0.2))
     
     if save_path is not None:
-        plt.savefig(os.path.join(save_path, 'AVG F1 Score'))
+        plt.savefig(os.path.join(save_path,  f'{save_name}_AVG F1 Score'))
 
 def calc_avg_masks(sorted_list):
    
@@ -105,10 +105,12 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--res-path')
     parser.add_argument('--save-path',default=None)
+    parser.add_argument('--mask-saved',default=False)
+    parser.add_argument('--save-name',default='')
     args = parser.parse_args()
 
     sorted_list = find_top_x(args.res_path)
     
-    calc_avg_std(sorted_list,args.save_path, masks_saved=True)
+    calc_avg_std(sorted_list,args.save_path, masks_saved=args.mask_saved, save_name=args.save_name)
     
     
