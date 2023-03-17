@@ -6,6 +6,7 @@ import operator
 import matplotlib.pyplot as plt
 import argparse
 import tifffile as tiff
+import pickle 
 
 def find_top_x(path, x=5):
     
@@ -62,6 +63,8 @@ def calc_avg_std(sorted_list, save_path=None, masks_saved=False, save_name=''):
         masks = calc_avg_masks(sorted_list)
     else:
         masks = '-'
+    
+    
         
     plt.figure()
     plt.plot(TAU, mean_AP)
@@ -84,6 +87,9 @@ def calc_avg_std(sorted_list, save_path=None, masks_saved=False, save_name=''):
     if save_path is not None:
         plt.savefig(os.path.join(save_path,  f'{save_name}_AVG F1 Score'))
 
+        with open(os.path.join(save_path, f'{save_name}_AP_Results.pkl'), 'wb') as apr:
+            pickle.dump((mean_AP, mean_F1, std_AP, std_F1), apr)
+        
 def calc_avg_masks(sorted_list):
    
     total_masks=[]
