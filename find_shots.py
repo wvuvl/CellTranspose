@@ -93,7 +93,7 @@ def random_shots(d_list, l_list, shots=3, patch_size=112, nominal_cell_metric=30
                         finalized_crop_label=np.array([])
                         break
                 if len(finalized_crop_data) != 0: 
-                    running_masks = current_masks
+                    running_masks=len(current_masks)
         # finalized_crop_label = remove_cut_cells(finalized_crop_label)
         
         # # Padding if size is not square
