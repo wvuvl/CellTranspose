@@ -197,7 +197,7 @@ class TrainCellTransposeData(CellTransposeData):
                  preprocessed_data=None, proc_every_epoch=True, result_dir=None):
                 
         if preprocessed_data is None:
-            super().__init__(split_name, data_dirs, n_chan, rand_shots=True, num_shots=3, pf_dirs=pf_dirs, do_3D=do_3D,
+            super().__init__(args, split_name, data_dirs, n_chan, rand_shots=True, num_shots=3, pf_dirs=pf_dirs, do_3D=do_3D,
                              from_3D=from_3D, evaluate=evaluate, batch_size=batch_size, resize=None, result_dir=result_dir)
         self.resize = resize
         self.crop_size = crop_size
@@ -268,7 +268,7 @@ class TrainCellTransposeData_with_contrast(CellTransposeData):
         
         
         if preprocessed_data is None:
-            super().__init__(split_name, data_dirs, n_chan, rand_shots=True, num_shots=num_shots, pf_dirs=pf_dirs, do_3D=do_3D,
+            super().__init__(args, split_name, data_dirs, n_chan, rand_shots=True, num_shots=num_shots, pf_dirs=pf_dirs, do_3D=do_3D,
                              from_3D=from_3D, evaluate=evaluate, batch_size=batch_size, resize=None, result_dir=result_dir)
         self.resize = resize
         self.crop_size = crop_size
@@ -449,7 +449,7 @@ class EvalCellTransposeData(CellTransposeData):
     def __init__(self, args, split_name, data_dirs, n_chan, pf_dirs=None, do_3D=False, from_3D=False,
                  evaluate=False, resize: Resize = None):
         self.from_3D = from_3D
-        super().__init__(split_name, data_dirs, n_chan, pf_dirs=pf_dirs, do_3D=do_3D, from_3D=from_3D,
+        super().__init__(args, split_name, data_dirs, n_chan, pf_dirs=pf_dirs, do_3D=do_3D, from_3D=from_3D,
                          evaluate=evaluate, resize=resize)
 
     # Generates patches for validation dataset - only happens once
@@ -501,7 +501,7 @@ class EvalCellTransposeData3D(CellTransposeData):
         self.n_chan = n_chan
         self.anisotropy = (1.0, anisotropy[0], anisotropy[0])
         
-        super().__init__(split_name, data_dirs, n_chan, do_3D=do_3D, from_3D=from_3D, evaluate=evaluate, resize=resize)
+        super().__init__(args, split_name, data_dirs, n_chan, do_3D=do_3D, from_3D=from_3D, evaluate=evaluate, resize=resize)
     
     def process_eval_3D(self, index):
         ext = os.path.splitext(self.d_list[index])[-1]
