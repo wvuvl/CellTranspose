@@ -42,7 +42,7 @@ TODO: 3D functionality
 TODO: compute flow not functional
 """
 def random_shots(d_list, l_list, shots=3, patch_size=112, nominal_cell_metric=30, \
-                 scaling_factor=1.25, save_dir=None, min_cells=5, from_3D=False, compute_flows=False):
+                 scaling_factor=1.25, save_dir=None, min_cells=1, from_3D=False, compute_flows=False):
     
     if save_dir is not None:
         os.makedirs(os.path.join(save_dir,str(shots)+'-shot', 'data'))
