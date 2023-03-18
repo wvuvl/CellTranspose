@@ -200,7 +200,7 @@ class TrainCellTransposeData(CellTransposeData):
                 
         if preprocessed_data is None:
             super().__init__(args, split_name, data_dirs, n_chan, rand_shots=True, num_shots=3, pf_dirs=pf_dirs, do_3D=do_3D,
-                             from_3D=from_3D, evaluate=evaluate, batch_size=batch_size, resize=None, diam=np.percentile(np.array(resize.diams), 75), result_dir=result_dir)
+                             from_3D=from_3D, evaluate=evaluate, batch_size=batch_size, resize=None, result_dir=result_dir)
         self.resize = resize
         self.crop_size = crop_size
         self.has_flows = has_flows
@@ -271,7 +271,7 @@ class TrainCellTransposeData_with_contrast(CellTransposeData):
         
         if preprocessed_data is None:
             super().__init__(args, split_name, data_dirs, n_chan, rand_shots=True, num_shots=num_shots, pf_dirs=pf_dirs, do_3D=do_3D,
-                             from_3D=from_3D, evaluate=evaluate, batch_size=batch_size, resize=None, diam=np.percentile(np.array(resize.diams), 75), result_dir=result_dir)
+                             from_3D=from_3D, evaluate=evaluate, batch_size=batch_size, resize=None, result_dir=result_dir)
         self.resize = resize
         self.crop_size = crop_size
         self.has_flows = has_flows
