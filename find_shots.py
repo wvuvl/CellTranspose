@@ -81,18 +81,17 @@ def random_shots(d_list, l_list, shots=3, patch_size=112, nominal_cell_metric=30
             crop_data, crop_label = select_sample_window(data, label, sample_center, nominal_cell_metric, patch_size, scaling_factor)
             current_masks =np.unique(crop_label)[1:]
             if len(current_masks) > running_masks: 
-                finalized_crop_data=crop_data
-                finalized_crop_label=crop_label
-                for curr_mask in np.unique(finalized_crop_label)[1:]:
-                    new_array = np.zeros((finalized_crop_label.shape))
-                    new_array[np.where(finalized_crop_label==curr_mask)] = 1
+                safe_window=False
+                for curr_mask in np.unique(crop_label)[1:]:
+                    new_array = np.zeros((crop_label.shape))
+                    new_array[np.where(crop_label==curr_mask)] = 1
                     new_array = np.ceil(new_array).astype(np.int16)
                     seg, n_comp = measurements.label(new_array)
-                    if len(np.unique(seg)[1:]) > 1: 
-                        finalized_crop_data=np.array([])
-                        finalized_crop_label=np.array([])
-                        break
-                if len(finalized_crop_data) != 0: 
+                    if len(np.unique(seg)[1:]) > 1: break
+                    safe_window=True
+                if safe_window: 
+                    finalized_crop_data=crop_data
+                    finalized_crop_label=crop_label
                     running_masks=len(current_masks)
         # finalized_crop_label = remove_cut_cells(finalized_crop_label)
         
@@ -123,14 +122,12 @@ def random_shots(d_list, l_list, shots=3, patch_size=112, nominal_cell_metric=30
         #     finalized_crop_label = remove_small_mask(new_crop_lable)
         #     finalized_crop_data = new_crop_data
 
-        
-        unique_finalized_masks = running_masks
-        if unique_finalized_masks >= min_cells:
+        if running_masks >= min_cells:
             print(f'Shape {finalized_crop_label.shape[-1]} x {finalized_crop_label.shape[-2]}')
             curr_shot += 1
             data_shots.append(finalized_crop_data)
             labels_shots.append(finalized_crop_label)
-            total_masks += unique_finalized_masks
+            total_masks += running_masks
             
             if save_dir is not None:
                 if d_ext == '.tif' or '.tiff': tiff.imwrite(os.path.join(save_dir,str(shots)+'-shot', 'data', 'Crop_'+os.path.basename(d_name)),finalized_crop_data)
