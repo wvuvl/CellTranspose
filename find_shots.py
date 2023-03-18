@@ -88,7 +88,7 @@ def random_shots(d_list, l_list, shots=3, patch_size=112, nominal_cell_metric=30
                     new_array[np.where(finalized_crop_label==curr_mask)] = 1
                     new_array = np.ceil(new_array).astype(np.int16)
                     seg, n_comp = measurements.label(new_array)
-                    if n_comp > 1: 
+                    if len(np.unique(seg)[1:]) > 1: 
                         finalized_crop_data=np.array([])
                         finalized_crop_label=np.array([])
                         break
