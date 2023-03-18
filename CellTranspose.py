@@ -119,14 +119,14 @@ tte = None
 train_losses = None
 if args.target_dataset is not None:
     
-    target_dataset = TrainCellTransposeData_with_contrast('Target', args.target_dataset, args.n_chan, rand_shots=args.random_shots, num_shots=args.num_shots,
+    target_dataset = TrainCellTransposeData_with_contrast(args, 'Target', args.target_dataset, args.n_chan, rand_shots=args.random_shots, num_shots=args.num_shots,
                                             pf_dirs=args.target_flows,
                                             do_3D=args.do_3D, from_3D=args.target_from_3D,
                                             crop_size=args.patch_size, has_flows=False, batch_size=args.batch_size,
                                             resize=Resize(args.median_diams,  target_diams=args.target_diams), random_resize=args.rand_resize_measure,
                                             result_dir=args.results_dir)
     
-    # target_dataset = TrainCellTransposeData('Target', args.target_dataset, args.n_chan, , rand_shots=args.random_shots, num_shots=args.num_shots,
+    # target_dataset = TrainCellTransposeData(args, 'Target', args.target_dataset, args.n_chan, , rand_shots=args.random_shots, num_shots=args.num_shots,
     #                                           pf_dirs=args.target_flows,
     #                                         do_3D=args.do_3D, from_3D=args.target_from_3D,
     #                                         crop_size=args.patch_size, has_flows=False, batch_size=args.batch_size,
@@ -157,13 +157,13 @@ if not args.eval_only:
             args.process_each_epoch = True
         
         # if not args.use_contrast:
-        #     train_dataset = TrainCellTransposeData('Training', args.train_dataset, args.n_chan, do_3D=args.do_3D,
+        #     train_dataset = TrainCellTransposeData(args, 'Training', args.train_dataset, args.n_chan, do_3D=args.do_3D,
         #                                         from_3D=args.train_from_3D, crop_size=args.patch_size, has_flows=False,
         #                                         batch_size=args.batch_size, resize=Resize(args.median_diams), random_resize=args.rand_resize_measure,
         #                                         preprocessed_data=args.load_train_from_npy,
         #                                         proc_every_epoch=args.process_each_epoch, result_dir=args.results_dir)
         # else: 
-        train_dataset = TrainCellTransposeData_with_contrast('Training', args.train_dataset, args.n_chan, do_3D=args.do_3D,
+        train_dataset = TrainCellTransposeData_with_contrast(args, 'Training', args.train_dataset, args.n_chan, do_3D=args.do_3D,
                                             from_3D=args.train_from_3D, crop_size=args.patch_size, has_flows=False,
                                             batch_size=args.batch_size, resize=Resize(args.median_diams), random_resize=args.rand_resize_measure,
                                             preprocessed_data=args.load_train_from_npy,
@@ -177,7 +177,7 @@ if not args.eval_only:
     train_dl = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, drop_last=True , num_workers=args.num_workers)
 
     if args.val_dataset is not None:
-        val_dataset = EvalCellTransposeData('Validation', args.val_dataset, args.n_chan, do_3D=args.do_3D,
+        val_dataset = EvalCellTransposeData(args, 'Validation', args.val_dataset, args.n_chan, do_3D=args.do_3D,
                                             resize=Resize(args.median_diams))
         val_dataset.pre_generate_validation_patches(patch_size=args.patch_size, min_overlap=args.min_overlap)
         val_dl = DataLoader(val_dataset, batch_size=args.batch_size, shuffle=False)
@@ -227,7 +227,7 @@ if not args.train_only:
     else:
         target_labels = None
     if not args.test_from_3D:
-        test_dataset = EvalCellTransposeData('Test', args.test_dataset, args.n_chan, do_3D=args.do_3D,
+        test_dataset = EvalCellTransposeData(args, 'Test', args.test_dataset, args.n_chan, do_3D=args.do_3D,
                                              from_3D=args.test_from_3D, evaluate=True,
                                              resize=Resize(args.median_diams, target_labels=target_labels, target_diams=args.target_diams))
         eval_dl = DataLoader(test_dataset, batch_size=1, shuffle=False)
@@ -235,7 +235,7 @@ if not args.train_only:
                                                           patch_size=args.patch_size, min_overlap=args.min_overlap)
         save_pred(masks, test_dataset, prediction_list, data_list, args.results_dir, args.dataset_name, args.calculate_ap)
     else:
-        test_dataset_3D = EvalCellTransposeData3D('3D_test', args.test_dataset, args.n_chan, do_3D=args.do_3D,
+        test_dataset_3D = EvalCellTransposeData3D(args, '3D_test', args.test_dataset, args.n_chan, do_3D=args.do_3D,
                                                   from_3D=args.test_from_3D, evaluate=True,
                                                   resize=Resize(args.median_diams, target_labels=target_labels, target_diams=args.target_diams),
                                                   anisotropy=(args.anisotropyZ, args.anisotropyY, args.anisotropyX))

@@ -37,7 +37,7 @@ class CellTransposeData(Dataset):
     the ith element of data corresponds to the ith label
     """
 
-    def __init__(self, split_name, data_dirs, n_chan, rand_shots=True, num_shots=3, pf_dirs=None, do_3D=False, from_3D=False,
+    def __init__(self, args, split_name, data_dirs, n_chan, rand_shots=True, num_shots=3, pf_dirs=None, do_3D=False, from_3D=False,
                  evaluate=False, batch_size=1, resize: Resize = None, result_dir=None):
         """
         Parameters
@@ -53,6 +53,7 @@ class CellTransposeData(Dataset):
             batch_size: default 1
             resize: Resize object containing parameters by which to resize input samples accordingly
         """
+        self.args = args
         self.do_3D = do_3D
         self.from_3D = from_3D
         self.split_name = split_name
@@ -163,7 +164,14 @@ class CellTransposeData(Dataset):
         self.label_samples = self.labels
 
     def load_rand_shots(self):
-        data_shots, labels_shots=find_shots.random_shots(self.d_list, self.l_list, shots=self.num_shots, save_dir=self.result_dir)
+        data_shots, labels_shots=find_shots.random_shots(self.d_list, 
+                                                         self.l_list, 
+                                                         shots=self.args.num_shots,
+                                                         patch_size=self.args.patch_size,
+                                                         nominal_cell_metric=self.args.target_diams if self.args.target_diams is not None else np.percentile(np.array(self.resize.diams), 75),
+                                                         scaling_factor=self.args.rand_resize_measure,                                                         
+                                                         save_dir=self.args.results_dir,
+                                                         )
         data = []
         labels = []
         original_dims = []
@@ -184,7 +192,7 @@ class CellTransposeData(Dataset):
         return len(self.d_list) if (self.do_3D or self.from_3D) else len(self.data)
 
 class TrainCellTransposeData(CellTransposeData):
-    def __init__(self, split_name, data_dirs, n_chan,rand_shots=True, num_shots=3, pf_dirs=None, do_3D=False, from_3D=False, evaluate=False,
+    def __init__(self, args, split_name, data_dirs, n_chan,rand_shots=True, num_shots=3, pf_dirs=None, do_3D=False, from_3D=False, evaluate=False,
                  crop_size=(112, 112), has_flows=False, batch_size=1, resize: Resize = None, random_resize=0.,
                  preprocessed_data=None, proc_every_epoch=True, result_dir=None):
                 
@@ -254,7 +262,7 @@ class TrainCellTransposeData(CellTransposeData):
         return len(self.data)
     
 class TrainCellTransposeData_with_contrast(CellTransposeData):
-    def __init__(self, split_name, data_dirs, n_chan, rand_shots=True, num_shots=3, pf_dirs=None, do_3D=False, from_3D=False, evaluate=False,
+    def __init__(self, args, split_name, data_dirs, n_chan, rand_shots=True, num_shots=3, pf_dirs=None, do_3D=False, from_3D=False, evaluate=False,
                  crop_size=(112, 112), has_flows=False, batch_size=1, resize: Resize = None, random_resize=0.,
                  preprocessed_data=None, proc_every_epoch=True, result_dir=None):
         
@@ -438,7 +446,7 @@ def train_generate_rand_crop(data, label=None, crop=(112, 112), lbl_flows=False)
 
 
 class EvalCellTransposeData(CellTransposeData):
-    def __init__(self, split_name, data_dirs, n_chan, pf_dirs=None, do_3D=False, from_3D=False,
+    def __init__(self, args, split_name, data_dirs, n_chan, pf_dirs=None, do_3D=False, from_3D=False,
                  evaluate=False, resize: Resize = None):
         self.from_3D = from_3D
         super().__init__(split_name, data_dirs, n_chan, pf_dirs=pf_dirs, do_3D=do_3D, from_3D=from_3D,
@@ -487,7 +495,7 @@ class EvalCellTransposeData(CellTransposeData):
 
 # final version of 3D validation dataloader
 class EvalCellTransposeData3D(CellTransposeData):
-    def __init__(self, split_name, data_dirs, n_chan, do_3D=False,
+    def __init__(self, args, split_name, data_dirs, n_chan, do_3D=False,
                  from_3D=False, evaluate=False, resize: Resize = None, anisotropy = (1.0, 1.0, 1.0)):
         self.resize = resize
         self.n_chan = n_chan
