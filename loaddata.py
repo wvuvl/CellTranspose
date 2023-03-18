@@ -38,7 +38,7 @@ class CellTransposeData(Dataset):
     """
 
     def __init__(self, args, split_name, data_dirs, n_chan, rand_shots=True, num_shots=3, pf_dirs=None, do_3D=False, from_3D=False,
-                 evaluate=False, batch_size=1, resize: Resize = None, result_dir=None):
+                 evaluate=False, batch_size=1, resize: Resize = None, diam=30, result_dir=None):
         """
         Parameters
         ------------------------------------------------------------------------------------------------
@@ -54,6 +54,7 @@ class CellTransposeData(Dataset):
             resize: Resize object containing parameters by which to resize input samples accordingly
         """
         self.args = args
+        self.diam = diam
         self.do_3D = do_3D
         self.from_3D = from_3D
         self.split_name = split_name
@@ -66,6 +67,7 @@ class CellTransposeData(Dataset):
         self.d_list = []
         self.l_list = []
         self.result_dir=result_dir
+        
         for dir_i in data_dirs:
             self.d_list = self.d_list + sorted([dir_i + os.sep + 'data' + os.sep + f for f in
                                                 os.listdir(os.path.join(dir_i, 'data')) if f.lower()
@@ -168,7 +170,7 @@ class CellTransposeData(Dataset):
                                                          self.l_list, 
                                                          shots=self.args.num_shots,
                                                          patch_size=self.args.patch_size[0],
-                                                         nominal_cell_metric=int(self.args.target_diams if self.args.target_diams is not None else np.percentile(np.array(self.resize.diams), 75)),
+                                                         nominal_cell_metric=int(self.args.target_diams if self.args.target_diams is not None else self.diam),
                                                          scaling_factor=self.args.rand_resize_measure,                                                         
                                                          save_dir=self.args.results_dir,
                                                          )
@@ -198,7 +200,7 @@ class TrainCellTransposeData(CellTransposeData):
                 
         if preprocessed_data is None:
             super().__init__(args, split_name, data_dirs, n_chan, rand_shots=True, num_shots=3, pf_dirs=pf_dirs, do_3D=do_3D,
-                             from_3D=from_3D, evaluate=evaluate, batch_size=batch_size, resize=None, result_dir=result_dir)
+                             from_3D=from_3D, evaluate=evaluate, batch_size=batch_size, resize=None, diam=np.percentile(np.array(resize.diams), 75), result_dir=result_dir)
         self.resize = resize
         self.crop_size = crop_size
         self.has_flows = has_flows
@@ -269,7 +271,7 @@ class TrainCellTransposeData_with_contrast(CellTransposeData):
         
         if preprocessed_data is None:
             super().__init__(args, split_name, data_dirs, n_chan, rand_shots=True, num_shots=num_shots, pf_dirs=pf_dirs, do_3D=do_3D,
-                             from_3D=from_3D, evaluate=evaluate, batch_size=batch_size, resize=None, result_dir=result_dir)
+                             from_3D=from_3D, evaluate=evaluate, batch_size=batch_size, resize=None, diam=np.percentile(np.array(resize.diams), 75), result_dir=result_dir)
         self.resize = resize
         self.crop_size = crop_size
         self.has_flows = has_flows
