@@ -167,7 +167,7 @@ class CellTransposeData(Dataset):
         data_shots, labels_shots=find_shots.random_shots(self.d_list, 
                                                          self.l_list, 
                                                          shots=self.args.num_shots,
-                                                         patch_size=self.args.patch_size,
+                                                         patch_size=self.args.patch_size[0],
                                                          nominal_cell_metric=int(self.args.target_diams if self.args.target_diams is not None else np.percentile(np.array(self.resize.diams), 75)),
                                                          scaling_factor=self.args.rand_resize_measure,                                                         
                                                          save_dir=self.args.results_dir,
