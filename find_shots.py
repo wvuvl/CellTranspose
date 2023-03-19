@@ -124,7 +124,6 @@ def random_shots(d_list, l_list, shots=3, patch_size=112, nominal_cell_metric=30
 
         if running_masks >= min_cells:
             print(f'Shape {finalized_crop_label.shape[-1]} x {finalized_crop_label.shape[-2]}')
-            curr_shot += 1
             data_shots.append(finalized_crop_data)
             labels_shots.append(finalized_crop_label)
             total_masks += running_masks
@@ -142,6 +141,7 @@ def random_shots(d_list, l_list, shots=3, patch_size=112, nominal_cell_metric=30
                 #     else: cv2.imwrite(os.path.join(save_dir,shots+'-shot_flows', 'labels', 'Crop_'+os.path.basename(l_name)), finalized_crop_label)
         else:
             print(f'Masks collected for this shot are less than the user defined value - {min_cells}, therefore, moving to the next random image!')    
+        curr_shot += 1
     print(f'Total masks collected: {total_masks}')
     
     return data_shots, labels_shots
