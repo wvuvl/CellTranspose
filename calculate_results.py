@@ -118,7 +118,7 @@ def save_pred(masks, test_dataset, prediction_list, data_list, results_dir, data
         with open(os.path.join(results_dir, 'pkl_results', data_list[i] + '_predicted_labels.pkl'), 'wb') as m_pkl:
             pickle.dump(masks[i], m_pkl)
         tifffile.imwrite(os.path.join(results_dir, 'tiff_results', data_list[i] + '.tif'), masks[i])
-        with open(os.path.join(results_dir, data_list[i] + '_raw_masks_flows.pkl'), 'wb') as rmf_pkl:
+        with open(os.path.join(results_dir, 'pkl_results', data_list[i] + '_raw_masks_flows.pkl'), 'wb') as rmf_pkl:
             pickle.dump(prediction_list[i], rmf_pkl)
         tifffile.imwrite(os.path.join(results_dir, 'raw_predictions_tiffs', data_list[i] + '.tif'),
                          prediction_list[i])
