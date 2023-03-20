@@ -171,7 +171,7 @@ class CellTransposeData(Dataset):
                                                          shots=self.args.num_shots,
                                                          patch_size=self.args.patch_size[0],
                                                          nominal_cell_metric=int(self.args.target_diams if self.args.target_diams is not None else self.diam),
-                                                         scaling_factor=self.args.rand_resize_measure,                                                         
+                                                         scaling_factor=(1+self.args.rand_resize_measure),                                                         
                                                          save_dir=self.args.results_dir,
                                                          )
         data = []

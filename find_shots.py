@@ -81,18 +81,19 @@ def random_shots(d_list, l_list, shots=3, patch_size=112, nominal_cell_metric=30
             crop_data, crop_label = select_sample_window(data, label, sample_center, nominal_cell_metric, patch_size, scaling_factor)
             current_masks =np.unique(crop_label)[1:]
             if len(current_masks) > running_masks: 
-                safe_window=False
-                for curr_mask in np.unique(crop_label)[1:]:
-                    new_array = np.zeros((crop_label.shape))
-                    new_array[np.where(crop_label==curr_mask)] = 1
-                    new_array = np.ceil(new_array).astype(np.int16)
-                    seg, n_comp = measurements.label(new_array)
-                    if len(np.unique(seg)[1:]) > 1: break
-                    safe_window=True
-                if safe_window: 
-                    finalized_crop_data=crop_data
-                    finalized_crop_label=crop_label
-                    running_masks=len(current_masks)
+                finalized_crop_data=crop_data
+                finalized_crop_label=crop_label
+                running_masks=len(current_masks)
+                # safe_window=False
+                # for curr_mask in np.unique(crop_label)[1:]:
+                #     new_array = np.zeros((crop_label.shape))
+                #     new_array[np.where(crop_label==curr_mask)] = 1
+                #     new_array = np.ceil(new_array).astype(np.int16)
+                #     seg, n_comp = measurements.label(new_array)
+                #     if len(np.unique(seg)[1:]) > 1: break
+                #     safe_window=True
+                # if safe_window: 
+                    
         # finalized_crop_label = remove_cut_cells(finalized_crop_label)
         
         # # Padding if size is not square

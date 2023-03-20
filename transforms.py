@@ -39,7 +39,7 @@ def resize_from_labels(x, y, default_med, pf=None, random_scale=1.0, diams=[], a
         y_cf = remove_cut_cells(y_cf)
         diams = diam_range(y_cf)
 
-    cell_metric = cell_metric if cell_metric is not None else np.percentile(np.array(diams), 75)*random_scale
+    cell_metric = (cell_metric if cell_metric is not None else np.percentile(np.array(diams), 75))*random_scale
     cell_metric = cell_metric if cell_metric > 12 else 12  # Note: following work from TissueNet
     if cell_metric > 0:
         rescale_w, rescale_h = default_med[0] / cell_metric, default_med[1] / cell_metric
