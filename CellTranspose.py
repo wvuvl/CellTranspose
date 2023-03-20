@@ -105,6 +105,7 @@ print(args.results_dir)
 assert not os.path.exists(args.results_dir),\
     'Results folder {} currently exists; please specify new location to save results.'.format(args.results_dir)
 os.makedirs(args.results_dir)
+os.makedirs(os.path.join(args.results_dir, 'pkl_results'))
 os.makedirs(os.path.join(args.results_dir, 'tiff_results'))
 os.makedirs(os.path.join(args.results_dir, 'raw_predictions_tiffs'))
 assert not (args.train_only and args.eval_only), 'Cannot pass in "train-only" and "eval-only" arguments simultaneously.'
