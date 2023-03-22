@@ -14,6 +14,7 @@ def convert_to_cp_format(d_path, l_path, dest_path):
         shutil.copyfile(os.path.join(l_path,l), os.path.join(dest_path,l_name))
     
 if __name__ == '__main__':
+    print()
     # for split in ["A172", "BT474", "BV2", "Huh7", "MCF7", "SHSY5Y", "SkBr3", "SKOV3"]:
     #     d_path = f'/mnt/5400C9CC66E778B9/Ram/work/cell_analysis/datasets/datasets/LiveCell/livecell_split/Livecell_split_cleaned/{split}/test/data'
     #     l_path = f'/mnt/5400C9CC66E778B9/Ram/work/cell_analysis/datasets/datasets/LiveCell/livecell_split/Livecell_split_cleaned/{split}/test/labels'
