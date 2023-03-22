@@ -36,7 +36,7 @@ def find_top_x(path, x=5):
 
     return sortedList
 
-def calc_avg_std(sorted_list, save_path=None, masks_saved=False, save_name=''):
+def calc_avg_std(sorted_list, save_path=None, masks_saved_ctp=False, masks_saved_cp=False, save_name=''):
     
     if save_path is not None and os.path.exists(save_path) == False: 
         os.makedirs(save_path)
@@ -59,8 +59,10 @@ def calc_avg_std(sorted_list, save_path=None, masks_saved=False, save_name=''):
     std_AP = np.std(AP,axis=0)
     std_F1 = np.std(F1,axis=0)
     
-    if masks_saved:
-        masks = calc_avg_masks(sorted_list)
+    if masks_saved_ctp:
+        masks = calc_avg_ctp_masks(sorted_list)
+    elif masks_saved_cp:
+        masks = calc_avg_cp_masks(sorted_list)
     else:
         masks = '-'
     
@@ -89,8 +91,22 @@ def calc_avg_std(sorted_list, save_path=None, masks_saved=False, save_name=''):
 
         with open(os.path.join(save_path, f'{save_name}_AP_Results.pkl'), 'wb') as apr:
             pickle.dump((mean_AP, mean_F1, std_AP, std_F1), apr)
-        
-def calc_avg_masks(sorted_list):
+
+def calc_avg_cp_masks(sorted_list):
+       
+    total_masks=[]
+    for i in sorted_list:
+        dir_path = os.path.dirname(i[0])
+        curr_dir = os.path.join(dir_path, 'models')
+        for curr_path in os.listdir(curr_dir):
+            if curr_path.endswith('_AP_TP_FP_FN.npy'): 
+                npy_file = os.path.join(curr_dir,curr_path)
+                npy_info = np.load(npy_file,allow_pickle=True)
+                total_masks.append(npy_info.item()['ntrain_masks'])
+    print(total_masks)
+    return int(np.average(total_masks))
+   
+def calc_avg_ctp_masks(sorted_list):
    
     total_masks=[]
     for i in sorted_list:
@@ -111,12 +127,13 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--res-path')
     parser.add_argument('--save-path',default=None)
-    parser.add_argument('--mask-saved',action='store_true')
+    parser.add_argument('--masks-saved-ctp',action='store_true')
+    parser.add_argument('--masks-saved-cp',action='store_true')
     parser.add_argument('--save-name',default='')
     args = parser.parse_args()
 
     sorted_list = find_top_x(args.res_path)
     
-    calc_avg_std(sorted_list,args.save_path, masks_saved=args.mask_saved, save_name=args.save_name)
+    calc_avg_std(sorted_list,args.save_path, masks_saved_ctp=args.masks_saved_ctp, masks_saved_cp=args.masks_saved_cp, save_name=args.save_name)
     
     
