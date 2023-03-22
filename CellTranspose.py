@@ -8,9 +8,9 @@ import os
 import time
 
 from transforms import Resize
-from loaddata import TrainCellTransposeData, EvalCellTransposeData, EvalCellTransposeData3D
+from loaddata import TrainCellTransposeData, EvalCellTransposeData, EvalCellTransposeData3D_Updated
 from network import CellTransposeModel, ClassLoss, FlowLoss, SASMaskLoss, ContrastiveFlowLoss
-from train_eval import train_network, adapt_network, eval_network, eval_network_3D
+from train_eval import train_network, adapt_network, eval_network, eval_network_3D_Updated
 from calculate_results import produce_logfile, plot_loss, save_pred
 
 parser = argparse.ArgumentParser()
@@ -193,11 +193,12 @@ if not args.train_only:
                                                           patch_size=args.patch_size, min_overlap=args.min_overlap)
         save_pred(masks, test_dataset, prediction_list, data_list, args.results_dir, args.dataset_name, args.calculate_ap)
     else:
-        test_dataset_3D = EvalCellTransposeData3D('3D_test', args.test_dataset, args.n_chan, do_3D=args.do_3D,
-                                                  from_3D=args.test_from_3D, evaluate=True,
-                                                  resize=Resize(args.median_diams, target_labels=target_labels))
+        test_dataset_3D = EvalCellTransposeData3D_Updated('3D_test', args.test_dataset, args.n_chan, do_3D=args.do_3D,
+                                                  from_3D=args.test_from_3D, evaluate=True)
         eval_dl_3D = DataLoader(test_dataset_3D, batch_size=1, shuffle=False)
-        eval_network_3D(model, eval_dl_3D, device, patch_per_batch=args.eval_batch_size,
+        
+       
+        eval_network_3D_Updated(model, eval_dl_3D, device, patch_per_batch=args.eval_batch_size,
                         patch_size=args.patch_size, min_overlap=args.min_overlap, results_dir=args.results_dir)
     end_eval = time.time()
     tte = time.strftime("%H:%M:%S", time.gmtime(end_eval - start_eval))

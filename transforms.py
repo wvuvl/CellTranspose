@@ -66,24 +66,96 @@ def resize_from_labels(x, y, default_med, pf=None, random_scale=1.0, diams=[]):
         return x, y, cell_metric
 
 
-def reformat(x, n_chan=1):
+def reformat(x, n_chan=1, do_3D=False):
     """
     Reformats raw input data with the following expected output:
-    If 2-D -> torch.tensor with shape [channels, x_dim, y_dim]
+    If 2-D -> torch.tensor or ndarray with shape [channels, x_dim, y_dim]
     """
-    if x.dim() == 2:
-        x = x.view(1, x.shape[0], x.shape[1])
-    elif x.dim() == 3:
-        if x.shape[2] > x.shape[0]:
-            x = x.permute(1, 2, 0)
-        info_chans = [len(torch.unique(x[:, :, i])) > 1 for i in range(x.shape[2])]
-        x = x[:, :, info_chans]
-        x = torch.tensor(np.transpose(x.numpy(), (2, 0, 1))[:n_chan])  # Remove any additional channels
-    # Concatenate copies of other channels if image has fewer than the specified number of channels
-    if x.shape[0] < n_chan:
-        x = torch.tile(x, (math.ceil(n_chan/x.shape[0]), 1, 1))
-        x = x[:n_chan]
+    # returns ndarray
+    if do_3D:
+        if len(x.shape) == 3:
+            x = x[np.newaxis,:,:,:]
+        
+        elif len(x.shape) == 4:
+            if x.shape[3] > x.shape[0]:
+                x = x.transpose(1, 2, 3, 0)
+            info_chans = [len(np.unique(x[:, :, :, i])) > 1 for i in range(x.shape[3])]
+            x = x[:, :, :, info_chans]
+            x = np.transpose(x.numpy(), (3, 0, 1, 2))[:n_chan]  # Remove any additional channels
+        # Concatenate copies of other channels if image has fewer than the specified number of channels
+        if x.shape[0] < n_chan:
+            x = np.tile(x, (math.ceil(n_chan/x.shape[0]), 1, 1, 1))
+            x = x[:n_chan]
+    
+    #returns a tensor
+    else:    
+        if x.dim() == 2:
+            x = x.view(1, x.shape[0], x.shape[1])
+        elif x.dim() == 3:
+            if x.shape[2] > x.shape[0]:
+                x = x.permute(1, 2, 0)
+            info_chans = [len(torch.unique(x[:, :, i])) > 1 for i in range(x.shape[2])]
+            x = x[:, :, info_chans]
+            x = torch.tensor(np.transpose(x.numpy(), (2, 0, 1))[:n_chan])  # Remove any additional channels
+        # Concatenate copies of other channels if image has fewer than the specified number of channels
+        if x.shape[0] < n_chan:
+            x = torch.tile(x, (math.ceil(n_chan/x.shape[0]), 1, 1))
+            x = x[:n_chan]
     return x
+
+# changed cellpose src code for nchan, y, x format
+def resize_image(img0, Ly=None, Lx=None, rsz=None, interpolation=cv2.INTER_LINEAR, no_channels=False):
+    """ resize image for computing flows / unresize for computing dynamics
+
+    Parameters
+    -------------
+
+    img0: ND-array
+        image of size [nchan x Y x X ] or [nchan x Lz x Y x X] or [Lz x Y x X]
+
+    Ly: int, optional
+
+    Lx: int, optional
+
+    rsz: float, optional
+        resize coefficient(s) for image; if Ly is None then rsz is used
+
+    interpolation: cv2 interp method (optional, default cv2.INTER_LINEAR)
+
+    Returns
+    --------------
+
+    imgs: ND-array 
+        image of size [nchan x Ly x Lx] or [nchan x Lz x Ly x Lx]
+
+    """
+    if Ly is None and rsz is None:        
+        raise ValueError('must give size to resize to or factor to use for resizing')
+
+    if Ly is None:
+        # determine Ly and Lx using rsz
+        if not isinstance(rsz, list) and not isinstance(rsz, np.ndarray):
+            rsz = [rsz, rsz]
+        # no need to check for channels as the channles are always in the front at index 0    
+        Ly = int(img0.shape[-2] * rsz[-2])
+        Lx = int(img0.shape[-1] * rsz[-1])
+     
+    
+    # no_channels useful for z-stacks, so the third dimension is not treated as a channel
+    # but if this is called for grayscale images, they first become [Ly,Lx,2] so ndim=3 but 
+    if (img0.ndim>2 and no_channels) or (img0.ndim==4 and not no_channels):
+        if no_channels:
+            imgs = np.zeros((img0.shape[0], Ly, Lx), np.float32)
+        else:
+            # for 4D data, consider the input stack is Z x ch x Y x X format
+            imgs = np.zeros((img0.shape[0],img0.shape[1], Ly, Lx), np.float32)
+        for i,img in enumerate(img0):
+            imgs[i] = cv2.resize(img.transpose(1, 2, 0), (Lx, Ly), interpolation=interpolation).transpose(2,0,1)
+    else:
+        # no channels and 2D image
+        imgs = cv2.resize(img0, (Lx, Ly), interpolation=interpolation)
+        
+    return imgs
 
 
 def normalize1stto99th(x):
@@ -91,9 +163,9 @@ def normalize1stto99th(x):
     Normalize each channel of input image so that 0.0 corresponds to 1st percentile and 1.0 corresponds to 99th -
     Made to mimic Cellpose's normalization implementation
     """
-    sample = x.clone()
+    sample = x.clone() if torch.is_tensor(x) else x.copy()
     for chan in range(len(sample)):
-        if len(torch.unique(sample[chan])) != 1:
+        if len(torch.unique(sample[chan]) if torch.is_tensor(sample) else np.unique(sample[chan])) != 1:
             sample[chan] = (sample[chan] - np.percentile(sample[chan], 1))\
                            / (np.percentile(sample[chan], 99) - np.percentile(sample[chan], 1))
     return sample
@@ -140,15 +212,15 @@ def followflows(flows):
     return masks
 
 
-def followflows3D(dP, cellprob, cell_metric):
+def followflows3D(dP, cellprob, cell_metric=12, device=None):
     """
     Combines follow_flows, get_masks, and fill_holes_and_remove_small_masks from Cellpose implementation
     """
-    niter = 400; interp = True; use_gpu = True; cellprob_threshold = 0.0; flow_threshold = 0.4
+    niter = 200; interp = True; use_gpu = True; cellprob_threshold = 0.0; flow_threshold = 0.4
     # Smallest size of calculated mask allowed; masks lower than this value will be removed
     min_size = (cell_metric ** 3) / 125
     masks = compute_masks(dP, cellprob, niter=niter, interp=interp, use_gpu=use_gpu, mask_threshold=cellprob_threshold,
-                          flow_threshold=flow_threshold, min_size=min_size)
+                          flow_threshold=flow_threshold, min_size=min_size, device=device)
     return masks
 
 

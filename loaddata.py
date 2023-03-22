@@ -13,7 +13,7 @@ import tifffile
 import cv2
 import random
 import numpy as np
-from transforms import reformat, normalize1stto99th, Resize, random_horizontal_flip, labels_to_flows, generate_patches
+from transforms import reformat, normalize1stto99th, Resize, random_horizontal_flip, labels_to_flows, generate_patches, resize_image
 
 
 class CellTransposeData(Dataset):
@@ -326,3 +326,28 @@ class EvalCellTransposeData3D(CellTransposeData):
 
     def __getitem__(self, index):
         return self.process_eval_3D(index)
+
+# Updated more efficient version    
+class EvalCellTransposeData3D_Updated(CellTransposeData):
+    def __init__(self, split_name, data_dirs, n_chan, do_3D=False,
+                 from_3D=False, evaluate=False):
+        self.n_chan = n_chan
+        self.do_3D = do_3D
+        super().__init__(split_name, data_dirs, n_chan, do_3D=do_3D, from_3D=from_3D, evaluate=evaluate, resize=None)
+    
+
+    def __getitem__(self, index):
+        ext = os.path.splitext(self.d_list[index])[-1]
+
+        if ext == '.tif' or ext == '.tiff':
+            raw_data_vol = tifffile.imread(self.d_list[index]).astype('float')
+        else:
+            raw_data_vol = cv2.imread(self.d_list[index], -1).astype('float')
+        
+        
+        print(f">>> Image path: {self.d_list[index]}")
+        print(f">>> Processing 3D data")
+                
+        data = normalize1stto99th(reformat(raw_data_vol, self.n_chan, do_3D=True))
+        
+        return data, self.d_list[index]

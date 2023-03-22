@@ -1,14 +1,14 @@
 from torch.utils.data import DataLoader
-from torch import nn, tensor, cat, no_grad, squeeze, zeros
+from torch import nn, tensor, cat, no_grad, squeeze, zeros, as_tensor, from_numpy
 import time
-from tqdm import tqdm
+from tqdm import tqdm, trange
 import cv2
 import numpy as np
 import os
 import pickle
 import tifffile
 from statistics import mean
-from transforms import followflows, followflows3D, generate_patches, recombine_patches
+from transforms import followflows, followflows3D, generate_patches, recombine_patches, Resize, resize_image
 from cellpose_src import transforms
 
 def train_network(model, train_dl, val_dl, class_loss, flow_loss, optimizer, scheduler, device, n_epochs):
@@ -142,6 +142,11 @@ def validate_network(model, data_loader, flow_loss, class_loss, device):
 
 # Evaluation - due to image size mismatches, must currently be run one image at a time
 def eval_network(model: nn.Module, data_loader: DataLoader, device, patch_per_batch, patch_size, min_overlap):
+    
+    axis = ('Z', 'Y', 'X')
+    plane = ('YX', 'ZX', 'ZY')
+    TP = [(0, 1, 2), (1, 0, 2), (2, 0, 1)]
+    
     model.eval()
     with no_grad():
         masks = []
@@ -249,7 +254,130 @@ def eval_network_3D(model: nn.Module, data_loader: DataLoader, device,
             pred_yx, pred_zy, pred_zx = np.array(pred_yx), np.array(pred_zy), np.array(pred_zx)
             run_3D_masks(pred_yx, pred_zy, pred_zx, data_files, results_dir, cell_metric)
 
+# Evaluation Updated - cellpose source
+def eval_network_3D_Updated(model: nn.Module, data_loader: DataLoader,
+                            device, patch_per_batch, patch_size, min_overlap, results_dir, anisotropy=None, resize_measure=1.0, augment=True):
+    
+    axis = ('Z', 'Y', 'X')
+    planes = ('YX', 'ZX', 'ZY')
+    TP = [(1, 0, 2, 3), (2, 0, 1, 3), (3, 0, 1, 2)]
+    RTP = [(1, 0 , 2, 3), (1 , 2, 0, 3), (1 , 2, 3, 0)]
+    
+    if anisotropy is not None:
+        rescale = [
+            [resize_measure, resize_measure],
+            [resize_measure*anisotropy, resize_measure],
+            [resize_measure*anisotropy, resize_measure]
+            ]
+    else:
+        rescale= [resize_measure] * 3 
+    
+    
+    for (data_vol, data_file) in data_loader:
+        start = time.time()
+        data_vol = data_vol.squeeze(0).numpy()
+        yf = np.zeros((3, 3, data_vol.shape[1], data_vol.shape[2], data_vol.shape[3]), np.float32)
+        for plane_idx in range(len(planes)):
+            curr_stack = data_vol.copy().transpose(TP[plane_idx])
+            curr_shape = curr_stack.shape
+            curr_stack = resize_image(curr_stack, rsz=rescale[plane_idx])
+            
+            # pad image for net so Ly and Lx are divisible by 4
+            curr_stack, yrange, xrange = transforms.pad_image_ND(curr_stack)
+            Lz, nchan = curr_stack.shape[:2]
+            
+            # slices from padding
+            return_conv = False
+            slc = [slice(0, curr_stack.shape[n]+1) for n in range(curr_stack.ndim)]
+            slc[-3] = slice(0, 3 + 32*return_conv + 1)
+            slc[-2] = slice(yrange[0], yrange[-1]+1)
+            slc[-1] = slice(xrange[0], xrange[-1]+1)
+            slc = tuple(slc)
+            
+            
+            # making tiles for the first slice 
+            IMG, ysub, xsub, Ly, Lx = transforms.make_tiles(curr_stack[0], bsize=patch_size[0], 
+                                                        augment=augment, tile_overlap=float(patch_size[0]/min_overlap[0]))
+            ny, nx, nchan, ly, lx = IMG.shape
+            curr_patch_per_batch = patch_per_batch
+            curr_patch_per_batch *= max(4, (patch_size[0]**2 // (ly*lx))**0.5)
+            yf0 = np.zeros((Lz, 3, curr_stack.shape[-2], curr_stack.shape[-1]), np.float32)
+            
+            if ny*nx > curr_patch_per_batch:
+                for i in trange(Lz):
+                    yfi = run_overlaps(model, curr_stack[i], batch_size=patch_per_batch, device=device, augment=augment, 
+                                                patch_size=patch_size[0], min_overlap=float(patch_size[0]/min_overlap[0]))
+                    yf0[i] = yfi
+            else:
+                # run multiple slices at the same time
+                ntiles = ny*nx
+                nimgs = max(2, int(np.round(patch_per_batch / ntiles)))
+                niter = int(np.ceil(Lz/nimgs))
+                for k in trange(niter):
+                    IMGa = np.zeros((ntiles*nimgs, nchan, ly, lx), np.float32)
+                    for i in range(min(Lz-k*nimgs, nimgs)):
+                        IMG, ysub, xsub, Ly, Lx = transforms.make_tiles(curr_stack[k*nimgs+i], bsize=patch_size[0], 
+                                                                        augment=augment, tile_overlap=float(patch_size[0]/min_overlap[0]))
+                        IMGa[i*ntiles:(i+1)*ntiles] = np.reshape(IMG, (ny*nx, nchan, ly, lx))
+                    
+                    model.eval()
+                    with no_grad():
+                        X = from_numpy(IMGa).float().to(device)
+                        ya = model(X).detach().cpu().numpy()
+                    
+                    for i in range(min(Lz-k*nimgs, nimgs)):
+                        y = ya[i*ntiles:(i+1)*ntiles]
+                        if augment:
+                            y = np.reshape(y, (ny, nx, 3, ly, lx))
+                            y = transforms.unaugment_tiles(y)
+                            y = np.reshape(y, (-1, 3, ly, lx))
+                        yfi = transforms.average_tiles(y, ysub, xsub, Ly, Lx)
+                        yfi = yfi[:,:curr_stack.shape[2],:curr_stack.shape[3]]
+                        yf0[k*nimgs+i] = yfi
+            
+            # clearing out padding
+            yf0 = yf0[slc]
+            
+            #resizing back to the original dim     
+            yf0 = resize_image(yf0, curr_shape[2], curr_shape[3])
+            yf[plane_idx] = yf0.transpose(RTP[plane_idx])
+        
+        cellprob = yf[0][0] + yf[1][0] + yf[2][0]
+        dP = np.stack((yf[1][1] + yf[2][1], yf[0][1] + yf[1][2], yf[0][2] + yf[2][2]), axis=0)
+        mask = np.array(followflows3D(dP, cellprob,device=device))
+        print(f">>> Total masks found in 3D volume in {time.time() - start} seconds: {len(np.unique(mask))-1}")
+        tifffile.imwrite(os.path.join(results_dir, 'tiff_results', os.path.basename(data_file) + '.tif'), mask)
+        del yf, dP, cellprob, mask
+            
+def run_overlaps(model: nn.Module, imgi, batch_size, device, augment=False, patch_size=112, min_overlap=0.1): 
+    IMG, ysub, xsub, Ly, Lx = transforms.make_tiles(imgi, bsize=patch_size, augment=augment, tile_overlap=min_overlap)
+    
+    model.eval()
+    ny, nx, nchan, ly, lx = IMG.shape
+    IMG = np.reshape(IMG, (ny*nx, nchan, ly, lx))
+    niter = int(np.ceil(IMG.shape[0] / batch_size))
+    
+    y = np.zeros((IMG.shape[0], 3, ly, lx))
+    for k in range(niter):
+        irange = np.arange(batch_size*k, min(IMG.shape[0], batch_size*k+batch_size))
+        
+        with no_grad():
+            X = from_numpy(IMG[irange]).float().to(device)
+            y0 = model(X).detach().cpu().numpy()
+        
+        y[irange] = y0.reshape(len(irange), y0.shape[-3], y0.shape[-2], y0.shape[-1])
+        
+    if augment:
+        y = np.reshape(y, (ny, nx, 3, patch_size, patch_size))
+        y = transforms.unaugment_tiles(y)
+        y = np.reshape(y, (-1, 3, patch_size, patch_size))
+    
+    yf = transforms.average_tiles(y, ysub, xsub, Ly, Lx)
+    yf = yf[:,:imgi.shape[1],:imgi.shape[2]]
+    return yf                 
 
+        
+            
 # adapted from cellpose original implementation
 def run_3D_masks(pred_yx, pred_zy, pred_zx, data_name, results_dir, cell_metric):
 
