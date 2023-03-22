@@ -24,8 +24,11 @@ def find_top_x(path, x=5):
                 if file.endswith('AP_Results.pkl'):
                     # print(f'{file}')
                     with open (os.path.join(files_path,file), 'rb') as f:
-                        tau, ap_overall, tp_overall, fp_overall, fn_overall, false_error = pk.load(f,encoding='utf-8')
-                    
+                        AP_pkl = pk.load(f,encoding='utf-8')
+                        if len(AP_pkl) == 6:
+                            tau, ap_overall, tp_overall, fp_overall, fn_overall, false_error = AP_pkl
+                        else:
+                            tau, ap_overall, tp_overall, fp_overall, fn_overall = AP_pkl
                     res[os.path.join(files_path,file)]=ap_overall[51]
                     # print(f'{version}:    {ap_overall[51]:.4f}')
     
@@ -47,7 +50,12 @@ def calc_avg_std(sorted_list, save_path=None, masks_saved_ctp=False, masks_saved
     
     for i in sorted_list:  
         with open (os.path.join(i[0]), 'rb') as f:
-            tau, ap_overall, tp_overall, fp_overall, fn_overall, false_error = pk.load(f,encoding='utf-8')
+            AP_pkl = pk.load(f,encoding='utf-8')
+            if len(AP_pkl) == 6:
+                tau, ap_overall, tp_overall, fp_overall, fn_overall, false_error = AP_pkl
+            else:
+                tau, ap_overall, tp_overall, fp_overall, fn_overall = AP_pkl
+                
             f1_overall = tp_overall / (tp_overall + 0.5 * (fp_overall+ fn_overall))
         AP.append(ap_overall)
         F1.append(f1_overall)
