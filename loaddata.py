@@ -282,57 +282,13 @@ class EvalCellTransposeData(CellTransposeData):
             return self.data_samples[index], label
 
 
-# final version of 3D validation dataloader
+# Updated more efficient version    
 class EvalCellTransposeData3D(CellTransposeData):
     def __init__(self, split_name, data_dirs, n_chan, do_3D=False,
-                 from_3D=False, evaluate=False, resize: Resize = None):
-        self.resize = resize
-        self.n_chan = n_chan
-        super().__init__(split_name, data_dirs, n_chan, do_3D=do_3D, from_3D=from_3D, evaluate=evaluate, resize=resize)
-    
-    def process_eval_3D(self, index):
-        ext = os.path.splitext(self.d_list[index])[-1]
-
-        if ext == '.tif' or ext == '.tiff':
-            raw_data_vol = tifffile.imread(self.d_list[index]).astype('float')
-        else:
-            raw_data_vol = cv2.imread(self.d_list[index], -1).astype('float')
-
-        axis = ('Z', 'Y', 'X')
-        plane = ('YX', 'ZX', 'ZY')
-        TP = [(0, 1, 2), (1, 0, 2), (2, 0, 1)]
-        data_vol = []
-        original_dim = []
-        
-        print(f">>> Image path: {self.d_list[index]}")
-        for ind in range(len(plane)):
-            new_data = raw_data_vol.transpose(TP[ind])
-            print(f">>> Processing 3D data on {new_data.shape[0]} {plane[ind]} planes in {axis[ind]} direction...")
-            new_data_vol = []
-            new_origin_dim = []
-            for i in range(len(new_data)):
-                d = reformat(as_tensor(new_data[i]), self.n_chan)
-                data = normalize1stto99th(d)
-                label = []
-                if self.resize is not None:
-                    data, label, dim, diam = self.resize(data, label)
-                else:
-                    dim = (data[0], data[1])
-                new_data_vol.append(data)
-                new_origin_dim.append(dim)
-            data_vol.append(new_data_vol)
-            original_dim.append(new_origin_dim)
-        return data_vol, self.d_list[index], plane, original_dim, diam
-
-    def __getitem__(self, index):
-        return self.process_eval_3D(index)
-
-# Updated more efficient version    
-class EvalCellTransposeData3D_Updated(CellTransposeData):
-    def __init__(self, split_name, data_dirs, n_chan, do_3D=False,
-                 from_3D=False, evaluate=False):
+                 from_3D=False, evaluate=False, resize_measure=1.0):
         self.n_chan = n_chan
         self.do_3D = do_3D
+        self.resize_measure = resize_measure
         super().__init__(split_name, data_dirs, n_chan, do_3D=do_3D, from_3D=from_3D, evaluate=evaluate, resize=None)
     
 
@@ -350,4 +306,4 @@ class EvalCellTransposeData3D_Updated(CellTransposeData):
                 
         data = normalize1stto99th(reformat(raw_data_vol, self.n_chan, do_3D=True))
         
-        return data, self.d_list[index]
+        return data, self.d_list[index], self.resize_measure

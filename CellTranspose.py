@@ -8,9 +8,9 @@ import os
 import time
 
 from transforms import Resize
-from loaddata import TrainCellTransposeData, EvalCellTransposeData, EvalCellTransposeData3D_Updated
+from loaddata import TrainCellTransposeData, EvalCellTransposeData, EvalCellTransposeData3D
 from network import CellTransposeModel, ClassLoss, FlowLoss, SASMaskLoss, ContrastiveFlowLoss
-from train_eval import train_network, adapt_network, eval_network, eval_network_3D_Updated
+from train_eval import train_network, adapt_network, eval_network, eval_network_3D
 from calculate_results import produce_logfile, plot_loss, save_pred
 
 parser = argparse.ArgumentParser()
@@ -77,6 +77,8 @@ parser.add_argument('--val-dataset', help='The directory(s) containing data to b
 parser.add_argument('--test-dataset', help='The directory(s) containing data to be used for testing.', nargs='+')
 parser.add_argument('--test-from-3D', help='Whether the input test data is 3D: assumes 2D if set to False.',
                     action='store_true')
+parser.add_argument('--median-diams-3D', type=int,
+                    help='3D median diams that will be used to equalize original median-diams', default=30)
 
 # Note: do-3D not currently implemented. Can be used for further development with volumetric approach
 parser.add_argument('--do-3D', help='Whether or not to use CellTranspose3D (Must use 3D volumes).', action='store_true')
@@ -193,12 +195,12 @@ if not args.train_only:
                                                           patch_size=args.patch_size, min_overlap=args.min_overlap)
         save_pred(masks, test_dataset, prediction_list, data_list, args.results_dir, args.dataset_name, args.calculate_ap)
     else:
-        test_dataset_3D = EvalCellTransposeData3D_Updated('3D_test', args.test_dataset, args.n_chan, do_3D=args.do_3D,
-                                                  from_3D=args.test_from_3D, evaluate=True)
+        test_dataset_3D = EvalCellTransposeData3D('3D_test', args.test_dataset, args.n_chan, do_3D=args.do_3D,
+                                                  from_3D=args.test_from_3D, evaluate=True, resize_measure=float(args.median_diams[0]/args.median_diams_3D))
         eval_dl_3D = DataLoader(test_dataset_3D, batch_size=1, shuffle=False)
         
        
-        eval_network_3D_Updated(model, eval_dl_3D, device, patch_per_batch=args.eval_batch_size,
+        eval_network_3D(model, eval_dl_3D, device, patch_per_batch=args.eval_batch_size,
                         patch_size=args.patch_size, min_overlap=args.min_overlap, results_dir=args.results_dir)
     end_eval = time.time()
     tte = time.strftime("%H:%M:%S", time.gmtime(end_eval - start_eval))

@@ -204,59 +204,33 @@ def eval_network(model: nn.Module, data_loader: DataLoader, device, patch_per_ba
     return masks, pred_list, data_list
 
 
-# Evaluation - due to image size mismatches, must currently be run one image at a time
-def eval_network_3D(model: nn.Module, data_loader: DataLoader, device,
-                    patch_per_batch, patch_size, min_overlap, results_dir):
+def run_overlaps(model: nn.Module, imgi, batch_size, device, augment=False, patch_size=112, min_overlap=0.1): 
+    IMG, ysub, xsub, Ly, Lx = transforms.make_tiles(imgi, bsize=patch_size, augment=augment, tile_overlap=min_overlap)
+    
     model.eval()
-    with no_grad():
-        for (data_vol, data_files, plane, dim, cell_metric) in data_loader:
-            pred_yx = []
-            pred_zx = []
-            pred_zy = []
+    ny, nx, nchan, ly, lx = IMG.shape
+    IMG = np.reshape(IMG, (ny*nx, nchan, ly, lx))
+    niter = int(np.ceil(IMG.shape[0] / batch_size))
+    
+    y = np.zeros((IMG.shape[0], 3, ly, lx))
+    for k in range(niter):
+        irange = np.arange(batch_size*k, min(IMG.shape[0], batch_size*k+batch_size))
         
-            for index in range(len(plane)):
+        with no_grad():
+            X = from_numpy(IMG[irange]).float().to(device)
+            y0 = model(X).detach().cpu().numpy()
+        
+        y[irange] = y0.reshape(len(irange), y0.shape[-3], y0.shape[-2], y0.shape[-1])
+        
+    if augment:
+        y = np.reshape(y, (ny, nx, 3, patch_size, patch_size))
+        y = transforms.unaugment_tiles(y)
+        y = np.reshape(y, (-1, 3, patch_size, patch_size))
+    
+    yf = transforms.average_tiles(y, ysub, xsub, Ly, Lx)
+    yf = yf[:,:imgi.shape[1],:imgi.shape[2]]
+    return yf  
 
-                for (sample_data, origin_dim) in tqdm(zip(data_vol[index], dim[index]),
-                                                      desc=f'>>> Processing {plane[index]}'):
-                    resized_dims = (sample_data.shape[2], sample_data.shape[3])
-                    padding = sample_data.shape[2] < patch_size[0] or sample_data.shape[3] < patch_size[1]
-                    # Add padding if image is smaller than patch size in at least one dimension
-                    if padding:
-                        unpadded_dims = resized_dims
-                        sd = zeros((sample_data.shape[0], sample_data.shape[1], max(patch_size[0], sample_data.shape[2]),
-                                    max(patch_size[1], sample_data.shape[3])))
-                        set_corner = (max(0, (patch_size[0] - sample_data.shape[2]) // 2),
-                                      max(0, (patch_size[1] - sample_data.shape[3]) // 2))
-                        sd[:, :, set_corner[0]:set_corner[0] + sample_data.shape[2],
-                           set_corner[1]:set_corner[1] + sample_data.shape[3]] = sample_data
-                        sample_data = sd
-                        resized_dims = (sample_data.shape[2], sample_data.shape[3])
-                    sample_data = generate_patches(sample_data, patch=patch_size,
-                                                      min_overlap=min_overlap, lbl_flows=False)
-                    predictions = tensor([]).to(device)
-
-                    for patch_ind in range(0, len(sample_data), patch_per_batch):
-                        sample_data_patches = sample_data[patch_ind:patch_ind + patch_per_batch].float().to(device)
-                        p = model(sample_data_patches)
-                        predictions = cat((predictions, p))
-
-                    predictions = recombine_patches(predictions, resized_dims, min_overlap).detach().cpu().numpy()[0]
-                    if padding:
-                        predictions = predictions[set_corner[0]:set_corner[0]+unpadded_dims[0],
-                                            set_corner[1]:set_corner[1]+unpadded_dims[1]]
-                    predictions = predictions.transpose(1, 2, 0)
-                    predictions = transforms.resize_image(predictions, origin_dim[0].item(), origin_dim[1].item())
-
-                    predictions = predictions.transpose(2, 0, 1)
-                    if index == 0:
-                        pred_yx.append(predictions)
-                    elif index == 1:
-                        pred_zx.append(predictions)
-                    else:
-                        pred_zy.append(predictions)
-
-            pred_yx, pred_zy, pred_zx = np.array(pred_yx), np.array(pred_zy), np.array(pred_zx)
-            run_3D_masks(pred_yx, pred_zy, pred_zx, data_files, results_dir, cell_metric)
 
 def run_3D_network(model: nn.Module,device, curr_stack, patch_size, patch_per_batch, augment=False, min_overlap=0.1):
 
@@ -309,202 +283,57 @@ def run_3D_network(model: nn.Module,device, curr_stack, patch_size, patch_per_ba
     yf0 = yf0[:,:,set_corner[0]:set_corner[0]+unpadded_dims[0], set_corner[1]:set_corner[1]+unpadded_dims[1]]
     
     return yf0
-    
 
-# Evaluation Updated - cellpose source
-def eval_network_3D_Updated(model: nn.Module, data_loader: DataLoader,
-                            device, patch_per_batch, patch_size, min_overlap, results_dir, anisotropy=None, resize_measure=1.0, augment=False):
-    
+def run_3D_volume(model, device, data_vol, patch_size, patch_per_batch, rescale, augment=False, min_overlap=0.1):
     axis = ('Z', 'Y', 'X')
     planes = ['YX', 'ZX', 'ZY']
     TP = [(1, 0, 2, 3), (2, 0, 1, 3), (3, 0, 1, 2)]
     RTP = [(1, 0 , 2, 3), (1, 2, 0, 3), (1, 2, 3, 0)]
-
     
-    if anisotropy is not None:
-        rescale = [
+    data_vol = data_vol.squeeze(0).numpy()
+    yf = np.zeros((3, 3, data_vol.shape[1], data_vol.shape[2], data_vol.shape[3]), np.float32)
+    
+    for plane_idx in range(len(planes)):
+        curr_stack = data_vol.copy().transpose(TP[plane_idx])
+        curr_shape = curr_stack.shape
+        curr_stack = resize_image(curr_stack, rsz=rescale[plane_idx])
+        
+        yf0 = run_3D_network(model,device, curr_stack, patch_size, patch_per_batch, augment=augment, min_overlap=min_overlap)
+        
+        #resizing back to the original dim     
+        yf0 = resize_image(yf0, curr_shape[2], curr_shape[3])
+        yf[plane_idx] = yf0.transpose(RTP[plane_idx])
+    
+    return yf
+    
+       
+
+# Evaluation Updated - cellpose source
+def eval_network_3D(model: nn.Module, data_loader: DataLoader,
+                            device, patch_per_batch, patch_size, min_overlap, results_dir, anisotropy=None, augment=False):
+    
+    
+    for (data_vol, data_file, resize_measure) in data_loader:
+        
+        if anisotropy is not None:
+            rescale = [
             [resize_measure, resize_measure],
             [resize_measure*anisotropy, resize_measure],
             [resize_measure*anisotropy, resize_measure]
             ]
-    else:
-        rescale= [resize_measure] * 3 
-    
-    
-    for (data_vol, data_file) in data_loader:
+        else:
+            rescale= [resize_measure] * 3 
+        
         start = time.time()
-        data_vol = data_vol.squeeze(0).numpy()
-        yf = np.zeros((3, 3, data_vol.shape[1], data_vol.shape[2], data_vol.shape[3]), np.float32)
-        for plane_idx in range(len(planes)):
-            curr_stack = data_vol.copy().transpose(TP[plane_idx])
-            curr_shape = curr_stack.shape
-            curr_stack = resize_image(curr_stack, rsz=rescale[plane_idx])
-            
-            yf0 = run_3D_network(model,device, curr_stack, patch_size[0], patch_per_batch, augment=augment, min_overlap=float(patch_size[0]/min_overlap[0]))
-            
-            #resizing back to the original dim     
-            yf0 = resize_image(yf0, curr_shape[2], curr_shape[3])
-            yf[plane_idx] = yf0.transpose(RTP[plane_idx])
-            
+        yf = run_3D_volume(model, device, data_vol, patch_size[0], patch_per_batch, rescale, augment=augment, min_overlap=float(patch_size[0]/min_overlap[0])) 
         # 0       1     2
         # 'ZYX', 'YZX', 'XZY'
         cellprob = yf[0][0] + yf[1][0] + yf[2][0]
         dP = np.stack((yf[1][1] + yf[2][1], yf[0][1] + yf[2][2], yf[0][2] + yf[1][2]), axis=0)
         del yf, data_vol  
         mask = np.array(followflows3D(dP, cellprob,device=device))
-        print(f">>> Total masks found in 3D volume in {time.time() - start} seconds: {len(np.unique(mask))-1}")
+        print(f">>> Total masks found in 3D volume in {(time.time() - start):.3f} seconds: {len(np.unique(mask))-1}")
         tifffile.imwrite(os.path.join(results_dir, 'tiff_results', os.path.basename(data_file[0])), mask)
     
-    
             
-# Evaluation Updated - cellpose source
-def eval_network_3D_CP_style(model: nn.Module, data_loader: DataLoader,
-                            device, patch_per_batch, patch_size, min_overlap, results_dir, anisotropy=None, resize_measure=2.0, augment=True):
-    
-    axis = ('Z', 'Y', 'X')
-    planes = ['YX', 'ZX', 'ZY']
-    TP = [(1, 0, 2, 3), (2, 0, 1, 3), (3, 0, 1, 2)]
-    RTP = [(1, 0 , 2, 3), (1, 2, 0, 3), (1, 2, 3, 0)]
-
-    
-    if anisotropy is not None:
-        rescale = [
-            [resize_measure, resize_measure],
-            [resize_measure*anisotropy, resize_measure],
-            [resize_measure*anisotropy, resize_measure]
-            ]
-    else:
-        rescale= [resize_measure] * 3 
-    
-    
-    for (data_vol, data_file) in data_loader:
-        start = time.time()
-        data_vol = data_vol.squeeze(0).numpy()
-        yf = np.zeros((3, 3, data_vol.shape[1], data_vol.shape[2], data_vol.shape[3]), np.float32)
-        for plane_idx in range(len(planes)):
-            curr_stack = data_vol.copy().transpose(TP[plane_idx])
-            curr_shape = curr_stack.shape
-            curr_stack = resize_image(curr_stack, rsz=rescale[plane_idx])
-            
-            # pad image for net so Ly and Lx are divisible by 4
-            curr_stack, yrange, xrange = transforms.pad_image_ND(curr_stack)
-            Lz, nchan = curr_stack.shape[:2]
-            
-            # slices from padding
-            return_conv = False
-            slc = [slice(0, curr_stack.shape[n]+1) for n in range(curr_stack.ndim)]
-            slc[-3] = slice(0, 3 + 32*return_conv + 1)
-            slc[-2] = slice(yrange[0], yrange[-1]+1)
-            slc[-1] = slice(xrange[0], xrange[-1]+1)
-            slc = tuple(slc)
-            
-            
-            # making tiles for the first slice 
-            IMG, ysub, xsub, Ly, Lx = transforms.make_tiles(curr_stack[0], bsize=patch_size[0], 
-                                                        augment=augment, tile_overlap=float(patch_size[0]/min_overlap[0]))
-            ny, nx, nchan, ly, lx = IMG.shape
-            curr_patch_per_batch = patch_per_batch
-            curr_patch_per_batch *= max(4, (patch_size[0]**2 // (ly*lx))**0.5)
-            yf0 = np.zeros((Lz, 3, curr_stack.shape[-2], curr_stack.shape[-1]), np.float32)
-            
-            if ny*nx > curr_patch_per_batch:
-                for i in trange(Lz):
-                    yfi = run_overlaps(model, curr_stack[i], batch_size=patch_per_batch, device=device, augment=augment, 
-                                                patch_size=patch_size[0], min_overlap=float(patch_size[0]/min_overlap[0]))
-                    yf0[i] = yfi
-            else:
-                # run multiple slices at the same time
-                ntiles = ny*nx
-                nimgs = max(2, int(np.round(patch_per_batch / ntiles)))
-                niter = int(np.ceil(Lz/nimgs))
-                for k in trange(niter):
-                    IMGa = np.zeros((ntiles*nimgs, nchan, ly, lx), np.float32)
-                    for i in range(min(Lz-k*nimgs, nimgs)):
-                        IMG, ysub, xsub, Ly, Lx = transforms.make_tiles(curr_stack[k*nimgs+i], bsize=patch_size[0], 
-                                                                        augment=augment, tile_overlap=float(patch_size[0]/min_overlap[0]))
-                        IMGa[i*ntiles:(i+1)*ntiles] = np.reshape(IMG, (ny*nx, nchan, ly, lx))
-                    
-                    model.eval()
-                    with no_grad():
-                        X = from_numpy(IMGa).float().to(device)
-                        ya = model(X).detach().cpu().numpy()
-                    
-                    for i in range(min(Lz-k*nimgs, nimgs)):
-                        y = ya[i*ntiles:(i+1)*ntiles]
-                        if augment:
-                            y = np.reshape(y, (ny, nx, 3, ly, lx))
-                            y = transforms.unaugment_tiles(y)
-                            y = np.reshape(y, (-1, 3, ly, lx))
-                        yfi = transforms.average_tiles(y, ysub, xsub, Ly, Lx)
-                        yfi = yfi[:,:curr_stack.shape[2],:curr_stack.shape[3]]
-                        yf0[k*nimgs+i] = yfi
-            
-            # clearing out padding
-            yf0 = yf0[slc]
-            
-            #resizing back to the original dim     
-            yf0 = resize_image(yf0, curr_shape[2], curr_shape[3])
-            yf[plane_idx] = yf0.transpose(RTP[plane_idx])
-        # 0       1     2
-        # 'ZYX', 'YZX', 'XZY'
-        cellprob = yf[0][0] + yf[1][0] + yf[2][0]
-        dP = np.stack((yf[1][1] + yf[2][1], yf[0][1] + yf[2][2], yf[0][2] + yf[1][2]), axis=0)
-        del yf
-        mask = np.array(followflows3D(dP, cellprob,device=device))
-        print(f">>> Total masks found in 3D volume in {time.time() - start} seconds: {len(np.unique(mask))-1}")
-        tifffile.imwrite(os.path.join(results_dir, 'tiff_results', os.path.basename(data_file[0])), mask)
-        
-            
-def run_overlaps(model: nn.Module, imgi, batch_size, device, augment=False, patch_size=112, min_overlap=0.1): 
-    IMG, ysub, xsub, Ly, Lx = transforms.make_tiles(imgi, bsize=patch_size, augment=augment, tile_overlap=min_overlap)
-    
-    model.eval()
-    ny, nx, nchan, ly, lx = IMG.shape
-    IMG = np.reshape(IMG, (ny*nx, nchan, ly, lx))
-    niter = int(np.ceil(IMG.shape[0] / batch_size))
-    
-    y = np.zeros((IMG.shape[0], 3, ly, lx))
-    for k in range(niter):
-        irange = np.arange(batch_size*k, min(IMG.shape[0], batch_size*k+batch_size))
-        
-        with no_grad():
-            X = from_numpy(IMG[irange]).float().to(device)
-            y0 = model(X).detach().cpu().numpy()
-        
-        y[irange] = y0.reshape(len(irange), y0.shape[-3], y0.shape[-2], y0.shape[-1])
-        
-    if augment:
-        y = np.reshape(y, (ny, nx, 3, patch_size, patch_size))
-        y = transforms.unaugment_tiles(y)
-        y = np.reshape(y, (-1, 3, patch_size, patch_size))
-    
-    yf = transforms.average_tiles(y, ysub, xsub, Ly, Lx)
-    yf = yf[:,:imgi.shape[1],:imgi.shape[2]]
-    return yf                 
-
-        
-            
-# adapted from cellpose original implementation
-def run_3D_masks(pred_yx, pred_zy, pred_zx, data_name, results_dir, cell_metric):
-
-    yf = np.zeros((3, 3, pred_yx.shape[0], pred_yx.shape[2], pred_yx.shape[3]), np.float32)
-    
-    yf[0] = pred_yx.transpose(1, 0, 2, 3)  # predicted yx
-    yf[1] = pred_zy.transpose(1, 2, 3, 0)  # predicted zy, transposed to yx
-    yf[2] = pred_zx.transpose(1, 2, 0, 3)  # predicted zx, transposed to yx
-    
-    cellprob = yf[0][0] + yf[1][0] + yf[2][0]
-    dP = np.stack((yf[1][1] + yf[2][1], yf[0][1] + yf[1][2], yf[0][2] + yf[2][2]), axis=0)
-    mask = np.array(followflows3D(dP, cellprob, cell_metric))
-    
-    print(f">>> Total masks found in 3D volume: ", len(np.unique(mask))-1)
-    
-    label_list = []
-    for i in range(len(data_name)):
-        label_list.append(data_name[i][data_name[i].rfind('/') + 1: data_name[i].rfind('.')])
-                    
-    with open(os.path.join(results_dir, label_list[0] + '_raw_masks_flows.pkl'), 'wb') as rmf_pkl:
-        pickle.dump(yf, rmf_pkl)
-    tifffile.imwrite(os.path.join(results_dir, 'tiff_results', label_list[0] + '.tif'), mask)
-    
-    del yf, dP, cellprob, mask
+               
