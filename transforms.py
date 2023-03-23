@@ -82,6 +82,10 @@ def reformat(x, n_chan=1, do_3D=False):
             info_chans = [len(np.unique(x[:, :, :, i])) > 1 for i in range(x.shape[3])]
             x = x[:, :, :, info_chans]
             x = np.transpose(x.numpy(), (3, 0, 1, 2))[:n_chan]  # Remove any additional channels
+        
+        # if x.shape[0] == 1 and n_chan==2:
+        #     x = np.concatenate((x, np.zeros_like(x)))
+            
         # Concatenate copies of other channels if image has fewer than the specified number of channels
         if x.shape[0] < n_chan:
             x = np.tile(x, (math.ceil(n_chan/x.shape[0]), 1, 1, 1))
@@ -170,6 +174,54 @@ def normalize1stto99th(x):
                            / (np.percentile(sample[chan], 99) - np.percentile(sample[chan], 1))
     return sample
 
+# cellpose source
+def normalize_img(img, axis=-1, invert=False):
+    """ normalize each channel of the image so that so that 0.0=1st percentile
+    and 1.0=99th percentile of image intensities
+
+    optional inversion
+
+    Parameters
+    ------------
+
+    img: ND-array (at least 3 dimensions)
+
+    axis: channel axis to loop over for normalization
+
+    invert: invert image (useful if cells are dark instead of bright)
+
+    Returns
+    ---------------
+
+    img: ND-array, float32
+        normalized image of same size
+
+    """
+    
+
+    img = img.astype(np.float32)
+    img = np.moveaxis(img, axis, 0)
+    for k in range(img.shape[0]):
+        # ptp can still give nan's with weird images
+        i99 = np.percentile(img[k],99)
+        i1 = np.percentile(img[k],1)
+        if i99 - i1 > +1e-3: #np.ptp(img[k]) > 1e-3:
+            img[k] = normalize99(img[k])
+            if invert:
+                img[k] = -1*img[k] + 1   
+        else:
+            img[k] = 0
+    img = np.moveaxis(img, 0, axis)
+    return img
+
+def normalize99(Y, lower=1,upper=99):
+    """ normalize image so 0.0 is 1st percentile and 1.0 is 99th percentile """
+    X = Y.copy()
+    x01 = np.percentile(X, lower)
+    x99 = np.percentile(X, upper)
+    X = (X - x01) / (x99 - x01)
+    return X
+
 
 def random_horizontal_flip(x, y):
     if np.random.rand() > .5:
@@ -222,8 +274,7 @@ def followflows3D(dP, cellprob, cell_metric=12, device=None):
     masks = compute_masks(dP, cellprob, niter=niter, interp=interp, use_gpu=use_gpu, mask_threshold=cellprob_threshold,
                           flow_threshold=flow_threshold, min_size=min_size, device=device)
     return masks
-
-
+                   
 def generate_patches(data, label=None, patch=(96, 96), min_overlap=(64, 64), lbl_flows=False):
     """
     Generate patches of input to be passed into model. Currently set to 64x64 patches with at least 32x32 overlap
@@ -303,7 +354,27 @@ def remove_empty_label_patches(data, labels):
         labels = labels[keep_samples, :]
     return data, labels
 
-
+# in:  Z x Ch x Y x X
+# out: padded Z x Ch x Y x X
+def padding_3D(sample_data,  patch_size):
+    unpadded_dims = (sample_data.shape[2], sample_data.shape[3])
+    if sample_data.shape[2] < patch_size or sample_data.shape[3] < patch_size:
+        
+        sd = np.zeros((sample_data.shape[0], sample_data.shape[1], max(patch_size, sample_data.shape[2]),
+                    max(patch_size, sample_data.shape[3])))
+        
+        set_corner = (max(0, (patch_size - sample_data.shape[2]) // 2),
+                        max(0, (patch_size - sample_data.shape[3]) // 2))
+        
+        sd[:, :, set_corner[0]:set_corner[0] + sample_data.shape[2],
+            set_corner[1]:set_corner[1] + sample_data.shape[3]] = sample_data
+        
+        resized_dims = (sample_data.shape[2], sample_data.shape[3])
+        
+        return sd, set_corner, unpadded_dims, resized_dims
+    else:
+        return sample_data, [0,0], unpadded_dims, unpadded_dims
+    
 # Creates recombined images after averaging together
 def recombine_patches(labels, im_dims, min_overlap):
     num_x_patches = math.ceil((im_dims[1] - min_overlap[0]) / (labels.shape[3] - min_overlap[0]))

@@ -437,90 +437,81 @@ def get_masks(p, iscell=None, rpad=20, flows=None, threshold=0.4, use_gpu=False,
 
     
     """
-    ###
-    import matplotlib.pyplot as plt
-    ###
-
     pflows = []
     edges = []
     shape0 = p.shape[1:]
     dims = len(p)
     if iscell is not None:
-        if dims == 3:
+        if dims==3:
             inds = np.meshgrid(np.arange(shape0[0]), np.arange(shape0[1]),
-                               np.arange(shape0[2]), indexing='ij')
-        elif dims == 2:
+                np.arange(shape0[2]), indexing='ij')
+        elif dims==2:
             inds = np.meshgrid(np.arange(shape0[0]), np.arange(shape0[1]),
-                               indexing='ij')
+                     indexing='ij')
         for i in range(dims):
             p[i, ~iscell] = inds[i][~iscell]
 
     for i in range(dims):
         pflows.append(p[i].flatten().astype('int32'))
-        edges.append(np.arange(-.5 - rpad, shape0[i] + .5 + rpad, 1))
+        edges.append(np.arange(-.5-rpad, shape0[i]+.5+rpad, 1))
 
-    h, _ = np.histogramdd(tuple(pflows), bins=edges)
+    h,_ = np.histogramdd(tuple(pflows), bins=edges)
     hmax = h.copy()
-    
-    
     for i in range(dims):
         hmax = maximum_filter1d(hmax, 5, axis=i)
 
-    seeds = np.nonzero(np.logical_and(h - hmax > -1e-6, h > 10))
+    seeds = np.nonzero(np.logical_and(h-hmax>-1e-6, h>10))
     Nmax = h[seeds]
     isort = np.argsort(Nmax)[::-1]
-    
     for s in seeds:
         s = s[isort]
-    
+
     pix = list(np.array(seeds).T)
 
     shape = h.shape
-    if dims == 3:
-        expand = np.nonzero(np.ones((3, 3, 3)))
+    if dims==3:
+        expand = np.nonzero(np.ones((3,3,3)))
     else:
-        expand = np.nonzero(np.ones((3, 3)))
-    
+        expand = np.nonzero(np.ones((3,3)))
     for e in expand:
-        e = np.expand_dims(e, 1)
+        e = np.expand_dims(e,1)
 
-  
     for iter in range(5):
         for k in range(len(pix)):
-            if iter == 0:
+            if iter==0:
                 pix[k] = list(pix[k])
             newpix = []
             iin = []
-            for i, e in enumerate(expand):
-                epix = e[:, np.newaxis] + np.expand_dims(pix[k][i], 0) - 1
+            for i,e in enumerate(expand):
+                epix = e[:,np.newaxis] + np.expand_dims(pix[k][i], 0) - 1
                 epix = epix.flatten()
-                iin.append(np.logical_and(epix >= 0, epix < shape[i]))
+                iin.append(np.logical_and(epix>=0, epix<shape[i]))
                 newpix.append(epix)
             iin = np.all(tuple(iin), axis=0)
             for p in newpix:
                 p = p[iin]
             newpix = tuple(newpix)
-            igood = h[newpix] > 2
+            igood = h[newpix]>2
             for i in range(dims):
                 pix[k][i] = newpix[i][igood]
-            if iter == 4:
+            if iter==4:
                 pix[k] = tuple(pix[k])
-
-            
-    M = np.zeros(h.shape, np.int32)
+    
+    M = np.zeros(h.shape, np.uint32)
     for k in range(len(pix)):
-        M[pix[k]] = 1 + k
-
+        M[pix[k]] = 1+k
+        
     for i in range(dims):
         pflows[i] = pflows[i] + rpad
     M0 = M[tuple(pflows)]
 
     # remove big masks
-    _, counts = np.unique(M0, return_counts=True)
+    uniq, counts = fastremap.unique(M0, return_counts=True)
     big = np.prod(shape0) * 0.4
-    for i in np.nonzero(counts > big)[0]:
-        M0[M0 == i] = 0
-    _, M0 = np.unique(M0, return_inverse=True)
+    bigc = uniq[counts > big]
+    if len(bigc) > 0 and (len(bigc)>1 or bigc[0]!=0):
+        M0 = fastremap.mask(M0, bigc)
+    fastremap.renumber(M0, in_place=True) #convenient to guarantee non-skipped labels
     M0 = np.reshape(M0, shape0)
 
     if threshold is not None and threshold > 0 and flows is not None and dims < 3:
@@ -560,7 +551,7 @@ def compute_masks(dP, cellprob, bd=None, p=None, inds=None, niter=200, mask_thre
             p = follow_flows(dP * cp_mask / 5., niter=niter, interp=interp, 
                                             use_gpu=use_gpu, device=device)
             
-            #print("p shape in compute_masks: ", p.shape)
+            print("p shape in compute_masks: ", p.shape)
 
         else: 
             print(">>>there must be p")

@@ -13,7 +13,7 @@ import tifffile
 import cv2
 import random
 import numpy as np
-from transforms import reformat, normalize1stto99th, Resize, random_horizontal_flip, labels_to_flows, generate_patches, resize_image
+from transforms import reformat, normalize1stto99th, normalize_img, Resize, random_horizontal_flip, labels_to_flows, generate_patches, resize_image
 
 
 class CellTransposeData(Dataset):
