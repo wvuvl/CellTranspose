@@ -7,7 +7,7 @@ from torch.optim.lr_scheduler import CosineAnnealingLR, StepLR
 import os
 import time
 
-from transforms import Resize
+# from transforms import Resize
 from loaddata import TrainCellTransposeData, ValCellTransposeData, EvalCellTransposeData, EvalCellTransposeData3D
 from network import CellTransposeModel, ClassLoss, FlowLoss, SASMaskLoss, ContrastiveFlowLoss
 from train_eval import train_network, adapt_network, eval_network_2D, eval_network_3D
@@ -69,6 +69,8 @@ parser.add_argument('--target-from-3D', help='Whether the input target data is 3
                     action='store_true')
 parser.add_argument('--target-flows', help='The directory(s) containing pre-calculated flows. If left empty,'
                                            ' flows will be calculated manually.', nargs='+')
+parser.add_argument('--median-diams-target', type=int,
+                    help='2D median diams that will be used to equalize original median-diams', default=None)
 
 # Validation data
 parser.add_argument('--val-dataset', help='The directory(s) containing data to be used for validation.', nargs='+')
@@ -109,10 +111,10 @@ ttt = None
 tte = None
 train_losses = None
 if args.target_dataset is not None:
-    target_dataset = TrainCellTransposeData('Target', args.target_dataset, args.n_chan, pf_dirs=args.target_flows,
-                                            do_3D=args.do_3D, from_3D=args.target_from_3D,
-                                            crop_size=(args.patch_size,args.patch_size), has_flows=False, batch_size=args.batch_size,
-                                            resize=Resize((args.median_diams, args.median_diams)))
+    
+    target_dataset = TrainCellTransposeData(args.target_dataset, args.n_chan, crop_size=args.patch_size, median_diam=args.median_diams, 
+                                            target_median_diam=args.median_diams_target, result_dir=args.results_dir, batch_size=args.batch_size, target=True)
+    
     rs = RandomSampler(target_dataset, replacement=False)
     bs = BatchSampler(rs, args.batch_size, True)
     target_dl = DataLoader(target_dataset, batch_sampler=bs)
@@ -136,11 +138,10 @@ if not args.eval_only:
     else:
         if not args.do_adaptation:
             args.process_each_epoch = True
-        train_dataset = TrainCellTransposeData('Training', args.train_dataset, args.n_chan, do_3D=args.do_3D,
-                                               from_3D=args.train_from_3D, crop_size=(args.patch_size,args.patch_size), has_flows=False,
-                                               batch_size=args.batch_size, resize=Resize((args.median_diams, args.median_diams)),
-                                               preprocessed_data=args.load_train_from_npy,
-                                               proc_every_epoch=args.process_each_epoch, result_dir=args.results_dir)
+        
+        train_dataset = TrainCellTransposeData(args.train_dataset, args.n_chan, crop_size=args.patch_size, batch_size=args.batch_size,
+                                               preprocessed_data=args.load_train_from_npy, proc_every_epoch=args.process_each_epoch, result_dir=args.results_dir, 
+                                               median_diam=args.median_diams)
     
     if args.save_dataset:
         print('Saving Training Dataset... ', end='')
@@ -150,9 +151,7 @@ if not args.eval_only:
     train_dl = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, drop_last=True)
 
     if args.val_dataset is not None:
-        val_dataset = ValCellTransposeData('Validation', args.val_dataset, args.n_chan, do_3D=args.do_3D,
-                                            resize=Resize((args.median_diams, args.median_diams)))
-        val_dataset.pre_generate_validation_patches(patch_size=(args.patch_size,args.patch_size), min_overlap=(args.min_overlap, args.min_overlap))
+        val_dataset = ValCellTransposeData(args.val_dataset, args.n_chan, patch_size=args.patch_size, resize_measure=float(args.median_diams/args.median_diams_2D))
         val_dl = DataLoader(val_dataset, batch_size=args.batch_size, shuffle=False)
     else:
         val_dl = None

@@ -3,191 +3,122 @@ Data Loader implementation, specifically designed for in-house datasets. Code wi
 custom data loaders for new data.
 """
 from torch.utils.data import Dataset
-from torch import Tensor, empty, as_tensor, tensor, cat, unsqueeze, float32
-import torch.nn.functional as F
 import os
 import math
-from tqdm import tqdm
-from tqdm.contrib import tzip
+from tqdm import trange
 import tifffile
 import cv2
-import random
 import numpy as np
-from transforms import reformat, normalize1stto99th, normalize_img, Resize, random_horizontal_flip, labels_to_flows, generate_patches, resize_image
+from transforms import reformat, normalize1stto99th, train_generate_rand_crop, labels_to_flows, resize_image, padding_2D, calc_median_dim
+from cellpose_src import transforms
 
+    
+class TrainCellTransposeData(Dataset):
+    def __init__(self, data_dirs, n_chan, crop_size=112, has_flows=False, batch_size=1, preprocessed_data=None, proc_every_epoch=True, 
+                 result_dir=None, median_diam=30, target_median_diam=None, target=False):
+        
+        assert os.path.exists(os.path.join(dir_i,'labels')), f"Training folder {os.path.join(dir_i,'labels')} does not exists, it is needed for training."
 
-class CellTransposeData(Dataset):
-    """
-    Dataset subclass for loading in any tiff data, serving as a superclass to each dataset type for CellTranspose.
-    The dataset is expected to possess the following structure:
-        - /data
-            - vol1.tiff
-            ...
-            - voln.tiff
-        - /labels
-            - lbl1.tiff
-            ...
-            - lbln.tiff
-    *** NOTE: Data and labels are expected to be named in such a way that when sorted in ascending order,
-    the ith element of data corresponds to the ith label
-    """
-
-    def __init__(self, split_name, data_dirs, n_chan, pf_dirs=None, do_3D=False, from_3D=False,
-                 evaluate=False, batch_size=1, resize: Resize = None):
-        """
-        Parameters
-        ------------------------------------------------------------------------------------------------
-
-            split_name: name corresponding to the split (i.e. train, validation, test, target)
-            data_dirs: root directory/directories of the dataset, containing 'data' and 'labels' folders
-            n_chan: Maximum number of channels in input images (i.e. 2 for cytoplasm + nuclei images)
-            pf_dirs: root directory/directories of pre-calculated flows, if they exist
-            do_3D: whether or not to train 3D CellTranspose model (requires that from_3d is true)
-            from_3D: whether input samples are 2D images (False) or 3D volumes (True)
-            evaluate: if set to true, returns additional information when calling __getitem__()
-            batch_size: default 1
-            resize: Resize object containing parameters by which to resize input samples accordingly
-        """
-        self.do_3D = do_3D
-        self.from_3D = from_3D
-        self.split_name = split_name
-        self.evaluate = evaluate
-        self.d_list_3D = []
-        self.l_list_3D = []
+        self.crop_size = crop_size
+        self.has_flows = has_flows
+        self.preprocessed_data = preprocessed_data
+        self.do_every_epoch = proc_every_epoch
+        self.n_chan = n_chan
         self.d_list = []
         self.l_list = []
-
+        self.resize_measure = 1.0
+        
         for dir_i in data_dirs:
             self.d_list = self.d_list + sorted([dir_i + os.sep + 'data' + os.sep + f for f in
                                                 os.listdir(os.path.join(dir_i, 'data')) if f.lower()
-                                               .endswith('.tiff') or f.lower().endswith('.tif')
+                                            .endswith('.tiff') or f.lower().endswith('.tif')
                                                 or f.lower().endswith('.png')])
             
-            if os.path.exists(os.path.join(dir_i,'labels')):
-                self.l_list = self.l_list + sorted([dir_i + os.sep + 'labels' + os.sep + f for f in
-                                                    os.listdir(os.path.join(dir_i, 'labels')) if f.lower()
-                                                .endswith('.tiff') or f.lower().endswith('.tif')
-                                                    or f.lower().endswith('.png')])
-        if pf_dirs is not None:
-            self.pf_list = []
-            for dir_i in pf_dirs:
-                self.pf_list = self.pf_list + sorted([dir_i + os.sep + 'labels' + os.sep + f for f in
-                                                      os.listdir(os.path.join(dir_i, 'labels')) if f.lower()
-                                                     .endswith('.tiff') or f.lower().endswith('.tif')])
-        self.data = []
-        self.labels = []
-        self.original_dims = []
-        self.lbl_len = len(self.l_list)
-        
-        if self.lbl_len == 0: 
-            assert self.evaluate == True,\
-                '>>> Folder containing labelled images does not exist, cannot continue without it for training OR validation purposes...'
-            print('>>> Folder containing labelled images does not exist, continueing without it for evaluation purposes...')
             
-        if from_3D:
-            print('>>> Utilizing 2D model for evaluation on 3D volumes...')
-        else:
-            for ind in tqdm(range(len(self.d_list)), desc='Loading {} Dataset...'.format(split_name)):
-                ext = os.path.splitext(self.d_list[ind])[-1]
-                if ext == '.tif' or ext == '.tiff':
-                    new_data = as_tensor(tifffile.imread(self.d_list[ind]).astype('float'))
-                    if self.lbl_len != 0: 
-                        new_label = as_tensor(tifffile.imread(self.l_list[ind]).astype('int16'))
-                else:
-                    new_data = as_tensor(cv2.imread(self.d_list[ind], -1).astype('float'))
-                    if self.lbl_len != 0: 
-                        new_label = as_tensor(cv2.imread(self.l_list[ind], -1).astype('int16'))
-                
-                new_data = reformat(new_data, n_chan)
-                new_data = normalize1stto99th(new_data)
-                if self.lbl_len != 0:
-                    new_label = reformat(new_label)
-                else:
-                    new_label = []
-                if pf_dirs is not None:
-                    new_pf = tifffile.imread(self.pf_list[ind])
-                    new_pf = new_pf.reshape(1, new_pf.shape[0], new_pf.shape[1], new_pf.shape[2])
-                else:
-                    new_pf = None
-                if resize is not None:
-                    new_data, new_label, original_dim, _ = resize(new_data, new_label, new_pf)
-                    self.original_dims.append(original_dim)
-                self.data.append(new_data)
-                self.labels.append(new_label)
-
-        self.target_data_samples = self.data
-        self.target_label_samples = self.labels
-        
-        if self.split_name.lower() == 'target' and len(self.data) < batch_size and not from_3D and not do_3D:
-            for _ in range(1, math.ceil(batch_size / len(self.data))):
-                self.data = self.data + self.target_data_samples
-                if self.lbl_len != 0: 
-                    self.labels = self.labels + self.target_label_samples
-
-        self.data_samples = self.data
-        self.label_samples = self.labels
-
-    def __len__(self):
-        return len(self.d_list) if (self.do_3D or self.from_3D) else len(self.data)
-
-
-class TrainCellTransposeData(CellTransposeData):
-    def __init__(self, split_name, data_dirs, n_chan, pf_dirs=None, do_3D=False, from_3D=False, evaluate=False,
-                 crop_size=(112, 112), has_flows=False, batch_size=1, resize: Resize = None,
-                 preprocessed_data=None, proc_every_epoch=True, result_dir=None):
-        self.resize = resize
-        self.crop_size = crop_size
-        self.has_flows = has_flows
-        self.from_3D = from_3D
-        self.preprocessed_data = preprocessed_data
-        self.do_every_epoch = proc_every_epoch
-        
-        if self.preprocessed_data is None:
-            super().__init__(split_name, data_dirs, n_chan, pf_dirs=pf_dirs, do_3D=do_3D,
-                             from_3D=from_3D, evaluate=evaluate, batch_size=batch_size, resize=None)
+            self.l_list = self.l_list + sorted([dir_i + os.sep + 'labels' + os.sep + f for f in
+                                                os.listdir(os.path.join(dir_i, 'labels')) if f.lower()
+                                            .endswith('.tiff') or f.lower().endswith('.tif')
+                                                or f.lower().endswith('.png')])
+            
         
         if self.preprocessed_data is not None:
             print('Training preprocessed data provided...')
-            self.data = as_tensor(np.load(os.path.join(self.preprocessed_data, 'train_preprocessed_data.npy')))
-            self.labels = as_tensor(np.load(os.path.join(self.preprocessed_data, 'train_preprocessed_labels.npy')))
-        elif self.do_every_epoch is False and self.preprocessed_data is None:
+            self.data = np.load(os.path.join(self.preprocessed_data, 'train_preprocessed_data.npy'))
+            self.labels = np.load(os.path.join(self.preprocessed_data, 'train_preprocessed_labels.npy'))
             
-            data_samples = tensor([])
-            label_samples = tensor([])
-            for i in tqdm(range(len(self.data)), desc='Preprocessing training data once only...'):
-                try:
-                    data, labels, dim, _ = self.resize(self.data[i], self.labels[i],
-                                                    random_scale=random.uniform(0.75, 1.25))
-                    data, labels = random_horizontal_flip(data, labels)
-                    data, labels = train_generate_rand_crop(unsqueeze(data, 0), labels,
-                                                            crop=crop_size, lbl_flows=has_flows)
-                    if labels.ndim == 3:
-                        labels = as_tensor(np.array([labels_to_flows(labels[i].numpy()) for i in range(len(labels))]),
-                                           dtype=float32)
-                    data_samples = cat((data_samples, data))
-                    label_samples = cat((label_samples, labels))
+        else:
+            self.data = []
+            self.labels = []
+            for index in range(len(self.d_list)):
+                ext = os.path.splitext(self.d_list[index])[-1]
+                if ext == '.tif' or ext == '.tiff':
+                    raw_data_vol = tifffile.imread(self.d_list[index]).astype('float')
+                else:
+                    raw_data_vol = cv2.imread(self.d_list[index], -1).astype('float')
+                
+                curr_data = normalize1stto99th(reformat(raw_data_vol, self.n_chan))
+                curr_data = resize_image(curr_data, rsz=self.resize_measure)
+                curr_data, _, _, _ = padding_2D(curr_data, self.crop_size)
+                self.data.append(curr_data) 
+                
+                ext = os.path.splitext(self.l_list[index])[-1]
+                if ext == '.tif' or ext == '.tiff':
+                    raw_lbl_vol = tifffile.imread(self.l_list[index]).astype('float')
+                else:
+                    raw_lbl_vol = cv2.imread(self.l_list[index], -1).astype('float')
                     
-                except RuntimeError:
-                    print('Caught Size Mismatch.')
-            self.data = data_samples
-            self.labels = label_samples
+                curr_lbl = reformat(raw_lbl_vol)    
+                curr_lbl = resize_image(curr_lbl, rsz=self.resize_measure, interpolation=cv2.INTER_NEAREST)
+                curr_lbl = curr_lbl if has_flows else labels_to_flows(curr_lbl)
+                curr_lbl, _, _, _ = padding_2D(curr_lbl, self.crop_size)
+                self.labels.append(curr_lbl) 
+            
+
+            if not self.do_every_epoch:
+                data_samples = []
+                label_samples = []
+                for index in trange(len(self.data), desc='Preprocessing training data once only...'):
+                    data, labels = self.process_training_data(index, self.crop_size, has_flows=self.has_flows)
+                    data_samples.append(data)
+                    label_samples.append(labels)   
+                self.data = data_samples
+                self.labels = label_samples
+            
+            self.data = np.asarray(self.data)
+            self.labels = np.asarray(self.labels)
+            
             if result_dir is not None: 
-                np.save(os.path.join(result_dir, 'train_preprocessed_data.npy'), self.data.cpu().detach().numpy())
-                np.save(os.path.join(result_dir, 'train_preprocessed_labels.npy'), self.labels.cpu().detach().numpy())
+                np.save(os.path.join(result_dir, 'train_preprocessed_data.npy'), self.data)
+                np.save(os.path.join(result_dir, 'train_preprocessed_labels.npy'), self.labels)
+       
+        if target:
+
+            if target_median_diam is None:
+                target_median_diam = calc_median_dim(self.labels)
+            
+            print(f"Calculated median diams of the target: {median_diam}, \nWill get resized to equalize {median_diam}")
+            self.resize_measure = float(median_diam/target_median_diam)
+        
+            self.target_data_samples = self.data
+            self.target_label_samples = self.labels
+            for _ in range(1, math.ceil(batch_size / len(self.data))):
+                self.data = self.data + self.target_data_samples
+                self.labels = self.labels + self.target_label_samples
 
     # Augmentations and tiling applied to input data (for training and adaptation) -
     # separated from DataLoader to allow for possibility of running only once or once per epoch
     def process_training_data(self, index, crop_size, has_flows=False):
         samples_generated = []
         data, labels = self.data[index], self.labels[index]
-        try:
-            data, labels, dim, _ = self.resize(data, labels, random_scale=random.uniform(0.75, 1.25))
-            data, labels = random_horizontal_flip(data, labels)
-            data, labels = train_generate_rand_crop(unsqueeze(data, 0), labels, crop=crop_size, lbl_flows=has_flows)
-            if labels.ndim == 3:
-                labels = as_tensor(np.array([labels_to_flows(labels[i].numpy())
-                                             for i in range(len(labels))]), dtype=float32)
-            return data[0], labels[0]
+        
+        try:            
+            # random horizontal flip
+            if np.random.rand() > .5:
+                data = np.fliplr(data)
+                labels = np.fliplr(labels)
+            data, labels = train_generate_rand_crop(data, labels, crop=crop_size, lbl_flows=has_flows)
+            return data, labels
+        
         except RuntimeError:
             print('Caught Size Mismatch.')
             samples_generated.append(-1)
@@ -202,84 +133,69 @@ class TrainCellTransposeData(CellTransposeData):
         return len(self.data)
 
 
-def train_generate_rand_crop(data, label=None, crop=(112, 112), lbl_flows=False):
-    if data.shape[3] < crop[0]:
-        pad_x = math.ceil((crop[0] - data.shape[3]) / 2)
-        data = F.pad(data, (pad_x, pad_x))
-        label = F.pad(label, (pad_x, pad_x))
-
-    if data.shape[2] < crop[1]:
-        pad_y = math.ceil((crop[1] - data.shape[2]) / 2)
-        data = F.pad(data, (0, 0, pad_y, pad_y))
-        label = F.pad(label, (0, 0, pad_y, pad_y))
-
-    x_max = data.shape[3] - crop[0]
-    y_max = data.shape[2] - crop[1]
-    patch_data = empty((data.shape[0] * 1 * 1, data.shape[1], crop[0], crop[1]))
-    if lbl_flows:
-        patch_label = empty((1 * 1, 3, crop[0], crop[1]))
-    else:
-        patch_label = empty((label.shape[0] * 1 * 1, crop[0], crop[1]))
-    i = random.randint(0, x_max)
-    j = random.randint(0, y_max)
-    d_patch = data[0, :, j:j + crop[1], i:i + crop[0]]
-    patch_data[0] = d_patch
-
-    if lbl_flows:
-        l_patch = label[:, j:j + crop[1], i:i + crop[0]]
-    else:
-        l_patch = label[0, j:j + crop[1], i:i + crop[0]]
-    patch_label[0] = l_patch
-
-    return patch_data, patch_label
-
-
-class ValCellTransposeData(CellTransposeData):
-    def __init__(self, split_name, data_dirs, n_chan, pf_dirs=None, do_3D=False, from_3D=False,
-                 evaluate=False, resize: Resize = None):
-        self.from_3D = from_3D
-        super().__init__(split_name, data_dirs, n_chan, pf_dirs=pf_dirs, do_3D=do_3D, from_3D=from_3D,
-                         evaluate=evaluate, resize=resize)
-
-    # Generates patches for validation dataset - only happens once
-    def pre_generate_validation_patches(self, patch_size, min_overlap):
-        self.data_samples = tensor([])
-        self.label_samples = tensor([])
-        new_d_list = []
-        new_original_dims = []
-        for (data, labels, data_fname, original_dim) in tzip(self.data, self.labels, self.d_list, self.original_dims,
-                                                              desc='Processing Validation Dataset...'):
+class ValCellTransposeData(Dataset):
+    def __init__(self, data_dirs, n_chan, patch_size=112, resize_measure=1.0, min_overlap=0.1, augment=False):
+        
+        assert os.path.exists(os.path.join(dir_i,'labels')), f"Validation folder {os.path.join(dir_i,'labels')} does not exists, it is needed for validation."
+    
+        self.resize_measure = resize_measure
+        self.n_chan = n_chan
+        self.d_list = []
+        self.l_list = []
+        
+        for dir_i in data_dirs:
+            self.d_list = self.d_list + sorted([dir_i + os.sep + 'data' + os.sep + f for f in
+                                                os.listdir(os.path.join(dir_i, 'data')) if f.lower()
+                                            .endswith('.tiff') or f.lower().endswith('.tif')
+                                                or f.lower().endswith('.png')])
             
-
             
-
-            if data.shape[1] >= patch_size[0] and data.shape[2] >= patch_size[1]:
-                if len(labels) != 0: 
-                    data, labels = generate_patches(unsqueeze(data, 0), labels, patch=patch_size,
-                                                min_overlap=min_overlap, lbl_flows=False)
-                    labels = as_tensor(np.array([labels_to_flows(labels[i].numpy()) for i in range(len(labels))]))
-                else:
-                     data = generate_patches(unsqueeze(data, 0), patch=patch_size,
-                                                min_overlap=min_overlap, lbl_flows=False)
-
-                self.data_samples = cat((self.data_samples, data))
-                self.label_samples = cat((self.label_samples, labels))
-
-                for _ in range(len(data)):
-                    new_d_list.append(data_fname)
-                    new_original_dims.append(original_dim)
-        self.d_list = new_d_list
-        self.original_dims = new_original_dims
-
-    def __getitem__(self, index):
-        if len(self.label_samples) == 0:
-            label = []
-        else:
-            label = self.label_samples[index]
-        if self.evaluate and not self.from_3D:
-            return self.data_samples[index], label, self.d_list[index], self.original_dims[index]
-        else:
-            return self.data_samples[index], label
+            self.l_list = self.l_list + sorted([dir_i + os.sep + 'labels' + os.sep + f for f in
+                                                os.listdir(os.path.join(dir_i, 'labels')) if f.lower()
+                                            .endswith('.tiff') or f.lower().endswith('.tif')
+                                                or f.lower().endswith('.png')])
+        
+        self.data = np.array([])
+        self.labels = np.array([])
+        for index in trange(len(self.d_list), desc='Loading and Processing Validation Dataset...'):
+            ext = os.path.splitext(self.d_list[index])[-1]
+            if ext == '.tif' or ext == '.tiff':
+                raw_data_vol = tifffile.imread(self.d_list[index]).astype('float')
+            else:
+                raw_data_vol = cv2.imread(self.d_list[index], -1).astype('float')    
+            curr_data = normalize1stto99th(reformat(raw_data_vol, self.n_chan))
+            curr_data = resize_image(curr_data, rsz=resize_measure)
+            curr_data, _, _, _ = padding_2D(curr_data, patch_size)
+            IMG, _, _, _, _ = transforms.make_tiles(curr_data, bsize=patch_size, augment=augment, tile_overlap=min_overlap)
+            ny, nx, nchan, ly, lx = IMG.shape
+            IMG = np.reshape(IMG, (ny*nx, nchan, ly, lx))
+            self.data = IMG if len(self.data) == 0 else np.concatenate((self.data, IMG))
+            
+            ext = os.path.splitext(self.l_list[index])[-1]
+            if ext == '.tif' or ext == '.tiff':
+                raw_lbl_vol = tifffile.imread(self.l_list[index]).astype('float')
+            else:
+                raw_lbl_vol = cv2.imread(self.l_list[index], -1).astype('float')
+            
+            curr_lbl = reformat(raw_lbl_vol)
+            # lable interpolation changed to nearest neighbour from linear
+            curr_lbl = resize_image(curr_lbl, rsz=resize_measure, interpolation=cv2.INTER_NEAREST)
+            curr_lbl = labels_to_flows(curr_lbl)
+            curr_lbl, _, _, _ = padding_2D(curr_lbl, patch_size)
+            LBL, _, _, _, _ = transforms.make_tiles(curr_lbl, bsize=patch_size, augment=augment, tile_overlap=min_overlap)
+            ny, nx, nchan, ly, lx = LBL.shape
+            LBL = np.reshape(LBL, (ny*nx, nchan, ly, lx))
+            self.labels = LBL if len(self.labels) == 0 else np.concatenate((self.labels, LBL))
+        
+        # should work since the shape of the data will be the same
+        self.data = np.asarray(self.data)
+        self.labels = np.asarray(self.labels)
+    def __len__(self):
+        return len(self.data)
+    
+    def __getitem__(self, index):   
+        return self.data[index], self.labels[index], self.resize_measure
+    
 
 class EvalCellTransposeData(Dataset):
     def __init__(self, data_dirs, n_chan, resize_measure=1.0):
@@ -300,7 +216,6 @@ class EvalCellTransposeData(Dataset):
                                                     os.listdir(os.path.join(dir_i, 'labels')) if f.lower()
                                                 .endswith('.tiff') or f.lower().endswith('.tif')
                                                     or f.lower().endswith('.png')])
-        
         self.data = []
         self.labels = []
         for index in range(len(self.d_list)):
@@ -319,8 +234,9 @@ class EvalCellTransposeData(Dataset):
                     raw_lbl_vol = cv2.imread(self.l_list[index], -1).astype('float')
                 self.labels.append(raw_lbl_vol) 
 
+        
     def __len__(self):
-        return len(self.d_list)
+        return len(self.data)
     
     def __getitem__(self, index):   
         return self.data[index], self.d_list[index], self.resize_measure

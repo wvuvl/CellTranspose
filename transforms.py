@@ -3,6 +3,7 @@ import torch
 import cv2
 import numpy as np
 import copy
+from tqdm import tqdm
 from cellpose_src.dynamics import masks_to_flows, follow_flows, get_masks, compute_masks
 from cellpose_src.utils import fill_holes_and_remove_small_masks
 from cellpose_src.transforms import _taper_mask
@@ -10,68 +11,67 @@ import random
 import torchvision.transforms.functional as TF
 
 
-class Resize(object):
-    def __init__(self, default_med, target_labels=None):
-        self.default_med = default_med
-        self.diams = []
-        if target_labels is not None:
-            for t_label in target_labels:
-                t_cf = copy.deepcopy(torch.squeeze(t_label, dim=0))
-                t_cf = remove_cut_cells(t_cf)
-                self.diams = self.diams + diam_range(t_cf)
+# class Resize(object):
+#     def __init__(self, default_med, target_labels=None):
+#         self.default_med = default_med
+#         self.diams = []
+#         if target_labels is not None:
+#             for t_label in target_labels:
+#                 t_cf = copy.deepcopy(torch.squeeze(t_label, dim=0))
+#                 t_cf = remove_cut_cells(t_cf)
+#                 self.diams = self.diams + diam_range(t_cf)
 
-    def __call__(self, x, y, pf=None, random_scale=1.0):
-        original_dims = x.shape[1], x.shape[2]
-        x, y, cm = resize_from_labels(x, y, self.default_med, pf, random_scale=random_scale, diams=self.diams)
-        return x, y, original_dims, cm
+#     def __call__(self, x, y, pf=None, random_scale=1.0):
+#         original_dims = x.shape[1], x.shape[2]
+#         x, y, cm = resize_from_labels(x, y, self.default_med, pf, random_scale=random_scale, diams=self.diams)
+#         return x, y, original_dims, cm
 
 
-def resize_from_labels(x, y, default_med, pf=None, random_scale=1.0, diams=[]):
-    if len(diams) == 0:
-        assert len(y) != 0, 'Target sample labels not found; resizing target data for evaluation cannot be completed.'
+# def resize_from_labels(x, y, default_med, pf=None, random_scale=1.0, diams=[]):
+#     if len(diams) == 0:
+#         assert len(y) != 0, 'Target sample labels not found; resizing target data for evaluation cannot be completed.'
 
-        unq = torch.unique(y)
-        if len(unq) == 1 and unq == 0:
-            return x, y, None
-        # calculate diameters, using only full cells in the given image or images
-        y_cf = copy.deepcopy(torch.squeeze(y, dim=0))
-        y_cf = remove_cut_cells(y_cf)
-        diams = diam_range(y_cf)
+#         unq = torch.unique(y)
+#         if len(unq) == 1 and unq == 0:
+#             return x, y, None
+#         # calculate diameters, using only full cells in the given image or images
+#         y_cf = copy.deepcopy(torch.squeeze(y, dim=0))
+#         y_cf = remove_cut_cells(y_cf)
+#         diams = diam_range(y_cf)
 
-    cell_metric = np.percentile(np.array(diams), 75)*random_scale
-    cell_metric = cell_metric if cell_metric > 12 else 12  # Note: following work from TissueNet
-    if cell_metric > 0:
-        rescale_w, rescale_h = default_med[0] / cell_metric, default_med[1] / cell_metric
-        x = np.transpose(x.numpy(), (1, 2, 0))
-        x = cv2.resize(x, (int(x.shape[1] * rescale_w), int(x.shape[0] * rescale_h)),
-                       interpolation=cv2.INTER_LINEAR)
-        if x.ndim == 2:
-            x = x[np.newaxis, :]
-        else:
-            x = np.transpose(x, (2, 0, 1))
+#     cell_metric = np.percentile(np.array(diams), 75)*random_scale
+#     cell_metric = cell_metric if cell_metric > 12 else 12  # Note: following work from TissueNet
+#     if cell_metric > 0:
+#         rescale_w, rescale_h = default_med[0] / cell_metric, default_med[1] / cell_metric
+#         x = np.transpose(x.numpy(), (1, 2, 0))
+#         x = cv2.resize(x, (int(x.shape[1] * rescale_w), int(x.shape[0] * rescale_h)),
+#                        interpolation=cv2.INTER_LINEAR)
+#         if x.ndim == 2:
+#             x = x[np.newaxis, :]
+#         else:
+#             x = np.transpose(x, (2, 0, 1))
 
-        if len(y) != 0:    
-            y = np.transpose(y.numpy(), (1, 2, 0))
-            y = cv2.resize(y, (int(y.shape[1] * rescale_w), int(y.shape[0] * rescale_h)),
-                        interpolation=cv2.INTER_NEAREST)[np.newaxis, :]
-        if pf is not None:
-            pf = np.transpose(pf[0], (1, 2, 0))
-            pf = cv2.resize(pf, (int(pf.shape[1] * rescale_w), int(pf.shape[0] * rescale_h)),
-                            interpolation=cv2.INTER_LINEAR)
-            pf = np.transpose(pf, (2, 0, 1))
-            pf[0] = (pf[0] > 0.5).astype(np.float32)
-            return torch.tensor(x), torch.tensor(pf), cell_metric
-        return torch.tensor(x), torch.tensor(y), cell_metric
-    else:
-        return x, y, cell_metric
+#         if len(y) != 0:    
+#             y = np.transpose(y.numpy(), (1, 2, 0))
+#             y = cv2.resize(y, (int(y.shape[1] * rescale_w), int(y.shape[0] * rescale_h)),
+#                         interpolation=cv2.INTER_NEAREST)[np.newaxis, :]
+#         if pf is not None:
+#             pf = np.transpose(pf[0], (1, 2, 0))
+#             pf = cv2.resize(pf, (int(pf.shape[1] * rescale_w), int(pf.shape[0] * rescale_h)),
+#                             interpolation=cv2.INTER_LINEAR)
+#             pf = np.transpose(pf, (2, 0, 1))
+#             pf[0] = (pf[0] > 0.5).astype(np.float32)
+#             return torch.tensor(x), torch.tensor(pf), cell_metric
+#         return torch.tensor(x), torch.tensor(y), cell_metric
+#     else:
+#         return x, y, cell_metric
 
 
 def reformat(x, n_chan=1, do_3D=False):
     """
     Reformats raw input data with the following expected output:
-    If 2-D -> torch.tensor or ndarray with shape [channels, x_dim, y_dim]
+    If 2-D ->  ndarray with shape [channels, y_dim, x_dim] or [channels, z_dim, y_dim, x_dim]
     """
-    # returns ndarray
     if do_3D:
         if len(x.shape) == 3:
             x = x[np.newaxis,:,:,:]
@@ -90,8 +90,6 @@ def reformat(x, n_chan=1, do_3D=False):
         if x.shape[0] < n_chan:
             x = np.tile(x, (math.ceil(n_chan/x.shape[0]), 1, 1, 1))
             x = x[:n_chan]
-    
-    #returns a tensor
     else:    
         if len(x.shape) == 2:
             x = x.view(1, x.shape[0], x.shape[1])
@@ -222,6 +220,18 @@ def normalize99(Y, lower=1,upper=99):
     X = (X - x01) / (x99 - x01)
     return X
 
+def train_generate_rand_crop(data, label, crop=112, lbl_flows=False):
+    
+    x_max = data.shape[2] - crop
+    y_max = data.shape[1] - crop
+        
+    i = random.randint(0, x_max)
+    j = random.randint(0, y_max)
+    
+    d_patch = data[:, j:j + crop, i:i + crop]
+    l_patch = label[:, j:j + crop, i:i + crop]
+    
+    return d_patch, l_patch
 
 def random_horizontal_flip(x, y):
     if np.random.rand() > .5:
@@ -438,3 +448,23 @@ def cell_range(masks, mask_val):
     x_range = np.amax(inds[1]) - np.amin(inds[1])
     y_range = np.amax(inds[0]) - np.amin(inds[0])
     return int(math.sqrt(x_range * y_range))
+
+def diameters(masks):
+    _, counts = np.unique(np.int32(masks), return_counts=True)
+    counts = counts[1:]
+    md = np.median(counts**0.5)
+    if np.isnan(md):
+        md = 0
+    md /= (np.pi**0.5) / 2
+    return md, counts**0.5
+
+def calc_median_dim(masks):
+    median_list = []
+    count_list = []
+
+    for mask in tqdm(masks):
+        md, counts = diameters(mask)
+        median_list = np.append(median_list, md)
+        count_list = np.append(count_list, counts)
+        
+    return math.ceil(np.median(median_list))
