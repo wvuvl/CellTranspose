@@ -17,7 +17,7 @@ class TrainCellTransposeData(Dataset):
     def __init__(self, data_dirs, n_chan, crop_size=112, has_flows=False, batch_size=1, preprocessed_data=None, proc_every_epoch=True, 
                  result_dir=None, median_diam=30, target_median_diam=None, target=False):
         
-        assert os.path.exists(os.path.join(dir_i,'labels')), f"Training folder {os.path.join(dir_i,'labels')} does not exists, it is needed for training."
+        
 
         self.crop_size = crop_size
         self.has_flows = has_flows
@@ -29,6 +29,7 @@ class TrainCellTransposeData(Dataset):
         self.resize_measure = 1.0
         
         for dir_i in data_dirs:
+            assert os.path.exists(os.path.join(dir_i,'labels')), f"Training folder {os.path.join(dir_i,'labels')} does not exists, it is needed for training."
             self.d_list = self.d_list + sorted([dir_i + os.sep + 'data' + os.sep + f for f in
                                                 os.listdir(os.path.join(dir_i, 'data')) if f.lower()
                                             .endswith('.tiff') or f.lower().endswith('.tif')
@@ -49,7 +50,7 @@ class TrainCellTransposeData(Dataset):
         else:
             self.data = []
             self.labels = []
-            for index in range(len(self.d_list)):
+            for index in trange(len(self.d_list), desc='Loading training data...'):
                 ext = os.path.splitext(self.d_list[index])[-1]
                 if ext == '.tif' or ext == '.tiff':
                     raw_data_vol = tifffile.imread(self.d_list[index]).astype('float')
@@ -69,7 +70,6 @@ class TrainCellTransposeData(Dataset):
                     
                 curr_lbl = reformat(raw_lbl_vol)    
                 curr_lbl = resize_image(curr_lbl, rsz=self.resize_measure, interpolation=cv2.INTER_NEAREST)
-                curr_lbl = curr_lbl if has_flows else labels_to_flows(curr_lbl)
                 curr_lbl, _, _, _ = padding_2D(curr_lbl, self.crop_size)
                 self.labels.append(curr_lbl) 
             
@@ -83,13 +83,10 @@ class TrainCellTransposeData(Dataset):
                     label_samples.append(labels)   
                 self.data = data_samples
                 self.labels = label_samples
-            
-            self.data = np.asarray(self.data)
-            self.labels = np.asarray(self.labels)
-            
-            if result_dir is not None: 
-                np.save(os.path.join(result_dir, 'train_preprocessed_data.npy'), self.data)
-                np.save(os.path.join(result_dir, 'train_preprocessed_labels.npy'), self.labels)
+
+                if result_dir is not None: 
+                    np.save(os.path.join(result_dir, 'train_preprocessed_data.npy'), self.data)
+                    np.save(os.path.join(result_dir, 'train_preprocessed_labels.npy'), self.labels)          
        
         if target:
 
@@ -98,7 +95,7 @@ class TrainCellTransposeData(Dataset):
             
             print(f"Calculated median diams of the target: {median_diam}, \nWill get resized to equalize {median_diam}")
             self.resize_measure = float(median_diam/target_median_diam)
-            
+        
             self.target_data_samples = self.data
             self.target_label_samples = self.labels
             for _ in range(1, math.ceil(batch_size / len(self.data))):
@@ -112,9 +109,10 @@ class TrainCellTransposeData(Dataset):
         try:            
             # random horizontal flip
             if np.random.rand() > .5:
-                data = np.fliplr(data)
-                labels = np.fliplr(labels)
+                data = np.fliplr(data).copy()
+                labels = np.fliplr(labels).copy()
             data, labels = train_generate_rand_crop(data, labels, crop=crop_size, lbl_flows=has_flows)
+            labels = labels if has_flows else labels_to_flows(labels[0]) # labels[0] because it has one channel in the front idx 0
             return data, labels
         
         except RuntimeError:
@@ -134,7 +132,7 @@ class TrainCellTransposeData(Dataset):
 class ValCellTransposeData(Dataset):
     def __init__(self, data_dirs, n_chan, patch_size=112, resize_measure=1.0, min_overlap=0.1, augment=False):
         
-        assert os.path.exists(os.path.join(dir_i,'labels')), f"Validation folder {os.path.join(dir_i,'labels')} does not exists, it is needed for validation."
+        
     
         self.resize_measure = resize_measure
         self.n_chan = n_chan
@@ -142,6 +140,7 @@ class ValCellTransposeData(Dataset):
         self.l_list = []
         
         for dir_i in data_dirs:
+            assert os.path.exists(os.path.join(dir_i,'labels')), f"Validation folder {os.path.join(dir_i,'labels')} does not exists, it is needed for validation."
             self.d_list = self.d_list + sorted([dir_i + os.sep + 'data' + os.sep + f for f in
                                                 os.listdir(os.path.join(dir_i, 'data')) if f.lower()
                                             .endswith('.tiff') or f.lower().endswith('.tif')
@@ -178,7 +177,7 @@ class ValCellTransposeData(Dataset):
             curr_lbl = reformat(raw_lbl_vol)
             # lable interpolation changed to nearest neighbour from linear
             curr_lbl = resize_image(curr_lbl, rsz=resize_measure, interpolation=cv2.INTER_NEAREST)
-            curr_lbl = labels_to_flows(curr_lbl)
+            curr_lbl = labels_to_flows(curr_lbl[0]) # curr_lbl[0] because it has one channel in the front idx 0
             curr_lbl, _, _, _ = padding_2D(curr_lbl, patch_size)
             LBL, _, _, _, _ = transforms.make_tiles(curr_lbl, bsize=patch_size, augment=augment, tile_overlap=min_overlap)
             ny, nx, nchan, ly, lx = LBL.shape
@@ -192,7 +191,7 @@ class ValCellTransposeData(Dataset):
         return len(self.data)
     
     def __getitem__(self, index):   
-        return self.data[index], self.labels[index], self.resize_measure
+        return self.data[index], self.labels[index]
     
 
 class EvalCellTransposeData(Dataset):

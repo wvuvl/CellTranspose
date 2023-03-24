@@ -1,14 +1,12 @@
 from torch.utils.data import DataLoader
-from torch import nn, tensor, cat, no_grad, squeeze, zeros, as_tensor, from_numpy
+from torch import nn,no_grad, from_numpy
 import time
 from tqdm import tqdm, trange
-import cv2
 import numpy as np
 import os
-import pickle
 import tifffile
 from statistics import mean
-from transforms import followflows, followflows3D, generate_patches, recombine_patches, Resize, resize_image, padding_2D, padding_3D
+from transforms import followflows, followflows3D, resize_image, padding_2D, padding_3D
 from cellpose_src import transforms
 
 def train_network(model, train_dl, val_dl, class_loss, flow_loss, optimizer, scheduler, device, n_epochs):
@@ -23,8 +21,8 @@ def train_network(model, train_dl, val_dl, class_loss, flow_loss, optimizer, sch
         print(scheduler.get_last_lr())
         for (sample_data, sample_labels) in tqdm(train_dl, desc='Training - Epoch {}/{}'.format(e, n_epochs)):
 
-            sample_data = sample_data.to(device)
-            sample_labels = sample_labels.to(device)
+            sample_data = sample_data.float().to(device)
+            sample_labels = sample_labels.float().to(device)
             optimizer.zero_grad()
             output = model(sample_data)
             mask_loss = class_loss(output, sample_labels)

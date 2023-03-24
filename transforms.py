@@ -34,10 +34,10 @@ def reformat(x, n_chan=1, do_3D=False):
             x = x[:n_chan]
     else:    
         if len(x.shape) == 2:
-            x = x.view(1, x.shape[0], x.shape[1])
+            x = x[np.newaxis,:,:]
         elif len(x.shape) == 3:
             if x.shape[2] > x.shape[0]:
-                x = x.permute(1, 2, 0)
+                x = x.transpose(1, 2, 0)
             info_chans = [len(np.unique(x[:, :, i])) > 1 for i in range(x.shape[2])]
             x = x[:, :, info_chans]
             x = np.transpose(x, (2, 0, 1))[:n_chan]  # Remove any additional channels
@@ -97,14 +97,17 @@ def resize_image(img0, Ly=None, Lx=None, rsz=None, interpolation=cv2.INTER_LINEA
             imgs[i] = cv2.resize(img.transpose(1, 2, 0), (Lx, Ly), interpolation=interpolation).transpose(2,0,1)
     else:
         # 2D image with channels in the front
-        imgs = cv2.resize(img0.transpose(1, 2, 0), (Lx, Ly), interpolation=interpolation).transpose(2,0,1)
+        if img0.shape[0] == 1:
+            imgs = cv2.resize(img0.transpose(1, 2, 0), (Lx, Ly), interpolation=interpolation)[np.newaxis,:,:]
+        else:
+            imgs = cv2.resize(img0.transpose(1, 2, 0), (Lx, Ly), interpolation=interpolation).transpose(2,0,1)
         
     return imgs
 
 
 def normalize1stto99th(x):
     """
-    Normalize each channel of input image so that 0.0 corresponds to 1st percentile and 1.0 corresponds to 99th -
+    Normalize each channel of input image so that 0.0 corresponds to 1st percentile and 1.0 corresponds to 99th g-
     Made to mimic Cellpose's normalization implementation
     """
     sample = x.clone() if torch.is_tensor(x) else x.copy()

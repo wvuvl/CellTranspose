@@ -149,7 +149,7 @@ if not args.eval_only:
     train_dl = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, drop_last=True)
 
     if args.val_dataset is not None:
-        val_dataset = ValCellTransposeData(args.val_dataset, args.n_chan, patch_size=args.patch_size, resize_measure=float(args.median_diams/args.median_diams_2D))
+        val_dataset = ValCellTransposeData(args.val_dataset, args.n_chan, patch_size=args.patch_size, resize_measure=float(args.median_diams/args.median_diams_test))
         val_dl = DataLoader(val_dataset, batch_size=args.batch_size, shuffle=False)
     else:
         val_dl = None
