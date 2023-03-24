@@ -8,7 +8,7 @@ import os
 import pickle
 import tifffile
 from statistics import mean
-from transforms import followflows, followflows3D, generate_patches, recombine_patches, Resize, resize_image, padding_3D
+from transforms import followflows, followflows3D, generate_patches, recombine_patches, Resize, resize_image, padding_2D, padding_3D
 from cellpose_src import transforms
 
 def train_network(model, train_dl, val_dl, class_loss, flow_loss, optimizer, scheduler, device, n_epochs):
@@ -141,68 +141,30 @@ def validate_network(model, data_loader, flow_loss, class_loss, device):
 
 
 # Evaluation - due to image size mismatches, must currently be run one image at a time
-def eval_network(model: nn.Module, data_loader: DataLoader, device, patch_per_batch, patch_size, min_overlap):
-    
-    axis = ('Z', 'Y', 'X')
-    plane = ('YX', 'ZX', 'ZY')
-    TP = [(0, 1, 2), (1, 0, 2), (2, 0, 1)]
+def eval_network_2D(model: nn.Module, data_loader: DataLoader, device, patch_per_batch, patch_size, min_overlap, augment=False):
     
     model.eval()
     with no_grad():
         masks = []
         data_list = []
         pred_list = []
-        for (sample_data, sample_labels, data_files, original_dims) in tqdm(data_loader, desc='Evaluating Test Dataset'):
-            resized_dims = (sample_data.shape[2], sample_data.shape[3])
-            padding = sample_data.shape[2] < patch_size[0] or sample_data.shape[3] < patch_size[1]
+        for (sample_data, data_file, resize_measure) in tqdm(data_loader, desc='Evaluating Test Dataset'):
+            sample_data = sample_data.squeeze(0).numpy()
+            sample_data = resize_image(sample_data, rsz=resize_measure)
+            curr_sample, set_corner, unpadded_dims, resized_dims = padding_2D(sample_data, patch_size)
+            predictions = run_overlaps(model, curr_sample, batch_size=patch_per_batch, device=device, augment=augment, 
+                                        patch_size=patch_size, min_overlap=float(patch_size/min_overlap))           
+            yf = predictions[:,set_corner[0]:set_corner[0]+unpadded_dims[0], set_corner[1]:set_corner[1]+unpadded_dims[1]]
             
-            # Add padding if image is smaller than patch size in at least one dimension
-            if padding and sample_labels.numel() != 0:
-                unpadded_dims = resized_dims
-                sd = zeros((sample_data.shape[0], sample_data.shape[1], max(patch_size[0], sample_data.shape[2]),
-                            max(patch_size[1], sample_data.shape[3])))
-                sl = zeros((sample_labels.shape[0], sample_labels.shape[1], max(patch_size[0], sample_data.shape[2]),
-                            max(patch_size[1], sample_labels.shape[3])))
-                set_corner = (max(0, (patch_size[0] - sample_data.shape[2]) // 2),
-                              max(0, (patch_size[1] - sample_data.shape[3]) // 2))
-                sd[:, :, set_corner[0]:set_corner[0] + sample_data.shape[2],
-                   set_corner[1]:set_corner[1] + sample_data.shape[3]] = sample_data
-                sl[:, :, set_corner[0]:set_corner[0] + sample_labels.shape[2],
-                   set_corner[1]:set_corner[1] + sample_labels.shape[3]] = sample_labels
-                sample_data = sd
-                sample_labels = sl
-                resized_dims = (sample_data.shape[2], sample_data.shape[3])
+            #resizing back to the original dim     
+            yf = resize_image(yf, unpadded_dims[0], unpadded_dims[1])
+            sample_mask = followflows(yf)
             
-            
-            if sample_labels.numel() != 0: 
-                sample_data, _ = generate_patches(sample_data, squeeze(sample_labels, dim=0), patch=patch_size,
-                                              min_overlap=min_overlap, lbl_flows=False)
-            else:
-                sample_data = generate_patches(sample_data, patch=patch_size,
-                                              min_overlap=min_overlap, lbl_flows=False)
-                
-            predictions = tensor([]).to(device)
-            for patch_ind in range(0, len(sample_data), patch_per_batch):
-                sample_data_patches = sample_data[patch_ind:patch_ind + patch_per_batch].float().to(device)
-                p = model(sample_data_patches)
-                predictions = cat((predictions, p))
-
-            predictions = recombine_patches(predictions, resized_dims, min_overlap)
-            pred_list.append(predictions.cpu().numpy()[0])
-            for i in range(len(data_files)):
-                    data_list.append(data_files[i][data_files[i].rfind('/')+1: data_files[i].rfind('.')])
-
-            sample_mask = followflows(predictions)
-            sample_mask = np.transpose(sample_mask.numpy(), (1, 2, 0))
-            if padding:
-                sample_mask = sample_mask[set_corner[0]:set_corner[0]+unpadded_dims[0],
-                                          set_corner[1]:set_corner[1]+unpadded_dims[1]]
-            sample_mask = cv2.resize(sample_mask, (original_dims[1].item(), original_dims[0].item()),
-                                     interpolation=cv2.INTER_NEAREST)
             masks.append(sample_mask)
-
+            pred_list.append(predictions[0])
+            data_list.append(os.path.basename(os.path.splitext(data_file[0])[0]))
+            
     return masks, pred_list, data_list
-
 
 def run_overlaps(model: nn.Module, imgi, batch_size, device, augment=False, patch_size=112, min_overlap=0.1): 
     IMG, ysub, xsub, Ly, Lx = transforms.make_tiles(imgi, bsize=patch_size, augment=augment, tile_overlap=min_overlap)
@@ -325,7 +287,7 @@ def eval_network_3D(model: nn.Module, data_loader: DataLoader,
             rescale= [resize_measure] * 3 
         
         start = time.time()
-        yf = run_3D_volume(model, device, data_vol, patch_size[0], patch_per_batch, rescale, augment=augment, min_overlap=float(patch_size[0]/min_overlap[0])) 
+        yf = run_3D_volume(model, device, data_vol, patch_size, patch_per_batch, rescale, augment=augment, min_overlap=float(patch_size/min_overlap)) 
         # 0       1     2
         # 'ZYX', 'YZX', 'XZY'
         cellprob = yf[0][0] + yf[1][0] + yf[2][0]

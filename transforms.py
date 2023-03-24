@@ -81,7 +81,7 @@ def reformat(x, n_chan=1, do_3D=False):
                 x = x.transpose(1, 2, 3, 0)
             info_chans = [len(np.unique(x[:, :, :, i])) > 1 for i in range(x.shape[3])]
             x = x[:, :, :, info_chans]
-            x = np.transpose(x.numpy(), (3, 0, 1, 2))[:n_chan]  # Remove any additional channels
+            x = np.transpose(x, (3, 0, 1, 2))[:n_chan]  # Remove any additional channels
         
         # if x.shape[0] == 1 and n_chan==2:
         #     x = np.concatenate((x, np.zeros_like(x)))
@@ -93,17 +93,17 @@ def reformat(x, n_chan=1, do_3D=False):
     
     #returns a tensor
     else:    
-        if x.dim() == 2:
+        if len(x.shape) == 2:
             x = x.view(1, x.shape[0], x.shape[1])
-        elif x.dim() == 3:
+        elif len(x.shape) == 3:
             if x.shape[2] > x.shape[0]:
                 x = x.permute(1, 2, 0)
-            info_chans = [len(torch.unique(x[:, :, i])) > 1 for i in range(x.shape[2])]
+            info_chans = [len(np.unique(x[:, :, i])) > 1 for i in range(x.shape[2])]
             x = x[:, :, info_chans]
-            x = torch.tensor(np.transpose(x.numpy(), (2, 0, 1))[:n_chan])  # Remove any additional channels
+            x = np.transpose(x, (2, 0, 1))[:n_chan]  # Remove any additional channels
         # Concatenate copies of other channels if image has fewer than the specified number of channels
         if x.shape[0] < n_chan:
-            x = torch.tile(x, (math.ceil(n_chan/x.shape[0]), 1, 1))
+            x = np.tile(x, (math.ceil(n_chan/x.shape[0]), 1, 1))
             x = x[:n_chan]
     return x
 
@@ -156,8 +156,8 @@ def resize_image(img0, Ly=None, Lx=None, rsz=None, interpolation=cv2.INTER_LINEA
         for i,img in enumerate(img0):
             imgs[i] = cv2.resize(img.transpose(1, 2, 0), (Lx, Ly), interpolation=interpolation).transpose(2,0,1)
     else:
-        # no channels and 2D image
-        imgs = cv2.resize(img0, (Lx, Ly), interpolation=interpolation)
+        # 2D image with channels in the front
+        imgs = cv2.resize(img0.transpose(1, 2, 0), (Lx, Ly), interpolation=interpolation).transpose(2,0,1)
         
     return imgs
 
@@ -252,15 +252,14 @@ def followflows(flows):
     Combines follow_flows, get_masks, and fill_holes_and_remove_small_masks from Cellpose implementation
     """
     niter = 400; interp = True; use_gpu = True; cellprob_threshold = 0.0; flow_threshold = 0.4; min_size = 15
-    masks = torch.zeros((flows.shape[0], flows.shape[-2], flows.shape[-1]))
-    for i, flow in enumerate(flows):
-        cellprob = flow[0].cpu().numpy()
-        dP = flow[1:].cpu().numpy()
-        
-        p = follow_flows(-1 * dP * (cellprob > cellprob_threshold) / 5., niter, interp, use_gpu)
-        maski = get_masks(p, iscell=(cellprob > cellprob_threshold), flows=dP, threshold=flow_threshold)
-        maski = fill_holes_and_remove_small_masks(maski, min_size=min_size)
-        masks[i] = torch.tensor(maski)
+    
+    cellprob = flows[0]
+    dP = flows[1:]
+    
+    p = follow_flows(dP * (cellprob > cellprob_threshold) / 5., niter, interp, use_gpu)
+    masks = get_masks(p, iscell=(cellprob > cellprob_threshold), flows=dP, threshold=flow_threshold)
+    masks = fill_holes_and_remove_small_masks(masks, min_size=min_size)
+    
     return masks
 
 
@@ -354,6 +353,26 @@ def remove_empty_label_patches(data, labels):
         labels = labels[keep_samples, :]
     return data, labels
 
+
+# in:  Ch x Y x X
+# out: padded Ch x Y x X
+def padding_2D(sample_data,  patch_size):
+    unpadded_dims = (sample_data.shape[1], sample_data.shape[2])
+    if (sample_data.shape[1] < patch_size or sample_data.shape[2] < patch_size):
+        
+        sd = np.zeros((sample_data.shape[0], max(patch_size, sample_data.shape[1]), max(patch_size, sample_data.shape[2])))
+        
+        set_corner = (max(0, (patch_size - sample_data.shape[2]) // 2), max(0, (patch_size - sample_data.shape[3]) // 2))
+        
+        sd[:, set_corner[0]:set_corner[0] + sample_data.shape[1],
+            set_corner[1]:set_corner[1] + sample_data.shape[2]] = sample_data
+        
+        resized_dims = (sample_data.shape[1], sample_data.shape[2])
+        
+        return sd, set_corner, unpadded_dims, resized_dims
+    else:
+        return sample_data, [0,0], unpadded_dims, unpadded_dims
+    
 # in:  Z x Ch x Y x X
 # out: padded Z x Ch x Y x X
 def padding_3D(sample_data,  patch_size):

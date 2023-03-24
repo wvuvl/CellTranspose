@@ -8,9 +8,9 @@ import os
 import time
 
 from transforms import Resize
-from loaddata import TrainCellTransposeData, EvalCellTransposeData, EvalCellTransposeData3D
+from loaddata import TrainCellTransposeData, ValCellTransposeData, EvalCellTransposeData, EvalCellTransposeData3D
 from network import CellTransposeModel, ClassLoss, FlowLoss, SASMaskLoss, ContrastiveFlowLoss
-from train_eval import train_network, adapt_network, eval_network, eval_network_3D
+from train_eval import train_network, adapt_network, eval_network_2D, eval_network_3D
 from calculate_results import produce_logfile, plot_loss, save_pred
 
 parser = argparse.ArgumentParser()
@@ -79,6 +79,8 @@ parser.add_argument('--test-from-3D', help='Whether the input test data is 3D: a
                     action='store_true')
 parser.add_argument('--median-diams-3D', type=int,
                     help='3D median diams that will be used to equalize original median-diams', default=30)
+parser.add_argument('--median-diams-2D', type=int,
+                    help='2D median diams that will be used to equalize original median-diams', default=30)
 
 # Note: do-3D not currently implemented. Can be used for further development with volumetric approach
 parser.add_argument('--do-3D', help='Whether or not to use CellTranspose3D (Must use 3D volumes).', action='store_true')
@@ -93,23 +95,24 @@ print(args.results_dir)
 assert not os.path.exists(args.results_dir),\
     'Results folder {} currently exists; please specify new location to save results.'.format(args.results_dir)
 os.makedirs(args.results_dir)
+os.makedirs(os.path.join(args.results_dir, 'pkl_results'))
 os.makedirs(os.path.join(args.results_dir, 'tiff_results'))
 os.makedirs(os.path.join(args.results_dir, 'raw_predictions_tiffs'))
 assert not (args.train_only and args.eval_only), 'Cannot pass in "train-only" and "eval-only" arguments simultaneously.'
 device = device('cuda' if is_available() else 'cpu')
 empty_cache()
 
-args.median_diams = (args.median_diams, args.median_diams)
-args.patch_size = (args.patch_size, args.patch_size)
-args.min_overlap = (args.min_overlap, args.min_overlap)
+
+args.min_overlap = args.min_overlap
+
 ttt = None
 tte = None
 train_losses = None
 if args.target_dataset is not None:
     target_dataset = TrainCellTransposeData('Target', args.target_dataset, args.n_chan, pf_dirs=args.target_flows,
                                             do_3D=args.do_3D, from_3D=args.target_from_3D,
-                                            crop_size=args.patch_size, has_flows=False, batch_size=args.batch_size,
-                                            resize=Resize(args.median_diams))
+                                            crop_size=(args.patch_size,args.patch_size), has_flows=False, batch_size=args.batch_size,
+                                            resize=Resize((args.median_diams, args.median_diams)))
     rs = RandomSampler(target_dataset, replacement=False)
     bs = BatchSampler(rs, args.batch_size, True)
     target_dl = DataLoader(target_dataset, batch_sampler=bs)
@@ -134,8 +137,8 @@ if not args.eval_only:
         if not args.do_adaptation:
             args.process_each_epoch = True
         train_dataset = TrainCellTransposeData('Training', args.train_dataset, args.n_chan, do_3D=args.do_3D,
-                                               from_3D=args.train_from_3D, crop_size=args.patch_size, has_flows=False,
-                                               batch_size=args.batch_size, resize=Resize(args.median_diams),
+                                               from_3D=args.train_from_3D, crop_size=(args.patch_size,args.patch_size), has_flows=False,
+                                               batch_size=args.batch_size, resize=Resize((args.median_diams, args.median_diams)),
                                                preprocessed_data=args.load_train_from_npy,
                                                proc_every_epoch=args.process_each_epoch, result_dir=args.results_dir)
     
@@ -147,9 +150,9 @@ if not args.eval_only:
     train_dl = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, drop_last=True)
 
     if args.val_dataset is not None:
-        val_dataset = EvalCellTransposeData('Validation', args.val_dataset, args.n_chan, do_3D=args.do_3D,
-                                            resize=Resize(args.median_diams))
-        val_dataset.pre_generate_validation_patches(patch_size=args.patch_size, min_overlap=args.min_overlap)
+        val_dataset = ValCellTransposeData('Validation', args.val_dataset, args.n_chan, do_3D=args.do_3D,
+                                            resize=Resize((args.median_diams, args.median_diams)))
+        val_dataset.pre_generate_validation_patches(patch_size=(args.patch_size,args.patch_size), min_overlap=(args.min_overlap, args.min_overlap))
         val_dl = DataLoader(val_dataset, batch_size=args.batch_size, shuffle=False)
     else:
         val_dl = None
@@ -187,19 +190,17 @@ if not args.train_only:
     else:
         target_labels = None
     if not args.test_from_3D:
-        test_dataset = EvalCellTransposeData('Test', args.test_dataset, args.n_chan, do_3D=args.do_3D,
-                                             from_3D=args.test_from_3D, evaluate=True,
-                                             resize=Resize(args.median_diams, target_labels=target_labels))
+        test_dataset = EvalCellTransposeData( args.test_dataset, args.n_chan, resize_measure=float(args.median_diams/args.median_diams_2D))
         eval_dl = DataLoader(test_dataset, batch_size=1, shuffle=False)
-        masks, prediction_list, data_list = eval_network(model, eval_dl, device, patch_per_batch=args.eval_batch_size,
+        # patch size and min_overlap fixed
+        masks, prediction_list, data_list = eval_network_2D(model, eval_dl, device, patch_per_batch=args.eval_batch_size,
                                                           patch_size=args.patch_size, min_overlap=args.min_overlap)
         save_pred(masks, test_dataset, prediction_list, data_list, args.results_dir, args.dataset_name, args.calculate_ap)
     else:
-        test_dataset_3D = EvalCellTransposeData3D('3D_test', args.test_dataset, args.n_chan, do_3D=args.do_3D,
-                                                  from_3D=args.test_from_3D, evaluate=True, resize_measure=float(args.median_diams[0]/args.median_diams_3D))
+        test_dataset_3D = EvalCellTransposeData3D( args.test_dataset, args.n_chan, resize_measure=float(args.median_diams/args.median_diams_3D))
         eval_dl_3D = DataLoader(test_dataset_3D, batch_size=1, shuffle=False)
         
-       
+        # patch size and min_overlap fixed
         eval_network_3D(model, eval_dl_3D, device, patch_per_batch=args.eval_batch_size,
                         patch_size=args.patch_size, min_overlap=args.min_overlap, results_dir=args.results_dir)
     end_eval = time.time()

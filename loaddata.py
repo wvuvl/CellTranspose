@@ -234,7 +234,7 @@ def train_generate_rand_crop(data, label=None, crop=(112, 112), lbl_flows=False)
     return patch_data, patch_label
 
 
-class EvalCellTransposeData(CellTransposeData):
+class ValCellTransposeData(CellTransposeData):
     def __init__(self, split_name, data_dirs, n_chan, pf_dirs=None, do_3D=False, from_3D=False,
                  evaluate=False, resize: Resize = None):
         self.from_3D = from_3D
@@ -281,17 +281,66 @@ class EvalCellTransposeData(CellTransposeData):
         else:
             return self.data_samples[index], label
 
+class EvalCellTransposeData(Dataset):
+    def __init__(self, data_dirs, n_chan, resize_measure=1.0):
+        
+        self.resize_measure = resize_measure
+        self.n_chan = n_chan
+        self.d_list = []
+        self.l_list = []
+        
+        for dir_i in data_dirs:
+            self.d_list = self.d_list + sorted([dir_i + os.sep + 'data' + os.sep + f for f in
+                                                os.listdir(os.path.join(dir_i, 'data')) if f.lower()
+                                            .endswith('.tiff') or f.lower().endswith('.tif')
+                                                or f.lower().endswith('.png')])
+            
+            if os.path.exists(os.path.join(dir_i,'labels')):
+                self.l_list = self.l_list + sorted([dir_i + os.sep + 'labels' + os.sep + f for f in
+                                                    os.listdir(os.path.join(dir_i, 'labels')) if f.lower()
+                                                .endswith('.tiff') or f.lower().endswith('.tif')
+                                                    or f.lower().endswith('.png')])
+        
+        self.data = []
+        self.labels = []
+        for index in range(len(self.d_list)):
+            ext = os.path.splitext(self.d_list[index])[-1]
+            if ext == '.tif' or ext == '.tiff':
+                raw_data_vol = tifffile.imread(self.d_list[index]).astype('float')
+            else:
+                raw_data_vol = cv2.imread(self.d_list[index], -1).astype('float')
+            self.data.append(normalize1stto99th(reformat(raw_data_vol, self.n_chan))) 
+            
+            if os.path.exists(os.path.join(dir_i,'labels')):
+                ext = os.path.splitext(self.l_list[index])[-1]
+                if ext == '.tif' or ext == '.tiff':
+                    raw_lbl_vol = tifffile.imread(self.l_list[index]).astype('float')
+                else:
+                    raw_lbl_vol = cv2.imread(self.l_list[index], -1).astype('float')
+                self.labels.append(raw_lbl_vol) 
+
+    def __len__(self):
+        return len(self.d_list)
+    
+    def __getitem__(self, index):   
+        return self.data[index], self.d_list[index], self.resize_measure
 
 # Updated more efficient version    
-class EvalCellTransposeData3D(CellTransposeData):
-    def __init__(self, split_name, data_dirs, n_chan, do_3D=False,
-                 from_3D=False, evaluate=False, resize_measure=1.0):
-        self.n_chan = n_chan
-        self.do_3D = do_3D
+class EvalCellTransposeData3D(Dataset):
+    def __init__(self, data_dirs, n_chan, resize_measure=1.0):
         self.resize_measure = resize_measure
-        super().__init__(split_name, data_dirs, n_chan, do_3D=do_3D, from_3D=from_3D, evaluate=evaluate, resize=None)
+        self.n_chan = n_chan
+        self.d_list = []
+        
+        for dir_i in data_dirs:
+            self.d_list = self.d_list + sorted([dir_i + os.sep + 'data' + os.sep + f for f in
+                                                os.listdir(os.path.join(dir_i, 'data')) if f.lower()
+                                            .endswith('.tiff') or f.lower().endswith('.tif')
+                                                or f.lower().endswith('.png')])
     
-
+    def __len__(self):
+        return len(self.d_list)
+    
     def __getitem__(self, index):
         ext = os.path.splitext(self.d_list[index])[-1]
 
@@ -300,10 +349,8 @@ class EvalCellTransposeData3D(CellTransposeData):
         else:
             raw_data_vol = cv2.imread(self.d_list[index], -1).astype('float')
         
-        
         print(f">>> Image path: {self.d_list[index]}")
         print(f">>> Processing 3D data")
                 
         data = normalize1stto99th(reformat(raw_data_vol, self.n_chan, do_3D=True))
-        
         return data, self.d_list[index], self.resize_measure

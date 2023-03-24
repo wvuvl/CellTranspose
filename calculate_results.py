@@ -115,10 +115,10 @@ def save_pred(masks, test_dataset, prediction_list, data_list, results_dir, data
     
     for i in range(len(masks)):
         masks[i] = masks[i].astype('int32')
-        with open(os.path.join(results_dir, data_list[i] + '_predicted_labels.pkl'), 'wb') as m_pkl:
+        with open(os.path.join(results_dir, 'pkl_results', data_list[i] + '_predicted_labels.pkl'), 'wb') as m_pkl:
             pickle.dump(masks[i], m_pkl)
         tifffile.imwrite(os.path.join(results_dir, 'tiff_results', data_list[i] + '.tif'), masks[i])
-        with open(os.path.join(results_dir, data_list[i] + '_raw_masks_flows.pkl'), 'wb') as rmf_pkl:
+        with open(os.path.join(results_dir, 'pkl_results', data_list[i] + '_raw_masks_flows.pkl'), 'wb') as rmf_pkl:
             pickle.dump(prediction_list[i], rmf_pkl)
         tifffile.imwrite(os.path.join(results_dir, 'raw_predictions_tiffs', data_list[i] + '.tif'),
                          prediction_list[i])
@@ -158,17 +158,30 @@ def save_pred(masks, test_dataset, prediction_list, data_list, results_dir, data
                 tp_overall = np.sum(ap_info[1], axis=0).astype('int32')
                 fp_overall = np.sum(ap_info[2], axis=0).astype('int32')
                 fn_overall = np.sum(ap_info[3], axis=0).astype('int32')
+                f1_overall = tp_overall / (tp_overall + 0.5 * (fp_overall+ fn_overall))
+    
                 plt.figure()
                 plt.plot(tau, ap_overall)
-                plt.title('Average Precision for CellTranspose on {} Dataset'.format(dataset_name))
+                plt.title('Average Precision for CellTranspose')
                 plt.xlabel(r'IoU Matching Threshold $\tau$')
                 plt.ylabel('Average Precision')
                 plt.yticks(np.arange(0, 1.01, step=0.2))
                 plt.savefig(os.path.join(results_dir, 'AP Results'))
-                cc.write('\nAP Results at IoU threshold 0.5: AP = {}\nTrue Postive: {}; False Positive: {};'
-                        'False Negative: {}\n'.format(ap_overall[51], tp_overall[51], fp_overall[51], fn_overall[51]))
-                print('AP Results at IoU threshold 0.5: AP = {}\nTrue Postive: {}; False Positive: {}; '
-                    'False Negative: {}'.format(ap_overall[51], tp_overall[51], fp_overall[51], fn_overall[51]))
+                
+                plt.figure()
+                plt.plot(tau, f1_overall)
+                plt.title('F1 Score for CellTranspose')
+                plt.xlabel(r'IoU Matching Threshold $\tau$')
+                plt.ylabel('F1 Score')
+                plt.yticks(np.arange(0, 1.01, step=0.2))
+                plt.savefig(os.path.join(results_dir, 'F1 Score'))
+                
+                cc.write('\nAP Results at IoU threshold 0.5: AP = {}\nF1 score at IoU threshold 0.5: F1 = {} \nTrue Postive: {}; False Positive: {};'
+                        'False Negative: {}\n'.format(ap_overall[51], f1_overall[51], tp_overall[51], fp_overall[51], fn_overall[51]))
+                
+                
+                print('AP Results at IoU threshold 0.5: AP = {}\nF1 score at IoU threshold 0.5: F1 = {} \nTrue Postive: {}; False Positive: {}; '
+                    'False Negative: {}'.format(ap_overall[51], f1_overall[51], tp_overall[51], fp_overall[51], fn_overall[51]))
                 false_error = (fp_overall[51] + fn_overall[51]) / (tp_overall[51] + fn_overall[51])
                 cc.write('Total false error rate: {:.6f}'.format(false_error))
                 print('Total false error rate: {:.6f}'.format(false_error))
@@ -176,3 +189,4 @@ def save_pred(masks, test_dataset, prediction_list, data_list, results_dir, data
                     pickle.dump((tau, ap_overall, tp_overall, fp_overall, fn_overall, false_error), apr)
         else:
             print('>>> Folder containing labelled images does not exist, cannot calculate AP...')
+        
