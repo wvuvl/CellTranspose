@@ -7,7 +7,6 @@ from torch.optim.lr_scheduler import CosineAnnealingLR, StepLR
 import os
 import time
 
-# from transforms import Resize
 from loaddata import TrainCellTransposeData, ValCellTransposeData, EvalCellTransposeData, EvalCellTransposeData3D
 from network import CellTransposeModel, ClassLoss, FlowLoss, SASMaskLoss, ContrastiveFlowLoss
 from train_eval import train_network, adapt_network, eval_network_2D, eval_network_3D
@@ -79,10 +78,9 @@ parser.add_argument('--val-dataset', help='The directory(s) containing data to b
 parser.add_argument('--test-dataset', help='The directory(s) containing data to be used for testing.', nargs='+')
 parser.add_argument('--test-from-3D', help='Whether the input test data is 3D: assumes 2D if set to False.',
                     action='store_true')
-parser.add_argument('--median-diams-3D', type=int,
+parser.add_argument('--median-diams-test', type=int,
                     help='3D median diams that will be used to equalize original median-diams', default=30)
-parser.add_argument('--median-diams-2D', type=int,
-                    help='2D median diams that will be used to equalize original median-diams', default=30)
+
 
 # Note: do-3D not currently implemented. Can be used for further development with volumetric approach
 parser.add_argument('--do-3D', help='Whether or not to use CellTranspose3D (Must use 3D volumes).', action='store_true')
@@ -185,21 +183,21 @@ if not args.eval_only:
 if not args.train_only:
     start_eval = time.time()
     if target_dataset is not None:
-        target_labels = target_dataset.target_label_samples
+        resize_measure = target_dataset.resize_measure
     else:
-        target_labels = None
+        resize_measure = float(args.median_diams/args.median_diams_test)        
+    
+    
     if not args.test_from_3D:
-        test_dataset = EvalCellTransposeData( args.test_dataset, args.n_chan, resize_measure=float(args.median_diams/args.median_diams_2D))
+        test_dataset = EvalCellTransposeData( args.test_dataset, args.n_chan, resize_measure=resize_measure)
         eval_dl = DataLoader(test_dataset, batch_size=1, shuffle=False)
-        # patch size and min_overlap fixed
         masks, prediction_list, data_list = eval_network_2D(model, eval_dl, device, patch_per_batch=args.eval_batch_size,
                                                           patch_size=args.patch_size, min_overlap=args.min_overlap)
         save_pred(masks, test_dataset, prediction_list, data_list, args.results_dir, args.dataset_name, args.calculate_ap)
-    else:
-        test_dataset_3D = EvalCellTransposeData3D( args.test_dataset, args.n_chan, resize_measure=float(args.median_diams/args.median_diams_3D))
+    
+    else:    
+        test_dataset_3D = EvalCellTransposeData3D( args.test_dataset, args.n_chan, resize_measure=resize_measure)
         eval_dl_3D = DataLoader(test_dataset_3D, batch_size=1, shuffle=False)
-        
-        # patch size and min_overlap fixed
         eval_network_3D(model, eval_dl_3D, device, patch_per_batch=args.eval_batch_size,
                         patch_size=args.patch_size, min_overlap=args.min_overlap, results_dir=args.results_dir)
     end_eval = time.time()

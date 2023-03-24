@@ -98,15 +98,13 @@ class TrainCellTransposeData(Dataset):
             
             print(f"Calculated median diams of the target: {median_diam}, \nWill get resized to equalize {median_diam}")
             self.resize_measure = float(median_diam/target_median_diam)
-        
+            
             self.target_data_samples = self.data
             self.target_label_samples = self.labels
             for _ in range(1, math.ceil(batch_size / len(self.data))):
                 self.data = self.data + self.target_data_samples
                 self.labels = self.labels + self.target_label_samples
 
-    # Augmentations and tiling applied to input data (for training and adaptation) -
-    # separated from DataLoader to allow for possibility of running only once or once per epoch
     def process_training_data(self, index, crop_size, has_flows=False):
         samples_generated = []
         data, labels = self.data[index], self.labels[index]
