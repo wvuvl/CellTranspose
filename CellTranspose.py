@@ -53,6 +53,8 @@ parser.add_argument('--load-from-torch', help='If true, assumes dataset is being
                                               ' preprocessing required.', action='store_true')
 parser.add_argument('--process-each-epoch', help='If true, assumes processing occurs every epoch.', action='store_true')
 parser.add_argument('--load-train-from-npy', help='If provided, assumes training data is being loaded from npy files.')
+parser.add_argument('--num-workers', type=int,
+                    help='number of workers for the dataloader', default=0)
 
 # Training data
 parser.add_argument('--train-dataset', help='The directory(s) containing (source) data to be used for training.',
@@ -115,7 +117,7 @@ if args.target_dataset is not None:
     
     rs = RandomSampler(target_dataset, replacement=False)
     bs = BatchSampler(rs, args.batch_size, True)
-    target_dl = DataLoader(target_dataset, batch_sampler=bs)
+    target_dl = DataLoader(target_dataset, batch_sampler=bs, num_workers=args.num_workers)
 else:
     target_dataset = None
 
@@ -146,11 +148,11 @@ if not args.eval_only:
         save(train_dataset, args.save_dataset)
         print('Saved.')
 
-    train_dl = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, drop_last=True)
+    train_dl = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, drop_last=True, num_workers=args.num_workers)
 
     if args.val_dataset is not None:
         val_dataset = ValCellTransposeData(args.val_dataset, args.n_chan, patch_size=args.patch_size, resize_measure=float(args.median_diams/args.median_diams_test))
-        val_dl = DataLoader(val_dataset, batch_size=args.batch_size, shuffle=False)
+        val_dl = DataLoader(val_dataset, batch_size=args.batch_size, shuffle=False, num_workers=args.num_workers)
     else:
         val_dl = None
         print('No validation data given --> skipping validation.')
@@ -190,14 +192,14 @@ if not args.train_only:
     
     if not args.test_from_3D:
         test_dataset = EvalCellTransposeData( args.test_dataset, args.n_chan, resize_measure=resize_measure)
-        eval_dl = DataLoader(test_dataset, batch_size=1, shuffle=False)
+        eval_dl = DataLoader(test_dataset, batch_size=1, shuffle=False, num_workers=args.num_workers)
         masks, prediction_list, data_list = eval_network_2D(model, eval_dl, device, patch_per_batch=args.eval_batch_size,
                                                           patch_size=args.patch_size, min_overlap=args.min_overlap)
         save_pred(masks, test_dataset, prediction_list, data_list, args.results_dir, args.dataset_name, args.calculate_ap)
     
     else:    
         test_dataset_3D = EvalCellTransposeData3D( args.test_dataset, args.n_chan, resize_measure=resize_measure)
-        eval_dl_3D = DataLoader(test_dataset_3D, batch_size=1, shuffle=False)
+        eval_dl_3D = DataLoader(test_dataset_3D, batch_size=1, shuffle=False, num_workers=args.num_workers)
         eval_network_3D(model, eval_dl_3D, device, patch_per_batch=args.eval_batch_size,
                         patch_size=args.patch_size, min_overlap=args.min_overlap, results_dir=args.results_dir)
     end_eval = time.time()
