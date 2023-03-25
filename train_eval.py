@@ -152,7 +152,7 @@ def eval_network_2D(model: nn.Module, data_loader: DataLoader, device, patch_per
             sample_data = resize_image(sample_data, rsz=resize_measure)
             curr_sample, set_corner, unpadded_dims, resized_dims = padding_2D(sample_data, patch_size)
             predictions = run_overlaps(model, curr_sample, batch_size=patch_per_batch, device=device, augment=augment, 
-                                        patch_size=patch_size, min_overlap=float(patch_size/min_overlap))           
+                                        patch_size=patch_size, min_overlap=min_overlap)           
             yf = predictions[:,set_corner[0]:set_corner[0]+unpadded_dims[0], set_corner[1]:set_corner[1]+unpadded_dims[1]]
             
             #resizing back to the original dim     
@@ -165,7 +165,7 @@ def eval_network_2D(model: nn.Module, data_loader: DataLoader, device, patch_per
             
     return masks, pred_list, data_list
 
-def run_overlaps(model: nn.Module, imgi, batch_size, device, augment=False, patch_size=112, min_overlap=0.1): 
+def run_overlaps(model: nn.Module, imgi, batch_size, device, augment=False, patch_size=224, min_overlap=0.1): 
     IMG, ysub, xsub, Ly, Lx = transforms.make_tiles(imgi, bsize=patch_size, augment=augment, tile_overlap=min_overlap)
     
     model.eval()
@@ -286,7 +286,7 @@ def eval_network_3D(model: nn.Module, data_loader: DataLoader,
             rescale= [resize_measure] * 3 
         
         start = time.time()
-        yf = run_3D_volume(model, device, data_vol, patch_size, patch_per_batch, rescale, augment=augment, min_overlap=float(patch_size/min_overlap)) 
+        yf = run_3D_volume(model, device, data_vol, patch_size, patch_per_batch, rescale, augment=augment, min_overlap=min_overlap) 
         # 0       1     2
         # 'ZYX', 'YZX', 'XZY'
         cellprob = yf[0][0] + yf[1][0] + yf[2][0]

@@ -14,18 +14,18 @@ from cellpose_src import transforms, utils
 
     
 class TrainCellTransposeData(Dataset):
-    def __init__(self, data_dirs, n_chan, crop_size=112, has_flows=False, batch_size=1, preprocessed_data=None, proc_every_epoch=True, 
+    def __init__(self, data_dirs, n_chan, crop_size=224, flows_available=False, batch_size=1, proc_every_epoch=True, 
                  result_dir=None, median_diam=30, target_median_diam=None, target=False, rescale=True, min_train_masks=1):
         
         
 
         self.crop_size = crop_size
-        self.has_flows = has_flows
-        self.preprocessed_data = preprocessed_data
+        self.flows_available = flows_available
         self.do_every_epoch = proc_every_epoch
         self.n_chan = n_chan
         self.d_list = []
         self.l_list = []
+        self.pf_list = []
         self.min_train_masks = min_train_masks
         self.median_diam = median_diam
         self.rescale = rescale
@@ -43,42 +43,62 @@ class TrainCellTransposeData(Dataset):
                                             .endswith('.tiff') or f.lower().endswith('.tif')
                                                 or f.lower().endswith('.png')])
             
-        
-        if self.preprocessed_data is not None:
-            print('Training preprocessed data provided...')
-            self.data = np.load(os.path.join(self.preprocessed_data, 'train_preprocessed_data.npy'))
-            self.labels = np.load(os.path.join(self.preprocessed_data, 'train_preprocessed_labels.npy'))
+            if flows_available and os.path.exists(os.path.join(dir_i,'flows')):
+                self.pf_list = self.pf_list + sorted([dir_i + os.sep + 'flows' + os.sep + f for f in
+                                                    os.listdir(os.path.join(dir_i, 'flows')) if f.lower()
+                                                .endswith('.tiff') or f.lower().endswith('.tif')
+                                                    or f.lower().endswith('.png')])   
+            else: 
+                print(f"Flows directory {os.path.join(dir_i,'flows')} does not exist, \n    will continue without loading flows and will compute")  
+                   
+        self.data = []
+        self.labels = []
+        raw_labels = []
+        for index in trange(len(self.d_list), desc='Loading training data...'):
+            ext = os.path.splitext(self.d_list[index])[-1]
+            if ext == '.tif' or ext == '.tiff':
+                raw_data_vol = tifffile.imread(self.d_list[index]).astype('float')
+            else:
+                raw_data_vol = cv2.imread(self.d_list[index], -1).astype('float')
             
-        else:
-            self.data = []
-            self.labels = []
-            for index in trange(len(self.d_list), desc='Loading training data...'):
-                ext = os.path.splitext(self.d_list[index])[-1]
+            curr_data = normalize1stto99th(reformat(raw_data_vol, self.n_chan))
+            # curr_data = resize_image(curr_data, rsz=self.resize_measure)
+            curr_data, _, _, _ = padding_2D(curr_data, self.crop_size)
+            self.data.append(curr_data) 
+            
+            ext = os.path.splitext(self.l_list[index])[-1]
+            if ext == '.tif' or ext == '.tiff':
+                raw_lbl_vol = tifffile.imread(self.l_list[index]).astype('float')
+            else:
+                raw_lbl_vol = cv2.imread(self.l_list[index], -1).astype('float')
+            raw_labels.append(raw_lbl_vol)
+            
+            
+            if len(self.pf_list)>0:
+                ext = os.path.splitext(self.pf_list[index])[-1]
                 if ext == '.tif' or ext == '.tiff':
-                    raw_data_vol = tifffile.imread(self.d_list[index]).astype('float')
+                    flow_lbl = tifffile.imread(self.pf_list[index]).astype('float')
                 else:
-                    raw_data_vol = cv2.imread(self.d_list[index], -1).astype('float')
-                
-                curr_data = normalize1stto99th(reformat(raw_data_vol, self.n_chan))
-                # curr_data = resize_image(curr_data, rsz=self.resize_measure)
-                curr_data, _, _, _ = padding_2D(curr_data, self.crop_size)
-                self.data.append(curr_data) 
-                
-                ext = os.path.splitext(self.l_list[index])[-1]
-                if ext == '.tif' or ext == '.tiff':
-                    raw_lbl_vol = tifffile.imread(self.l_list[index]).astype('float')
-                else:
-                    raw_lbl_vol = cv2.imread(self.l_list[index], -1).astype('float')
-                    
-                curr_lbl = reformat(raw_lbl_vol)    
+                    flow_lbl = cv2.imread(self.pf_list[index], -1).astype('float')
+                flow_lbl = reformat(flow_lbl, n_chan=flow_lbl.shape[0]) 
+            else:    
+                curr_lbl = reformat(raw_lbl_vol)  
                 # curr_lbl = resize_image(curr_lbl, rsz=self.resize_measure, interpolation=cv2.INTER_NEAREST)
-                curr_lbl, _, _, _ = padding_2D(curr_lbl, self.crop_size)
-                curr_lbl = curr_lbl if has_flows else labels_to_flows(curr_lbl[0])
-                self.labels.append(curr_lbl) 
-                     
-
+                flow_lbl = labels_to_flows(curr_lbl[0])
+            
+            flow_lbl, _, _, _ = padding_2D(flow_lbl, self.crop_size)    
+            self.labels.append(flow_lbl)
+        
+        if len(self.pf_list)==0:
+            for dir_i in data_dirs:
+                flow_dir = os.path.join(dir_i,'flows')
+                os.makedirs(flow_dir)
+                for idx in trange(len(self.labels), desc='Saving computed flows...'):
+                    tifffile.imwrite(os.path.join(flow_dir,os.path.splitext(os.path.basename(self.l_list[idx]))[0]+".tif"),self.labels[idx])
+                    
+                
         # cellpose source
-        nmasks = np.array([label.max() for label in self.labels])
+        nmasks = np.array([raw_label.max() for raw_label in raw_labels])
         nremove = (nmasks < min_train_masks).sum()
         if nremove > 0:
             print(f'{nremove} train images with number of masks less than min_train_masks ({min_train_masks}), removing from train set')
@@ -89,7 +109,7 @@ class TrainCellTransposeData(Dataset):
                    
         if target:
             if target_median_diam is None:
-                target_median_diam = calc_median_dim(self.labels)
+                target_median_diam = calc_median_dim(raw_labels)
             
             print(f"Calculated median diams of the target: {target_median_diam}, \nWill get resized to equalize {median_diam}")
             self.resize_measure = float(median_diam/target_median_diam)
@@ -101,7 +121,7 @@ class TrainCellTransposeData(Dataset):
                 self.labels = self.labels + self.target_label_samples
 
         # average cell diameter
-        self.diam_train = np.array([utils.diameters(self.labels[i][0])[0] for i in range(len(self.labels))])
+        self.diam_train = np.array([utils.diameters(raw_labels[i])[0] for i in range(len(raw_labels))])
         self.diam_train_mean = self.diam_train[self.diam_train > 0].mean() if not target else median_diam
         
         if self.rescale:
@@ -116,17 +136,13 @@ class TrainCellTransposeData(Dataset):
             data_samples = []
             label_samples = []
             for index in trange(len(self.data), desc='Preprocessing training data once only...'):
-                data, labels = self.process_training_data(index, self.crop_size, has_flows=self.has_flows)
+                data, labels = self.process_training_data(index)
                 data_samples.append(data)
                 label_samples.append(labels)   
             self.data = data_samples
             self.labels = label_samples
-
-            if result_dir is not None: 
-                np.save(os.path.join(result_dir, 'train_preprocessed_data.npy'), self.data)
-                np.save(os.path.join(result_dir, 'train_preprocessed_labels.npy'), self.labels)
                     
-    def process_training_data(self, index, crop_size, has_flows=False):
+    def process_training_data(self, index):
         samples_generated = []
         data, labels = self.data[index], self.labels[index]
         
@@ -138,13 +154,13 @@ class TrainCellTransposeData(Dataset):
         # data, labels = train_generate_rand_crop(data, labels, crop=crop_size)
         # labels = labels if has_flows else labels_to_flows(labels[0]) # labels[0] because it has one channel in the front idx 0
         
-        data, labels = random_rotate_and_resize(data, Y=labels, rescale=self.resize_array[index], scale_range=self.scale_range, xy=(crop_size,crop_size))
+        data, labels = random_rotate_and_resize(data, Y=labels, rescale=self.resize_array[index], scale_range=self.scale_range, xy=(self.crop_size,self.crop_size))
         return data, labels
         
 
     def __getitem__(self, index):
-        if self.preprocessed_data is None and self.do_every_epoch:
-            return self.process_training_data(index, self.crop_size, has_flows=self.has_flows)
+        if self.do_every_epoch:
+            return self.process_training_data(index)
         else:
             return self.data[index], self.labels[index]
 
@@ -153,7 +169,7 @@ class TrainCellTransposeData(Dataset):
 
 
 class ValCellTransposeData(Dataset):
-    def __init__(self, data_dirs, n_chan, patch_size=112, resize_measure=1.0, min_overlap=0.1, augment=False):
+    def __init__(self, data_dirs, n_chan, patch_size=224, resize_measure=1.0, min_overlap=0.1, augment=False):
         
         
     

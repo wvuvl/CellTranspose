@@ -232,7 +232,7 @@ def normalize1stto99th(x):
                            / (np.percentile(sample[chan], 99) - np.percentile(sample[chan], 1))
     return sample
 
-def train_generate_rand_crop(data, label, crop=112, min_masks=1):
+def train_generate_rand_crop(data, label, crop=224, min_masks=1):
     while 1:
         x_max = data.shape[2] - crop
         y_max = data.shape[1] - crop
@@ -252,8 +252,8 @@ def labels_to_flows(label):
     """
     Converts labels to flows for training and validation - Interfaces with Cellpose's masks_to_flows dynamics
     Returns:
-        flows: list of [4 x Ly x Lx] arrays
-        flows[k][0] is labels[k], flows[k][1] is cell probability, flows[k][2] is Y flow, and flows[k][3] is X flow
+        flows:  3 x Ly x Lx array
+        flows[k][0] is cell probability, flows[k][1] is Y flow, and flows[k][2] is X flow
     """
     flows = masks_to_flows(label.astype(int))[0]
     label = (label[np.newaxis, :] > 0.5).astype(np.float32)

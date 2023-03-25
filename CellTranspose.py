@@ -32,8 +32,8 @@ parser.add_argument('--temperature', type=float, default=0.1)
 parser.add_argument('--median-diams', type=int,
                     help='Median diameter size with which to resize images to. Note: If using pretrained model, ensure'
                          ' that this variable remains the same as the given model.', default=30)
-parser.add_argument('--patch-size', type=int, help='Size of image patches with which to tile.', default=112)
-parser.add_argument('--min-overlap', type=int, help='Amount of overlap to use for tiling during testing.', default=84)
+parser.add_argument('--patch-size', type=int, help='Size of image patches with which to tile.', default=224)
+parser.add_argument('--min-overlap', type=float, help='Amount of overlap to use for tiling during testing.', default=0.1)
 
 # Control
 parser.add_argument('--dataset-name', help='Name of dataset to use for reporting results (omit the word "Dataset").')
@@ -52,7 +52,6 @@ parser.add_argument('--save-dataset', help='Name of directory to save training d
 parser.add_argument('--load-from-torch', help='If true, assumes dataset is being loaded from torch files, with no'
                                               ' preprocessing required.', action='store_true')
 parser.add_argument('--process-each-epoch', help='If true, assumes processing occurs every epoch.', action='store_true')
-parser.add_argument('--load-train-from-npy', help='If provided, assumes training data is being loaded from npy files.')
 parser.add_argument('--num-workers', type=int,
                     help='number of workers for the dataloader', default=0)
 
@@ -61,6 +60,8 @@ parser.add_argument('--train-dataset', help='The directory(s) containing (source
                     nargs='+')
 parser.add_argument('--train-from-3D', help='Whether the input training source data is 3D: assumes 2D if set to False.',
                     action='store_true')
+parser.add_argument('--flows-available', help='Specify if the flows are available and pre-computed',
+                                           action='store_true')
 
 # Target data
 parser.add_argument('--target-dataset',
@@ -68,8 +69,8 @@ parser.add_argument('--target-dataset',
                          ' is set to False, this parameter will be ignored.', nargs='+')
 parser.add_argument('--target-from-3D', help='Whether the input target data is 3D: assumes 2D if set to False.',
                     action='store_true')
-parser.add_argument('--target-flows', help='The directory(s) containing pre-calculated flows. If left empty,'
-                                           ' flows will be calculated manually.', nargs='+')
+parser.add_argument('--target-flows-available', help='Specify if the flows are available and pre-computed',
+                                           action='store_true')
 parser.add_argument('--median-diams-target', type=int,
                     help='2D median diams that will be used to equalize original median-diams', default=None)
 
@@ -112,7 +113,7 @@ tte = None
 train_losses = None
 if args.target_dataset is not None:
     
-    target_dataset = TrainCellTransposeData(args.target_dataset, args.n_chan, crop_size=args.patch_size, median_diam=args.median_diams, 
+    target_dataset = TrainCellTransposeData(args.target_dataset, args.n_chan, crop_size=args.patch_size, flows_available=args.target_flows_available, median_diam=args.median_diams, 
                                             target_median_diam=args.median_diams_target, result_dir=args.results_dir, batch_size=args.batch_size, target=True)
     
     rs = RandomSampler(target_dataset, replacement=False)
@@ -140,7 +141,7 @@ if not args.eval_only:
             args.process_each_epoch = True
         
         train_dataset = TrainCellTransposeData(args.train_dataset, args.n_chan, crop_size=args.patch_size, batch_size=args.batch_size,
-                                               preprocessed_data=args.load_train_from_npy, proc_every_epoch=args.process_each_epoch, result_dir=args.results_dir, 
+                                               flows_available=args.flows_available, proc_every_epoch=args.process_each_epoch, result_dir=args.results_dir, 
                                                median_diam=args.median_diams)
     
     if args.save_dataset:
