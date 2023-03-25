@@ -93,7 +93,7 @@ class TrainCellTransposeData(Dataset):
             if target_median_diam is None:
                 target_median_diam = calc_median_dim(self.labels)
             
-            print(f"Calculated median diams of the target: {median_diam}, \nWill get resized to equalize {median_diam}")
+            print(f"Calculated median diams of the target: {target_median_diam}, \nWill get resized to equalize {median_diam}")
             self.resize_measure = float(median_diam/target_median_diam)
         
             self.target_data_samples = self.data

@@ -2,7 +2,6 @@ import math
 import torch
 import cv2
 import numpy as np
-import copy
 from tqdm import tqdm
 from cellpose_src.dynamics import masks_to_flows, follow_flows, get_masks, compute_masks
 from cellpose_src.utils import fill_holes_and_remove_small_masks
@@ -117,15 +116,7 @@ def normalize1stto99th(x):
                            / (np.percentile(sample[chan], 99) - np.percentile(sample[chan], 1))
     return sample
 
-def normalize99(Y, lower=1,upper=99):
-    """ normalize image so 0.0 is 1st percentile and 1.0 is 99th percentile """
-    X = Y.copy()
-    x01 = np.percentile(X, lower)
-    x99 = np.percentile(X, upper)
-    X = (X - x01) / (x99 - x01)
-    return X
-
-def train_generate_rand_crop(data, label, crop=112, lbl_flows=False):
+def train_generate_rand_crop(data, label, crop=112):
     
     x_max = data.shape[2] - crop
     y_max = data.shape[1] - crop
@@ -137,18 +128,6 @@ def train_generate_rand_crop(data, label, crop=112, lbl_flows=False):
     l_patch = label[:, j:j + crop, i:i + crop]
     
     return d_patch, l_patch
-
-def random_horizontal_flip(x, y):
-    if np.random.rand() > .5:
-        x = TF.hflip(x)
-        y = TF.hflip(y)
-    return x, y
-
-
-def random_rotate(x, y):
-    angle = random.random() * 360
-    return TF.rotate(x, angle), TF.rotate(y, angle)
-
 
 def labels_to_flows(label):
     """
@@ -189,38 +168,6 @@ def followflows3D(dP, cellprob, cell_metric=12, device=None):
                           flow_threshold=flow_threshold, min_size=min_size, device=device)
     return masks
                    
-def generate_patches(data, label=None, patch=(96, 96), min_overlap=(64, 64), lbl_flows=False):
-    """
-    Generate patches of input to be passed into model. Currently set to 64x64 patches with at least 32x32 overlap
-    - image should also already be resized such that median cell diameter is 32
-    """
-    num_x_patches = math.ceil((data.shape[3] - min_overlap[0]) / (patch[0] - min_overlap[0]))
-    x_patches = np.linspace(0, data.shape[3] - patch[0], num_x_patches, dtype=int)
-    num_y_patches = math.ceil((data.shape[2] - min_overlap[1]) / (patch[1] - min_overlap[1]))
-    y_patches = np.linspace(0, data.shape[2] - patch[1], num_y_patches, dtype=int)
-
-    patch_data = torch.empty((data.shape[0] * num_x_patches * num_y_patches, data.shape[1], patch[0], patch[1]))
-    if label is not None:
-        if lbl_flows:
-            patch_label = torch.empty((num_x_patches * num_y_patches, 3, patch[0], patch[1]))
-        else:
-            patch_label = torch.empty((label.shape[0] * num_x_patches * num_y_patches, patch[0], patch[1]))
-
-    for i in range(num_x_patches):
-        for j in range(num_y_patches):
-            d_patch = data[0, :, y_patches[j]:y_patches[j] + patch[1], x_patches[i]:x_patches[i] + patch[0]]
-            patch_data[num_y_patches * i + j] = d_patch
-            if label is not None:
-                if lbl_flows:
-                    l_patch = label[:, y_patches[j]:y_patches[j] + patch[1], x_patches[i]:x_patches[i] + patch[0]]
-                else:
-                    l_patch = label[0, y_patches[j]:y_patches[j] + patch[1], x_patches[i]:x_patches[i] + patch[0]]
-                patch_label[num_y_patches * i + j] = l_patch
-    if label is None:
-        return patch_data
-    return patch_data, patch_label
-
-
 # Removes all cell labels on the edges of the given samples
 def remove_cut_cells(labels, flows=False):
     if flows:
@@ -277,7 +224,7 @@ def padding_2D(sample_data,  patch_size):
         
         sd = np.zeros((sample_data.shape[0], max(patch_size, sample_data.shape[1]), max(patch_size, sample_data.shape[2])))
         
-        set_corner = (max(0, (patch_size - sample_data.shape[2]) // 2), max(0, (patch_size - sample_data.shape[3]) // 2))
+        set_corner = (max(0, (patch_size - sample_data.shape[1]) // 2), max(0, (patch_size - sample_data.shape[2]) // 2))
         
         sd[:, set_corner[0]:set_corner[0] + sample_data.shape[1],
             set_corner[1]:set_corner[1] + sample_data.shape[2]] = sample_data

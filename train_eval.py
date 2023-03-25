@@ -68,8 +68,8 @@ def adapt_network(model: nn.Module, source_dl, target_dl, val_dl, sas_mask_loss,
                 source_dl, desc='Training - Epoch {}/{}'.format(e, n_epochs))):
             optimizer.zero_grad()
 
-            source_sample_data = source_sample_data.to(device)
-            source_sample_labels = source_sample_labels.to(device)
+            source_sample_data = source_sample_data.float().to(device)
+            source_sample_labels = source_sample_labels.float().to(device)
             source_output = model(source_sample_data)
 
             try:
@@ -77,8 +77,8 @@ def adapt_network(model: nn.Module, source_dl, target_dl, val_dl, sas_mask_loss,
             except StopIteration:
                 target_dl_iter = iter(target_dl)
                 target_sample = next(target_dl_iter)
-            target_sample_data = target_sample[0].to(device)
-            target_sample_labels = target_sample[1].to(device)
+            target_sample_data = target_sample[0].float().to(device)
+            target_sample_labels = target_sample[1].float().to(device)
             target_output = model(target_sample_data)
             if not train_direct:
                 if e <= n_epochs/2:
@@ -129,8 +129,8 @@ def validate_network(model, data_loader, flow_loss, class_loss, device):
     val_epoch_losses = []
     with no_grad():
         for (val_sample_data, val_sample_labels) in tqdm(data_loader, desc='Performing validation'):
-            val_sample_data = val_sample_data.to(device)
-            val_sample_labels = val_sample_labels.to(device)
+            val_sample_data = val_sample_data.float().to(device)
+            val_sample_labels = val_sample_labels.float().to(device)
             output = model(val_sample_data)
             grad_loss = flow_loss(output, val_sample_labels).item()
             mask_loss = class_loss(output, val_sample_labels).item()
