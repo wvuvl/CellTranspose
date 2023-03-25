@@ -9,7 +9,7 @@ from tqdm import trange
 import tifffile
 import cv2
 import numpy as np
-from transforms import reformat, normalize1stto99th, train_generate_rand_crop, labels_to_flows, resize_image, padding_2D, calc_median_dim, train_generate_rand_crop
+from transforms import reformat, normalize1stto99th, train_generate_rand_crop, labels_to_flows, resize_image, padding_2D, calc_median_dim,random_rotate_and_resize, train_generate_rand_crop
 from cellpose_src import transforms, utils
 
     
@@ -122,14 +122,14 @@ class TrainCellTransposeData(Dataset):
         
         if self.rescale:
             self.diam_train[self.diam_train<5] = 5.
-            self.scale_range = 0.5
+            self.scale_range = 0.25
             print(f'Median diameter {self.diam_train_mean}')
         else:
-            self.scale_range = 1.0
+            self.scale_range = 0
         
         # cellpose original
-        # self.resize_array = [floatcurr_diam/self.diam_train_mean) if self.rescale else 1.0 for curr_diam in self.diam_train]    
-        self.resize_array = [float(self.diam_train_mean/curr_diam) if self.rescale else 1.0 for curr_diam in self.diam_train]     
+        self.resize_array = [float(curr_diam/self.diam_train_mean) if self.rescale else 1.0 for curr_diam in self.diam_train]    
+        # self.resize_array = [float(self.diam_train_mean/curr_diam) if self.rescale else 1.0 for curr_diam in self.diam_train]     
         
         if not self.do_every_epoch:
             data_samples = []
@@ -145,19 +145,19 @@ class TrainCellTransposeData(Dataset):
         data, labels = self.data[index], self.labels[index]
         
                 
-        # random horizontal flip
-        if np.random.rand() > .5:
-            data = np.fliplr(data).copy()
-            labels = np.fliplr(labels).copy()
+        # # random horizontal flip
+        # if np.random.rand() > .5:
+        #     data = np.fliplr(data).copy()
+        #     labels = np.fliplr(labels).copy()
         
-        rand_scale = self.resize_array[index] * np.random.uniform(1-self.scale_range, 1+self.scale_range)
-        data = resize_image(data, rsz=rand_scale)
-        labels_flows = resize_image(labels[1:,:,:], rsz=rand_scale)
-        labels_mask = resize_image(labels[:1, :, :], rsz=rand_scale, interpolation=cv2.INTER_NEAREST)
-        labels = np.concatenate((labels_mask, labels_flows))
-        data, labels = train_generate_rand_crop(data, labels, crop=self.crop_size)
+        # rand_scale = self.resize_array[index] / np.random.uniform(1.-self.scale_range, 1.+self.scale_range)
+        # data = resize_image(data, rsz=rand_scale)
+        # labels_flows = resize_image(labels[1:,:,:], rsz=rand_scale)
+        # labels_mask = resize_image(labels[:1, :, :], rsz=rand_scale, interpolation=cv2.INTER_NEAREST)
+        # labels = np.concatenate((labels_mask, labels_flows))
+        # data, labels = train_generate_rand_crop(data, labels, crop=self.crop_size)
         
-        # data, labels = random_rotate_and_resize(data, Y=labels, rescale=self.resize_array[index], scale_range=self.scale_range, xy=(self.crop_size,self.crop_size))
+        data, labels = random_rotate_and_resize(data, Y=labels, rescale=self.resize_array[index], scale_range=self.scale_range, xy=(self.crop_size,self.crop_size))
         
         return data, labels
         
@@ -238,9 +238,8 @@ class ValCellTransposeData(Dataset):
     
 
 class EvalCellTransposeData(Dataset):
-    def __init__(self, data_dirs, n_chan, resize_measure=1.0):
+    def __init__(self, data_dirs, n_chan, resize_measure=1.0, median_diam=30.):
         
-        self.resize_measure = resize_measure
         self.n_chan = n_chan
         self.d_list = []
         self.l_list = []
@@ -258,6 +257,8 @@ class EvalCellTransposeData(Dataset):
                                                     or f.lower().endswith('.png')])
         self.data = []
         self.labels = []
+        self.resize_measure_range = []
+        
         for index in range(len(self.d_list)):
             ext = os.path.splitext(self.d_list[index])[-1]
             if ext == '.tif' or ext == '.tiff':
@@ -267,19 +268,23 @@ class EvalCellTransposeData(Dataset):
             self.data.append(normalize1stto99th(reformat(raw_data_vol, self.n_chan))) 
             
             if os.path.exists(os.path.join(dir_i,'labels')):
+                
+                print("Labels exist, they will be used to resize the image for evaluation...")
                 ext = os.path.splitext(self.l_list[index])[-1]
                 if ext == '.tif' or ext == '.tiff':
                     raw_lbl_vol = tifffile.imread(self.l_list[index]).astype('float')
                 else:
                     raw_lbl_vol = cv2.imread(self.l_list[index], -1).astype('float')
                 self.labels.append(raw_lbl_vol) 
-
-        
+                self.resize_measure_range.append(float(median_diam/utils.diameters(raw_lbl_vol)[0]))
+            else:
+                self.resize_measure_range.append(resize_measure)
+                
     def __len__(self):
         return len(self.data)
     
     def __getitem__(self, index):   
-        return self.data[index], self.d_list[index], self.resize_measure
+        return self.data[index], self.d_list[index], self.resize_measure_range[index]
 
 # Updated more efficient version    
 class EvalCellTransposeData3D(Dataset):

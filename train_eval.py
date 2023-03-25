@@ -149,6 +149,7 @@ def eval_network_2D(model: nn.Module, data_loader: DataLoader, device, patch_per
         pred_list = []
         for (sample_data, data_file, resize_measure) in tqdm(data_loader, desc='Evaluating Test Dataset'):
             sample_data = sample_data.squeeze(0).numpy()
+            sample_shape = sample_data.shape
             sample_data = resize_image(sample_data, rsz=resize_measure)
             curr_sample, set_corner, unpadded_dims, resized_dims = padding_2D(sample_data, patch_size)
             predictions = run_overlaps(model, curr_sample, batch_size=patch_per_batch, device=device, augment=augment, 
@@ -156,7 +157,7 @@ def eval_network_2D(model: nn.Module, data_loader: DataLoader, device, patch_per
             yf = predictions[:,set_corner[0]:set_corner[0]+unpadded_dims[0], set_corner[1]:set_corner[1]+unpadded_dims[1]]
             
             #resizing back to the original dim     
-            yf = resize_image(yf, unpadded_dims[0], unpadded_dims[1])
+            yf = resize_image(yf, sample_shape[1], sample_shape[2])
             sample_mask = followflows(yf)
             
             masks.append(sample_mask)

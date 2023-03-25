@@ -192,7 +192,7 @@ if not args.train_only:
     
     
     if not args.test_from_3D:
-        test_dataset = EvalCellTransposeData( args.test_dataset, args.n_chan, resize_measure=resize_measure)
+        test_dataset = EvalCellTransposeData( args.test_dataset, args.n_chan, resize_measure=resize_measure, median_diam=args.median_diams)
         eval_dl = DataLoader(test_dataset, batch_size=1, shuffle=False, num_workers=args.num_workers)
         masks, prediction_list, data_list = eval_network_2D(model, eval_dl, device, patch_per_batch=args.eval_batch_size,
                                                           patch_size=args.patch_size, min_overlap=args.min_overlap)
