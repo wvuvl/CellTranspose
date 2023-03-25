@@ -9,12 +9,12 @@ from tqdm import trange
 import tifffile
 import cv2
 import numpy as np
-from transforms import reformat, normalize1stto99th, train_generate_rand_crop, labels_to_flows, resize_image, padding_2D, calc_median_dim, random_rotate_and_resize
+from transforms import reformat, normalize1stto99th, train_generate_rand_crop, labels_to_flows, resize_image, padding_2D, calc_median_dim, train_generate_rand_crop
 from cellpose_src import transforms, utils
 
     
 class TrainCellTransposeData(Dataset):
-    def __init__(self, data_dirs, n_chan, crop_size=224, flows_available=False, batch_size=1, proc_every_epoch=True, 
+    def __init__(self, data_dirs, n_chan, crop_size=112, flows_available=False, batch_size=1, proc_every_epoch=True, 
                  result_dir=None, median_diam=30, target_median_diam=None, target=False, rescale=True, min_train_masks=1):
         
         
@@ -26,6 +26,7 @@ class TrainCellTransposeData(Dataset):
         self.d_list = []
         self.l_list = []
         self.pf_list = []
+        self.save_pf_list = []
         self.min_train_masks = min_train_masks
         self.median_diam = median_diam
         self.rescale = rescale
@@ -48,7 +49,11 @@ class TrainCellTransposeData(Dataset):
                                                     os.listdir(os.path.join(dir_i, 'flows')) if f.lower()
                                                 .endswith('.tiff') or f.lower().endswith('.tif')
                                                     or f.lower().endswith('.png')])   
-            else: 
+            else:
+                flow_dir = os.path.join(dir_i,'flows')
+                os.makedirs(flow_dir)
+                for lbl_name in self.l_list:
+                    self.save_pf_list.append(os.path.join(flow_dir,os.path.splitext(os.path.basename(lbl_name))[0]+".tif"))
                 print(f"Flows directory {os.path.join(dir_i,'flows')} does not exist, \n    will continue without loading flows and will compute")  
                    
         self.data = []
@@ -62,8 +67,6 @@ class TrainCellTransposeData(Dataset):
                 raw_data_vol = cv2.imread(self.d_list[index], -1).astype('float')
             
             curr_data = normalize1stto99th(reformat(raw_data_vol, self.n_chan))
-            # curr_data = resize_image(curr_data, rsz=self.resize_measure)
-            curr_data, _, _, _ = padding_2D(curr_data, self.crop_size)
             self.data.append(curr_data) 
             
             ext = os.path.splitext(self.l_list[index])[-1]
@@ -79,22 +82,15 @@ class TrainCellTransposeData(Dataset):
                 if ext == '.tif' or ext == '.tiff':
                     flow_lbl = tifffile.imread(self.pf_list[index]).astype('float')
                 else:
-                    flow_lbl = cv2.imread(self.pf_list[index], -1).astype('float')
-                flow_lbl = reformat(flow_lbl, n_chan=flow_lbl.shape[0]) 
-            else:    
-                curr_lbl = reformat(raw_lbl_vol)  
-                # curr_lbl = resize_image(curr_lbl, rsz=self.resize_measure, interpolation=cv2.INTER_NEAREST)
-                flow_lbl = labels_to_flows(curr_lbl[0])
-            
-            flow_lbl, _, _, _ = padding_2D(flow_lbl, self.crop_size)    
+                    flow_lbl = cv2.imread(self.pf_list[index], -1).astype('float')   
+                
+            else:
+                flow_lbl = labels_to_flows(raw_lbl_vol)
+                tifffile.imwrite(self.save_pf_list[index], flow_lbl)
+                
+            flow_lbl = reformat(flow_lbl, n_chan=flow_lbl.shape[0])   
             self.labels.append(flow_lbl)
-        
-        if len(self.pf_list)==0:
-            for dir_i in data_dirs:
-                flow_dir = os.path.join(dir_i,'flows')
-                os.makedirs(flow_dir)
-                for idx in trange(len(self.labels), desc='Saving computed flows...'):
-                    tifffile.imwrite(os.path.join(flow_dir,os.path.splitext(os.path.basename(self.l_list[idx]))[0]+".tif"),self.labels[idx])
+            
                     
                 
         # cellpose source
@@ -129,8 +125,11 @@ class TrainCellTransposeData(Dataset):
             self.scale_range = 0.5
             print(f'Median diameter {self.diam_train_mean}')
         else:
-            self.scale_range = 1.0    
-        self.resize_array = [float(curr_diam/self.diam_train_mean) if self.rescale else 1.0 for curr_diam in self.diam_train]     
+            self.scale_range = 1.0
+        
+        # cellpose original
+        # self.resize_array = [floatcurr_diam/self.diam_train_mean) if self.rescale else 1.0 for curr_diam in self.diam_train]    
+        self.resize_array = [float(self.diam_train_mean/curr_diam) if self.rescale else 1.0 for curr_diam in self.diam_train]     
         
         if not self.do_every_epoch:
             data_samples = []
@@ -143,18 +142,23 @@ class TrainCellTransposeData(Dataset):
             self.labels = label_samples
                     
     def process_training_data(self, index):
-        samples_generated = []
         data, labels = self.data[index], self.labels[index]
         
                 
-        # # random horizontal flip
-        # if np.random.rand() > .5:
-        #     data = np.fliplr(data).copy()
-        #     labels = np.fliplr(labels).copy()
-        # data, labels = train_generate_rand_crop(data, labels, crop=crop_size)
-        # labels = labels if has_flows else labels_to_flows(labels[0]) # labels[0] because it has one channel in the front idx 0
+        # random horizontal flip
+        if np.random.rand() > .5:
+            data = np.fliplr(data).copy()
+            labels = np.fliplr(labels).copy()
         
-        data, labels = random_rotate_and_resize(data, Y=labels, rescale=self.resize_array[index], scale_range=self.scale_range, xy=(self.crop_size,self.crop_size))
+        rand_scale = self.resize_array[index] * np.random.uniform(1-self.scale_range, 1+self.scale_range)
+        data = resize_image(data, rsz=rand_scale)
+        labels_flows = resize_image(labels[1:,:,:], rsz=rand_scale)
+        labels_mask = resize_image(labels[:1, :, :], rsz=rand_scale, interpolation=cv2.INTER_NEAREST)
+        labels = np.concatenate((labels_mask, labels_flows))
+        data, labels = train_generate_rand_crop(data, labels, crop=self.crop_size)
+        
+        # data, labels = random_rotate_and_resize(data, Y=labels, rescale=self.resize_array[index], scale_range=self.scale_range, xy=(self.crop_size,self.crop_size))
+        
         return data, labels
         
 
@@ -169,7 +173,7 @@ class TrainCellTransposeData(Dataset):
 
 
 class ValCellTransposeData(Dataset):
-    def __init__(self, data_dirs, n_chan, patch_size=224, resize_measure=1.0, min_overlap=0.1, augment=False):
+    def __init__(self, data_dirs, n_chan, patch_size=112, resize_measure=1.0, min_overlap=0.1, augment=False):
         
         
     

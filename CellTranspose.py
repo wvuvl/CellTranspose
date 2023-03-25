@@ -32,7 +32,7 @@ parser.add_argument('--temperature', type=float, default=0.1)
 parser.add_argument('--median-diams', type=int,
                     help='Median diameter size with which to resize images to. Note: If using pretrained model, ensure'
                          ' that this variable remains the same as the given model.', default=30)
-parser.add_argument('--patch-size', type=int, help='Size of image patches with which to tile.', default=224)
+parser.add_argument('--patch-size', type=int, help='Size of image patches with which to tile.', default=112)
 parser.add_argument('--min-overlap', type=float, help='Amount of overlap to use for tiling during testing.', default=0.1)
 
 # Control

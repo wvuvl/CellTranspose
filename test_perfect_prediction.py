@@ -21,7 +21,7 @@ dataset_name = args.dataset_name
 results_dir = args.results_dir
 dataset_dir = args.dataset_dir
 median_diams = (30, 30)
-patch_size = (224, 224)
+patch_size = (112, 112)
 min_overlap = (84, 84)
 
 assert not os.path.exists(results_dir),\

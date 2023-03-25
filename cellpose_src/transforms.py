@@ -88,7 +88,7 @@ def average_tiles(y, ysub, xsub, Ly, Lx):
     yf /= Navg
     return yf
 
-def make_tiles(imgi, bsize=224, augment=False, tile_overlap=0.1):
+def make_tiles(imgi, bsize=112, augment=False, tile_overlap=0.1):
     """ make tiles of image to run at test-time
 
     if augmented, tiles are flipped and tile_overlap=2.
@@ -102,7 +102,7 @@ def make_tiles(imgi, bsize=224, augment=False, tile_overlap=0.1):
     imgi : float32
         array that's nchan x Ly x Lx
 
-    bsize : float (optional, default 224)
+    bsize : float (optional, default 112)
         size of tiles
 
     augment : bool (optional, default False)
@@ -483,7 +483,7 @@ def pad_image_ND(img0, div=16, extra = 1):
     xsub = np.arange(ypad1, ypad1+Lx)
     return I, ysub, xsub
 
-def random_rotate_and_resize(X, Y=None, scale_range=1., xy = (224,224), 
+def random_rotate_and_resize(X, Y=None, scale_range=1., xy = (112,112), 
                              do_flip=True, rescale=None, unet=False):
     """ augmentation by random rotation and resizing
 
@@ -504,7 +504,7 @@ def random_rotate_and_resize(X, Y=None, scale_range=1., xy = (224,224),
             Range of resizing of images for augmentation. Images are resized by
             (1-scale_range/2) + scale_range * np.random.rand()
 
-        xy: tuple, int (optional, default (224,224))
+        xy: tuple, int (optional, default (112,112))
             size of transformed images to return
 
         do_flip: bool (optional, default True)

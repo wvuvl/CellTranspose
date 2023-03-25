@@ -10,7 +10,7 @@ import random
 import torchvision.transforms.functional as TF
 
 # cellpose source, changed for celltranspose
-def random_rotate_and_resize(X, Y=None, scale_range=1., xy = (224,224), 
+def random_rotate_and_resize(X, Y=None, scale_range=1., xy = (112,112), 
                              do_flip=True, rescale=None, unet=False):
     """ augmentation by random rotation and resizing
 
@@ -31,7 +31,7 @@ def random_rotate_and_resize(X, Y=None, scale_range=1., xy = (224,224),
             Range of resizing of images for augmentation. Images are resized by
             (1-scale_range/2) + scale_range * np.random.rand()
 
-        xy: tuple, int (optional, default (224,224))
+        xy: tuple, int (optional, default (112,112))
             size of transformed images to return
 
         do_flip: bool (optional, default True)
@@ -232,8 +232,12 @@ def normalize1stto99th(x):
                            / (np.percentile(sample[chan], 99) - np.percentile(sample[chan], 1))
     return sample
 
-def train_generate_rand_crop(data, label, crop=224, min_masks=1):
+def train_generate_rand_crop(data, label, crop=112, min_masks=1):
+    data, _, _, _ = padding_2D(data, crop)
+    label, _, _, _ = padding_2D(label, crop)
+    
     while 1:
+        
         x_max = data.shape[2] - crop
         y_max = data.shape[1] - crop
             
@@ -244,7 +248,7 @@ def train_generate_rand_crop(data, label, crop=224, min_masks=1):
         l_patch = label[:, j:j + crop, i:i + crop]
         
         if len(np.unique(l_patch)[1:])>=min_masks: break
-        else: print(f'Masks in this crop found less than {min_masks}')
+        # else: print(f'Masks in this crop found less than {min_masks}')
     
     return d_patch, l_patch
 

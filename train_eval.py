@@ -165,7 +165,7 @@ def eval_network_2D(model: nn.Module, data_loader: DataLoader, device, patch_per
             
     return masks, pred_list, data_list
 
-def run_overlaps(model: nn.Module, imgi, batch_size, device, augment=False, patch_size=224, min_overlap=0.1): 
+def run_overlaps(model: nn.Module, imgi, batch_size, device, augment=False, patch_size=112, min_overlap=0.1): 
     IMG, ysub, xsub, Ly, Lx = transforms.make_tiles(imgi, bsize=patch_size, augment=augment, tile_overlap=min_overlap)
     
     model.eval()
