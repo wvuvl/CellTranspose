@@ -148,7 +148,7 @@ if not args.eval_only:
         save(train_dataset, args.save_dataset)
         print('Saved.')
 
-    train_dl = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, drop_last=True, num_workers=args.num_workers)
+    train_dl = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, drop_last=True, num_workers=args.num_workers, )
 
     if args.val_dataset is not None:
         val_dataset = ValCellTransposeData(args.val_dataset, args.n_chan, patch_size=args.patch_size, resize_measure=float(args.median_diams/args.median_diams_test))

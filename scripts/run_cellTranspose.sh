@@ -1,5 +1,5 @@
 python3 "CellTranspose.py" \
-    --num-workers 2 \
+    --num-workers 6 \
     --epochs 500 \
     --n-chan 2 \
     --batch-size 8 \

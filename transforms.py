@@ -9,6 +9,122 @@ from cellpose_src.transforms import _taper_mask
 import random
 import torchvision.transforms.functional as TF
 
+# cellpose source, changed for celltranspose
+def random_rotate_and_resize(X, Y=None, scale_range=1., xy = (224,224), 
+                             do_flip=True, rescale=None, unet=False):
+    """ augmentation by random rotation and resizing
+
+        X and Y are lists or arrays of length nimg, with dims channels x Ly x Lx (channels optional)
+
+        Parameters
+        ----------
+        X: LIST of ND-arrays, float
+            list of image arrays of size [nchan x Ly x Lx] or [Ly x Lx]
+
+        Y: LIST of ND-arrays, float (optional, default None)
+            list of image labels of size [nlabels x Ly x Lx] or [Ly x Lx]. The 1st channel
+            of Y is always nearest-neighbor interpolated (assumed to be masks or 0-1 representation).
+            If Y.shape[0]==3 and not unet, then the labels are assumed to be [cell probability, Y flow, X flow]. 
+            If unet, second channel is dist_to_bound.
+
+        scale_range: float (optional, default 1.0)
+            Range of resizing of images for augmentation. Images are resized by
+            (1-scale_range/2) + scale_range * np.random.rand()
+
+        xy: tuple, int (optional, default (224,224))
+            size of transformed images to return
+
+        do_flip: bool (optional, default True)
+            whether or not to flip images horizontally
+
+        rescale: array, float (optional, default None)
+            how much to resize images by before performing augmentations
+
+        unet: bool (optional, default False)
+
+        Returns
+        -------
+        imgi: ND-array, float
+            transformed images in array [nimg x nchan x xy[0] x xy[1]]
+
+        lbl: ND-array, float
+            transformed labels in array [nimg x nchan x xy[0] x xy[1]]
+
+        scale: array, float
+            amount each image was resized by
+
+    """
+    scale_range = max(0, min(2, float(scale_range)))
+
+    if X.ndim>2:
+        nchan = X.shape[0]
+    else:
+        nchan = 1
+        
+    imgi  = np.zeros((nchan, xy[0], xy[1]), np.float32)
+
+    
+    if Y is not None:
+        if Y.ndim>2:
+            nt = Y.shape[0]
+        else:
+            nt = 1
+        lbl = np.zeros((nt, xy[0], xy[1]), np.float32)
+
+   
+    
+    Ly, Lx = X.shape[-2:]
+
+    # generate random augmentation parameters
+    flip = np.random.rand()>.5
+    theta = np.random.rand() * np.pi * 2
+    scale = (1-scale_range/2) + scale_range * np.random.rand()
+    if rescale is not None:
+        scale*= 1. / rescale
+    dxy = np.maximum(0, np.array([Lx*scale-xy[1],Ly*scale-xy[0]]))
+    dxy = (np.random.rand(2,) - .5) * dxy
+
+    # create affine transform
+    cc = np.array([Lx/2, Ly/2])
+    cc1 = cc - np.array([Lx-xy[1], Ly-xy[0]])/2 + dxy
+    pts1 = np.float32([cc,cc + np.array([1,0]), cc + np.array([0,1])])
+    pts2 = np.float32([cc1,
+            cc1 + scale*np.array([np.cos(theta), np.sin(theta)]),
+            cc1 + scale*np.array([np.cos(np.pi/2+theta), np.sin(np.pi/2+theta)])])
+    M = cv2.getAffineTransform(pts1,pts2)
+
+    img = X.copy()
+    if Y is not None:
+        labels = Y.copy()
+        if labels.ndim<3:
+            labels = labels[np.newaxis,:,:]
+
+    if flip and do_flip:
+        img = img[..., ::-1]
+        if Y is not None:
+            labels = labels[..., ::-1]
+            if nt > 1 and not unet:
+                labels[2] = -labels[2]
+
+    for k in range(nchan):
+        I = cv2.warpAffine(img[k], M, (xy[1],xy[0]), flags=cv2.INTER_LINEAR)
+        imgi[k] = I
+
+    if Y is not None:
+        for k in range(nt):
+            if k==0:
+                lbl[k] = cv2.warpAffine(labels[k], M, (xy[1],xy[0]), flags=cv2.INTER_NEAREST)
+            else:
+                lbl[k] = cv2.warpAffine(labels[k], M, (xy[1],xy[0]), flags=cv2.INTER_LINEAR)
+
+        if nt > 1 and not unet:
+            v1 = lbl[2].copy()
+            v2 = lbl[1].copy()
+            lbl[1] = (-v1 * np.sin(-theta) + v2*np.cos(-theta))
+            lbl[2] = (v1 * np.cos(-theta) + v2*np.sin(-theta))
+
+    return imgi, lbl
+
 
 def reformat(x, n_chan=1, do_3D=False):
     """
@@ -116,16 +232,19 @@ def normalize1stto99th(x):
                            / (np.percentile(sample[chan], 99) - np.percentile(sample[chan], 1))
     return sample
 
-def train_generate_rand_crop(data, label, crop=112):
-    
-    x_max = data.shape[2] - crop
-    y_max = data.shape[1] - crop
+def train_generate_rand_crop(data, label, crop=112, min_masks=1):
+    while 1:
+        x_max = data.shape[2] - crop
+        y_max = data.shape[1] - crop
+            
+        i = random.randint(0, x_max)
+        j = random.randint(0, y_max)
         
-    i = random.randint(0, x_max)
-    j = random.randint(0, y_max)
-    
-    d_patch = data[:, j:j + crop, i:i + crop]
-    l_patch = label[:, j:j + crop, i:i + crop]
+        d_patch = data[:, j:j + crop, i:i + crop]
+        l_patch = label[:, j:j + crop, i:i + crop]
+        
+        if len(np.unique(l_patch)[1:])>=min_masks: break
+        else: print(f'Masks in this crop found less than {min_masks}')
     
     return d_patch, l_patch
 

@@ -9,13 +9,13 @@ from tqdm import trange
 import tifffile
 import cv2
 import numpy as np
-from transforms import reformat, normalize1stto99th, train_generate_rand_crop, labels_to_flows, resize_image, padding_2D, calc_median_dim
-from cellpose_src import transforms
+from transforms import reformat, normalize1stto99th, train_generate_rand_crop, labels_to_flows, resize_image, padding_2D, calc_median_dim, random_rotate_and_resize
+from cellpose_src import transforms, utils
 
     
 class TrainCellTransposeData(Dataset):
     def __init__(self, data_dirs, n_chan, crop_size=112, has_flows=False, batch_size=1, preprocessed_data=None, proc_every_epoch=True, 
-                 result_dir=None, median_diam=30, target_median_diam=None, target=False):
+                 result_dir=None, median_diam=30, target_median_diam=None, target=False, rescale=True, min_train_masks=1):
         
         
 
@@ -26,7 +26,9 @@ class TrainCellTransposeData(Dataset):
         self.n_chan = n_chan
         self.d_list = []
         self.l_list = []
-        self.resize_measure = 1.0
+        self.min_train_masks = min_train_masks
+        self.median_diam = median_diam
+        self.rescale = rescale
         
         for dir_i in data_dirs:
             assert os.path.exists(os.path.join(dir_i,'labels')), f"Training folder {os.path.join(dir_i,'labels')} does not exists, it is needed for training."
@@ -58,7 +60,7 @@ class TrainCellTransposeData(Dataset):
                     raw_data_vol = cv2.imread(self.d_list[index], -1).astype('float')
                 
                 curr_data = normalize1stto99th(reformat(raw_data_vol, self.n_chan))
-                curr_data = resize_image(curr_data, rsz=self.resize_measure)
+                # curr_data = resize_image(curr_data, rsz=self.resize_measure)
                 curr_data, _, _, _ = padding_2D(curr_data, self.crop_size)
                 self.data.append(curr_data) 
                 
@@ -69,27 +71,23 @@ class TrainCellTransposeData(Dataset):
                     raw_lbl_vol = cv2.imread(self.l_list[index], -1).astype('float')
                     
                 curr_lbl = reformat(raw_lbl_vol)    
-                curr_lbl = resize_image(curr_lbl, rsz=self.resize_measure, interpolation=cv2.INTER_NEAREST)
+                # curr_lbl = resize_image(curr_lbl, rsz=self.resize_measure, interpolation=cv2.INTER_NEAREST)
                 curr_lbl, _, _, _ = padding_2D(curr_lbl, self.crop_size)
+                curr_lbl = curr_lbl if has_flows else labels_to_flows(curr_lbl[0])
                 self.labels.append(curr_lbl) 
-            
+                     
 
-            if not self.do_every_epoch:
-                data_samples = []
-                label_samples = []
-                for index in trange(len(self.data), desc='Preprocessing training data once only...'):
-                    data, labels = self.process_training_data(index, self.crop_size, has_flows=self.has_flows)
-                    data_samples.append(data)
-                    label_samples.append(labels)   
-                self.data = data_samples
-                self.labels = label_samples
-
-                if result_dir is not None: 
-                    np.save(os.path.join(result_dir, 'train_preprocessed_data.npy'), self.data)
-                    np.save(os.path.join(result_dir, 'train_preprocessed_labels.npy'), self.labels)          
-       
+        # cellpose source
+        nmasks = np.array([label.max() for label in self.labels])
+        nremove = (nmasks < min_train_masks).sum()
+        if nremove > 0:
+            print(f'{nremove} train images with number of masks less than min_train_masks ({min_train_masks}), removing from train set')
+            ikeep = np.nonzero(nmasks >= min_train_masks)[0]
+            self.data = [self.data[i] for i in ikeep]
+            self.labels = [self.labels[i] for i in ikeep]
+        
+                   
         if target:
-
             if target_median_diam is None:
                 target_median_diam = calc_median_dim(self.labels)
             
@@ -102,22 +100,47 @@ class TrainCellTransposeData(Dataset):
                 self.data = self.data + self.target_data_samples
                 self.labels = self.labels + self.target_label_samples
 
+        # average cell diameter
+        self.diam_train = np.array([utils.diameters(self.labels[i][0])[0] for i in range(len(self.labels))])
+        self.diam_train_mean = self.diam_train[self.diam_train > 0].mean() if not target else median_diam
+        
+        if self.rescale:
+            self.diam_train[self.diam_train<5] = 5.
+            self.scale_range = 0.5
+            print(f'Median diameter {self.diam_train_mean}')
+        else:
+            self.scale_range = 1.0    
+        self.resize_array = [float(curr_diam/self.diam_train_mean) if self.rescale else 1.0 for curr_diam in self.diam_train]     
+        
+        if not self.do_every_epoch:
+            data_samples = []
+            label_samples = []
+            for index in trange(len(self.data), desc='Preprocessing training data once only...'):
+                data, labels = self.process_training_data(index, self.crop_size, has_flows=self.has_flows)
+                data_samples.append(data)
+                label_samples.append(labels)   
+            self.data = data_samples
+            self.labels = label_samples
+
+            if result_dir is not None: 
+                np.save(os.path.join(result_dir, 'train_preprocessed_data.npy'), self.data)
+                np.save(os.path.join(result_dir, 'train_preprocessed_labels.npy'), self.labels)
+                    
     def process_training_data(self, index, crop_size, has_flows=False):
         samples_generated = []
         data, labels = self.data[index], self.labels[index]
         
-        try:            
-            # random horizontal flip
-            if np.random.rand() > .5:
-                data = np.fliplr(data).copy()
-                labels = np.fliplr(labels).copy()
-            data, labels = train_generate_rand_crop(data, labels, crop=crop_size)
-            labels = labels if has_flows else labels_to_flows(labels[0]) # labels[0] because it has one channel in the front idx 0
-            return data, labels
+                
+        # # random horizontal flip
+        # if np.random.rand() > .5:
+        #     data = np.fliplr(data).copy()
+        #     labels = np.fliplr(labels).copy()
+        # data, labels = train_generate_rand_crop(data, labels, crop=crop_size)
+        # labels = labels if has_flows else labels_to_flows(labels[0]) # labels[0] because it has one channel in the front idx 0
         
-        except RuntimeError:
-            print('Caught Size Mismatch.')
-            samples_generated.append(-1)
+        data, labels = random_rotate_and_resize(data, Y=labels, rescale=self.resize_array[index], scale_range=self.scale_range, xy=(crop_size,crop_size))
+        return data, labels
+        
 
     def __getitem__(self, index):
         if self.preprocessed_data is None and self.do_every_epoch:
