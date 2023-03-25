@@ -111,7 +111,7 @@ class TrainCellTransposeData(Dataset):
             if np.random.rand() > .5:
                 data = np.fliplr(data).copy()
                 labels = np.fliplr(labels).copy()
-            data, labels = train_generate_rand_crop(data, labels, crop=crop_size, lbl_flows=has_flows)
+            data, labels = train_generate_rand_crop(data, labels, crop=crop_size)
             labels = labels if has_flows else labels_to_flows(labels[0]) # labels[0] because it has one channel in the front idx 0
             return data, labels
         
