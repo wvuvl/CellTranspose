@@ -122,10 +122,10 @@ class TrainCellTransposeData(Dataset):
         
         if self.rescale:
             self.diam_train[self.diam_train<5] = 5.
-            self.scale_range = 0.25
+            self.scale_range = 0.5
             print(f'Median diameter {self.diam_train_mean}')
         else:
-            self.scale_range = 0
+            self.scale_range = 1.
         
         # cellpose original
         self.resize_array = [float(curr_diam/self.diam_train_mean) if self.rescale else 1.0 for curr_diam in self.diam_train]    
