@@ -33,7 +33,7 @@ parser.add_argument('--median-diams', type=int,
                     help='Median diameter size with which to resize images to. Note: If using pretrained model, ensure'
                          ' that this variable remains the same as the given model.', default=30)
 parser.add_argument('--patch-size', type=int, help='Size of image patches with which to tile.', default=112)
-parser.add_argument('--min-overlap', type=float, help='Amount of overlap to use for tiling during testing.', default=0.1)
+parser.add_argument('--min-overlap', type=float, help='Amount of overlap to use for tiling during testing.', default=0.5)
 
 # Control
 parser.add_argument('--dataset-name', help='Name of dataset to use for reporting results (omit the word "Dataset").')
@@ -152,7 +152,7 @@ if not args.eval_only:
     train_dl = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, drop_last=True, num_workers=args.num_workers, )
 
     if args.val_dataset is not None:
-        val_dataset = ValCellTransposeData(args.val_dataset, args.n_chan, patch_size=args.patch_size, resize_measure=float(args.median_diams/args.median_diams_test))
+        val_dataset = ValCellTransposeData(args.val_dataset, args.n_chan, patch_size=args.patch_size, median_diam=args.median_diams)
         val_dl = DataLoader(val_dataset, batch_size=args.batch_size, shuffle=False, num_workers=args.num_workers)
     else:
         val_dl = None

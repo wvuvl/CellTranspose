@@ -173,11 +173,8 @@ class TrainCellTransposeData(Dataset):
 
 
 class ValCellTransposeData(Dataset):
-    def __init__(self, data_dirs, n_chan, patch_size=112, resize_measure=1.0, min_overlap=0.1, augment=False):
-        
-        
+    def __init__(self, data_dirs, n_chan, patch_size=112, median_diam=30., min_overlap=0.1, augment=False):
     
-        self.resize_measure = resize_measure
         self.n_chan = n_chan
         self.d_list = []
         self.l_list = []
@@ -198,6 +195,27 @@ class ValCellTransposeData(Dataset):
         self.data = np.array([])
         self.labels = np.array([])
         for index in trange(len(self.d_list), desc='Loading and Processing Validation Dataset...'):
+            ext = os.path.splitext(self.l_list[index])[-1]
+            if ext == '.tif' or ext == '.tiff':
+                raw_lbl_vol = tifffile.imread(self.l_list[index]).astype('float')
+            else:
+                raw_lbl_vol = cv2.imread(self.l_list[index], -1).astype('float')
+            
+            lbl_diam = utils.diameters(raw_lbl_vol)[0]
+            resize_measure = median_diam/lbl_diam if lbl_diam > 5. else 5.
+                
+            curr_lbl = reformat(raw_lbl_vol)
+            # lable interpolation changed to nearest neighbour from linear
+            curr_lbl = resize_image(curr_lbl, rsz=resize_measure, interpolation=cv2.INTER_NEAREST)
+            curr_lbl = labels_to_flows(curr_lbl[0]) # curr_lbl[0] because it has one channel in the front idx 0
+            curr_lbl, _, _, _ = padding_2D(curr_lbl, patch_size)
+            LBL, _, _, _, _ = transforms.make_tiles(curr_lbl, bsize=patch_size, augment=augment, tile_overlap=min_overlap)
+            ny, nx, nchan, ly, lx = LBL.shape
+            LBL = np.reshape(LBL, (ny*nx, nchan, ly, lx))
+            self.labels = LBL if len(self.labels) == 0 else np.concatenate((self.labels, LBL))
+
+            
+            
             ext = os.path.splitext(self.d_list[index])[-1]
             if ext == '.tif' or ext == '.tiff':
                 raw_data_vol = tifffile.imread(self.d_list[index]).astype('float')
@@ -211,21 +229,7 @@ class ValCellTransposeData(Dataset):
             IMG = np.reshape(IMG, (ny*nx, nchan, ly, lx))
             self.data = IMG if len(self.data) == 0 else np.concatenate((self.data, IMG))
             
-            ext = os.path.splitext(self.l_list[index])[-1]
-            if ext == '.tif' or ext == '.tiff':
-                raw_lbl_vol = tifffile.imread(self.l_list[index]).astype('float')
-            else:
-                raw_lbl_vol = cv2.imread(self.l_list[index], -1).astype('float')
             
-            curr_lbl = reformat(raw_lbl_vol)
-            # lable interpolation changed to nearest neighbour from linear
-            curr_lbl = resize_image(curr_lbl, rsz=resize_measure, interpolation=cv2.INTER_NEAREST)
-            curr_lbl = labels_to_flows(curr_lbl[0]) # curr_lbl[0] because it has one channel in the front idx 0
-            curr_lbl, _, _, _ = padding_2D(curr_lbl, patch_size)
-            LBL, _, _, _, _ = transforms.make_tiles(curr_lbl, bsize=patch_size, augment=augment, tile_overlap=min_overlap)
-            ny, nx, nchan, ly, lx = LBL.shape
-            LBL = np.reshape(LBL, (ny*nx, nchan, ly, lx))
-            self.labels = LBL if len(self.labels) == 0 else np.concatenate((self.labels, LBL))
         
         # should work since the shape of the data will be the same
         self.data = np.asarray(self.data)
@@ -269,17 +273,19 @@ class EvalCellTransposeData(Dataset):
             
             if os.path.exists(os.path.join(dir_i,'labels')):
                 
-                print("Labels exist, they will be used to resize the image for evaluation...")
                 ext = os.path.splitext(self.l_list[index])[-1]
                 if ext == '.tif' or ext == '.tiff':
                     raw_lbl_vol = tifffile.imread(self.l_list[index]).astype('float')
                 else:
                     raw_lbl_vol = cv2.imread(self.l_list[index], -1).astype('float')
                 self.labels.append(raw_lbl_vol) 
-                self.resize_measure_range.append(float(median_diam/utils.diameters(raw_lbl_vol)[0]))
+                lbl_diam = utils.diameters(raw_lbl_vol)[0]
+                self.resize_measure_range.append(float(median_diam/lbl_diam if lbl_diam > 5. else 5. ))
             else:
                 self.resize_measure_range.append(resize_measure)
-                
+            
+        if len(self.labels) != 0: print("Labels exist, they will be used to resize the image for evaluation...")  
+            
     def __len__(self):
         return len(self.data)
     

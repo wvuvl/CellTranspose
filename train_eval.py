@@ -32,7 +32,7 @@ def train_network(model, train_dl, val_dl, class_loss, flow_loss, optimizer, sch
             train_loss.backward()
             optimizer.step()
 
-        if e >= 250 or n_epochs <= 10: scheduler.step()
+        if e >= n_epochs/2: scheduler.step()
         
         train_epoch_loss = mean(train_epoch_losses)
         train_losses.append(train_epoch_loss)
