@@ -415,7 +415,7 @@ def diam_range(masks):
         x_ranges.append(np.amax(inds[1]) - np.amin(inds[1]))
         y_ranges.append(np.amax(inds[0]) - np.amin(inds[0]))
         diams.append(int(math.sqrt(x_ranges[-1] * y_ranges[-1])))
-    return diams
+    return diams if len(diams)>0 else [0] 
 
 
 def cell_range(masks, mask_val):

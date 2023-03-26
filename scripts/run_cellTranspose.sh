@@ -7,7 +7,7 @@ python3 "CellTranspose.py" \
     --eval-batch-size 48 \
     --dataset-name "Cellpose" \
     --flows-available \
-    --results-dir "/mnt/12F9CADD61CB0337/syGlass/inquiry_test/cp_data_results_500_our_aug/" \
+    --results-dir "/mnt/12F9CADD61CB0337/syGlass/inquiry_test/cp_data_results_500_our_diam_calc/" \
     --train-dataset "/mnt/5400C9CC66E778B9/Ram/work/cell_analysis/datasets/datasets/generalist_cellpose/Generalized/train" \
     --val-dataset "/mnt/5400C9CC66E778B9/Ram/work/cell_analysis/datasets/datasets/generalist_cellpose/Generalized/test" \
     --test-dataset "/mnt/5400C9CC66E778B9/Ram/work/cell_analysis/datasets/datasets/generalist_cellpose/Generalized/test" \

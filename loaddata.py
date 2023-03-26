@@ -119,8 +119,8 @@ class TrainCellTransposeData(Dataset):
         # average cell diameter
         self.diam_train = np.array([utils.diameters(raw_labels[i])[0] for i in range(len(raw_labels))])
         self.diam_train_mean = self.diam_train[self.diam_train > 0].mean() if not target else median_diam
-        # self.diam_train_median_percentile = np.array([np.percentile(np.array(diam_range(raw_labels[i])), 75) for i in trange(len(raw_labels), desc='Calculating Diam...')])
-        
+        self.diam_train_median_percentile = np.array([np.percentile(np.array(diam_range(raw_labels[i])), 75) for i in trange(len(raw_labels), desc='Calculating Diam...')])
+        self.diam_train_median_percentile[self.diam_train_median_percentile<5] = 5.
         
         # if self.rescale:
         #     self.diam_train[self.diam_train<5] = 5.
@@ -130,8 +130,8 @@ class TrainCellTransposeData(Dataset):
         #     self.scale_range = 1.
         
         # cellpose original
-        self.resize_array = [float(curr_diam/self.diam_train_mean) if self.rescale else 1.0 for curr_diam in self.diam_train]    
-        # self.resize_array = [float(curr_diam/self.diam_train_mean) if self.rescale else 1.0 for curr_diam in self.diam_train_median_percentile]    
+        # self.resize_array = [float(curr_diam/self.diam_train_mean) if self.rescale else 1.0 for curr_diam in self.diam_train]    
+        self.resize_array = [float(curr_diam/self.diam_train_mean) if self.rescale else 1.0 for curr_diam in self.diam_train_median_percentile]    
         
         if not self.do_every_epoch:
             data_samples = []
@@ -205,8 +205,8 @@ class ValCellTransposeData(Dataset):
             else:
                 raw_lbl_vol = cv2.imread(self.l_list[index], -1).astype('float')
             
-            lbl_diam = utils.diameters(raw_lbl_vol)[0]
-            resize_measure = median_diam/lbl_diam if lbl_diam > 5. else 5.
+            lbl_diam = np.percentile(np.array(diam_range(raw_lbl_vol)), 75) # utils.diameters(raw_lbl_vol)[0] # 
+            resize_measure = median_diam/(lbl_diam if lbl_diam > 5. else 5.)
                 
             curr_lbl = reformat(raw_lbl_vol)
             # lable interpolation changed to nearest neighbour from linear
@@ -283,8 +283,8 @@ class EvalCellTransposeData(Dataset):
                 else:
                     raw_lbl_vol = cv2.imread(self.l_list[index], -1).astype('float')
                 self.labels.append(raw_lbl_vol) 
-                lbl_diam = utils.diameters(raw_lbl_vol)[0]
-                self.resize_measure_range.append(float(median_diam/lbl_diam if lbl_diam > 5. else 5. ))
+                lbl_diam = np.percentile(np.array(diam_range(raw_lbl_vol)), 75) # utils.diameters(raw_lbl_vol)[0] # 
+                self.resize_measure_range.append(float(median_diam/(lbl_diam if lbl_diam > 5. else 5.)))
             else:
                 self.resize_measure_range.append(resize_measure)
             
