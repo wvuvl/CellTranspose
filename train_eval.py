@@ -19,8 +19,7 @@ def train_network(model, train_dl, val_dl, class_loss, flow_loss, optimizer, sch
         train_epoch_losses = []
         model.train()
         print(scheduler.get_last_lr())
-        for (sample_data, sample_labels) in tqdm(train_dl, desc='Training - Epoch {}/{}'.format(e, n_epochs)):
-                       
+        for (sample_data, sample_labels) in tqdm(train_dl, desc='Training - Epoch {}/{}'.format(e, n_epochs)):           
             sample_data = sample_data.float().to(device)
             sample_labels = sample_labels.float().to(device)
             optimizer.zero_grad()

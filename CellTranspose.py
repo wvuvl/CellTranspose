@@ -111,6 +111,28 @@ args.min_overlap = args.min_overlap
 ttt = None
 tte = None
 train_losses = None
+train_dataset = None
+target_dataset = None
+
+if args.train_dataset is not None:
+    if args.load_from_torch:
+        print('Loading Saved Training Dataset... ', end='')
+        train_dataset = load(args.train_dataset[0])
+        print('Done.')
+    else:
+        if not args.do_adaptation:
+            args.process_each_epoch = True
+        
+        train_dataset = TrainCellTransposeData(args.train_dataset, args.n_chan, crop_size=args.patch_size, batch_size=args.batch_size,
+                                                flows_available=args.flows_available, proc_every_epoch=args.process_each_epoch, result_dir=args.results_dir, 
+                                                median_diam=args.median_diams)
+    args.median_diams = train_dataset.diam_train_mean
+
+if args.save_dataset:
+    print('Saving Training Dataset... ', end='')
+    save(train_dataset, args.save_dataset)
+    print('Saved.')
+        
 if args.target_dataset is not None:
     
     target_dataset = TrainCellTransposeData(args.target_dataset, args.n_chan, crop_size=args.patch_size, flows_available=args.target_flows_available, median_diam=args.median_diams, 
@@ -119,8 +141,8 @@ if args.target_dataset is not None:
     rs = RandomSampler(target_dataset, replacement=False)
     bs = BatchSampler(rs, args.batch_size, True)
     target_dl = DataLoader(target_dataset, batch_sampler=bs, num_workers=args.num_workers)
-else:
-    target_dataset = None
+
+    
 
 model = CellTransposeModel(channels=args.n_chan, device=device)
 model = nn.DataParallel(model)
@@ -132,23 +154,7 @@ if not args.eval_only:
     class_loss = ClassLoss(nn.BCEWithLogitsLoss(reduction='mean'))
     flow_loss = FlowLoss(nn.MSELoss(reduction='mean'))
     optimizer = SGD(model.parameters(), lr=args.learning_rate, momentum=args.momentum, weight_decay=args.weight_decay)
-    if args.load_from_torch:
-        print('Loading Saved Training Dataset... ', end='')
-        train_dataset = load(args.train_dataset[0])
-        print('Done.')
-    else:
-        if not args.do_adaptation:
-            args.process_each_epoch = True
-        
-        train_dataset = TrainCellTransposeData(args.train_dataset, args.n_chan, crop_size=args.patch_size, batch_size=args.batch_size,
-                                               flows_available=args.flows_available, proc_every_epoch=args.process_each_epoch, result_dir=args.results_dir, 
-                                               median_diam=args.median_diams)
     
-    if args.save_dataset:
-        print('Saving Training Dataset... ', end='')
-        save(train_dataset, args.save_dataset)
-        print('Saved.')
-
     train_dl = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, drop_last=True, num_workers=args.num_workers, )
 
     if args.val_dataset is not None:
@@ -185,6 +191,7 @@ if not args.eval_only:
     
 if not args.train_only:
     start_eval = time.time()
+    
     if target_dataset is not None:
         resize_measure = target_dataset.resize_measure
     else:

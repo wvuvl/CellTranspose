@@ -9,7 +9,7 @@ from tqdm import trange
 import tifffile
 import cv2
 import numpy as np
-from transforms import reformat, normalize1stto99th, train_generate_rand_crop, labels_to_flows, resize_image, padding_2D, calc_median_dim,random_rotate_and_resize, train_generate_rand_crop
+from transforms import reformat, normalize1stto99th, train_generate_rand_crop, labels_to_flows, resize_image, padding_2D, calc_median_dim,random_rotate_and_resize, train_generate_rand_crop, remove_cut_cells, diam_range
 from cellpose_src import transforms, utils
 
     
@@ -119,17 +119,19 @@ class TrainCellTransposeData(Dataset):
         # average cell diameter
         self.diam_train = np.array([utils.diameters(raw_labels[i])[0] for i in range(len(raw_labels))])
         self.diam_train_mean = self.diam_train[self.diam_train > 0].mean() if not target else median_diam
+        # self.diam_train_median_percentile = np.array([np.percentile(np.array(diam_range(raw_labels[i])), 75) for i in trange(len(raw_labels), desc='Calculating Diam...')])
         
-        if self.rescale:
-            self.diam_train[self.diam_train<5] = 5.
-            self.scale_range = 0.5
-            print(f'Median diameter {self.diam_train_mean}')
-        else:
-            self.scale_range = 1.
+        
+        # if self.rescale:
+        #     self.diam_train[self.diam_train<5] = 5.
+        #     self.scale_range = 0.5
+        #     print(f'Median diameter {self.diam_train_mean}')
+        # else:
+        #     self.scale_range = 1.
         
         # cellpose original
         self.resize_array = [float(curr_diam/self.diam_train_mean) if self.rescale else 1.0 for curr_diam in self.diam_train]    
-        # self.resize_array = [float(self.diam_train_mean/curr_diam) if self.rescale else 1.0 for curr_diam in self.diam_train]     
+        # self.resize_array = [float(curr_diam/self.diam_train_mean) if self.rescale else 1.0 for curr_diam in self.diam_train_median_percentile]    
         
         if not self.do_every_epoch:
             data_samples = []
@@ -144,22 +146,24 @@ class TrainCellTransposeData(Dataset):
     def process_training_data(self, index):
         data, labels = self.data[index], self.labels[index]
         
-                
-        # # random horizontal flip
-        # if np.random.rand() > .5:
-        #     data = np.fliplr(data).copy()
-        #     labels = np.fliplr(labels).copy()
         
-        # rand_scale = self.resize_array[index] / np.random.uniform(1.-self.scale_range, 1.+self.scale_range)
-        # data = resize_image(data, rsz=rand_scale)
-        # labels_flows = resize_image(labels[1:,:,:], rsz=rand_scale)
-        # labels_mask = resize_image(labels[:1, :, :], rsz=rand_scale, interpolation=cv2.INTER_NEAREST)
-        # labels = np.concatenate((labels_mask, labels_flows))
-        # data, labels = train_generate_rand_crop(data, labels, crop=self.crop_size)
+        # rand_scale = self.median_diam/(np.percentile(np.array(diam_range(labels[0])), 75)*np.random.uniform(0.75, 1.25))
+        rand_scale = (1/self.resize_array[index])*np.random.uniform(0.75, 1.25)
+        data = resize_image(data, rsz=rand_scale)
+        labels_flows = resize_image(labels[1:], rsz=rand_scale)
+        labels_mask = resize_image(labels[0][np.newaxis,:,:], rsz=rand_scale, interpolation=cv2.INTER_NEAREST)
+        labels = np.concatenate((labels_mask, labels_flows))
+        data, labels = train_generate_rand_crop(data, labels, crop=self.crop_size)
+        # random horizontal flip
+        if np.random.rand() > .5:
+            data = data[..., ::-1]
+            labels = labels[..., ::-1]
+            # x-flows values are inverted when fliped, thus, inverting back
+            labels[2] = -labels[2]
+            
+        # data, labels = random_rotate_and_resize(data, Y=labels, rescale=self.resize_array[index], scale_range=self.scale_range, xy=(self.crop_size,self.crop_size))
         
-        data, labels = random_rotate_and_resize(data, Y=labels, rescale=self.resize_array[index], scale_range=self.scale_range, xy=(self.crop_size,self.crop_size))
-        
-        return data, labels
+        return data.copy(), labels.copy()
         
 
     def __getitem__(self, index):
