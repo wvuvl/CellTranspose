@@ -60,8 +60,6 @@ parser.add_argument('--train-dataset', help='The directory(s) containing (source
                     nargs='+')
 parser.add_argument('--train-from-3D', help='Whether the input training source data is 3D: assumes 2D if set to False.',
                     action='store_true')
-parser.add_argument('--flows-available', help='Specify if the flows are available and pre-computed',
-                                           action='store_true')
 
 # Target data
 parser.add_argument('--target-dataset',
@@ -124,7 +122,7 @@ if args.train_dataset is not None:
             args.process_each_epoch = True
         
         train_dataset = TrainCellTransposeData(args.train_dataset, args.n_chan, crop_size=args.patch_size, batch_size=args.batch_size,
-                                                flows_available=args.flows_available, proc_every_epoch=args.process_each_epoch, result_dir=args.results_dir, 
+                                               proc_every_epoch=args.process_each_epoch, result_dir=args.results_dir, 
                                                 median_diam=args.median_diams)
     args.median_diams = train_dataset.diam_train_mean
 
@@ -135,7 +133,7 @@ if args.save_dataset:
         
 if args.target_dataset is not None:
     
-    target_dataset = TrainCellTransposeData(args.target_dataset, args.n_chan, crop_size=args.patch_size, flows_available=args.target_flows_available, median_diam=args.median_diams, 
+    target_dataset = TrainCellTransposeData(args.target_dataset, args.n_chan, crop_size=args.patch_size, median_diam=args.median_diams, 
                                             target_median_diam=args.median_diams_target, result_dir=args.results_dir, batch_size=args.batch_size, target=True)
     
     rs = RandomSampler(target_dataset, replacement=False)

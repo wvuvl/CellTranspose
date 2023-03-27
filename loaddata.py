@@ -14,13 +14,12 @@ from cellpose_src import transforms, utils
 
     
 class TrainCellTransposeData(Dataset):
-    def __init__(self, data_dirs, n_chan, crop_size=112, flows_available=False, batch_size=1, proc_every_epoch=True, 
+    def __init__(self, data_dirs, n_chan, crop_size=112, batch_size=1, proc_every_epoch=True, 
                  result_dir=None, median_diam=30, target_median_diam=None, target=False, rescale=True, min_train_masks=1):
         
         
-
+        self.diam_train_mean = median_diam
         self.crop_size = crop_size
-        self.flows_available = flows_available
         self.do_every_epoch = proc_every_epoch
         self.n_chan = n_chan
         self.d_list = []
@@ -28,8 +27,8 @@ class TrainCellTransposeData(Dataset):
         self.pf_list = []
         self.save_pf_list = []
         self.min_train_masks = min_train_masks
-        self.median_diam = median_diam
         self.rescale = rescale
+        self.resize_measure = 1.0
         
         for dir_i in data_dirs:
             assert os.path.exists(os.path.join(dir_i,'labels')), f"Training folder {os.path.join(dir_i,'labels')} does not exists, it is needed for training."
@@ -42,19 +41,7 @@ class TrainCellTransposeData(Dataset):
             self.l_list = self.l_list + sorted([dir_i + os.sep + 'labels' + os.sep + f for f in
                                                 os.listdir(os.path.join(dir_i, 'labels')) if f.lower()
                                             .endswith('.tiff') or f.lower().endswith('.tif')
-                                                or f.lower().endswith('.png')])
-            
-            if flows_available and os.path.exists(os.path.join(dir_i,'flows')):
-                self.pf_list = self.pf_list + sorted([dir_i + os.sep + 'flows' + os.sep + f for f in
-                                                    os.listdir(os.path.join(dir_i, 'flows')) if f.lower()
-                                                .endswith('.tiff') or f.lower().endswith('.tif')
-                                                    or f.lower().endswith('.png')])   
-            # else:
-            #     # flow_dir = os.path.join(dir_i,'flows')
-            #     # os.makedirs(flow_dir)
-            #     # for lbl_name in self.l_list:
-            #     #     self.save_pf_list.append(os.path.join(flow_dir,os.path.splitext(os.path.basename(lbl_name))[0]+".tif"))
-            #     # print(f"Flows directory {os.path.join(dir_i,'flows')} does not exist, \n    will continue without loading flows and will compute")  
+                                                or f.lower().endswith('.png')]) 
                    
         self.data = []
         self.labels = []
@@ -75,22 +62,8 @@ class TrainCellTransposeData(Dataset):
             else:
                 raw_lbl_vol = cv2.imread(self.l_list[index], -1).astype('float')
             raw_labels.append(raw_lbl_vol)
-            
-            # temp
             self.labels.append(reformat(raw_lbl_vol))
-            # if len(self.pf_list)>0:
-            #     ext = os.path.splitext(self.pf_list[index])[-1]
-            #     if ext == '.tif' or ext == '.tiff':
-            #         flow_lbl = tifffile.imread(self.pf_list[index]).astype('float')
-            #     else:
-            #         flow_lbl = cv2.imread(self.pf_list[index], -1).astype('float')   
-                
-            # else:
-            #     flow_lbl = labels_to_flows(raw_lbl_vol)
-            #     tifffile.imwrite(self.save_pf_list[index], flow_lbl)
-                
-            # flow_lbl = reformat(flow_lbl, n_chan=flow_lbl.shape[0])   
-            # self.labels.append(flow_lbl)
+            
             
                     
                 
@@ -103,37 +76,45 @@ class TrainCellTransposeData(Dataset):
             self.data = [self.data[i] for i in ikeep]
             self.labels = [self.labels[i] for i in ikeep]
         
-                   
+        
+        
+        if self.rescale:
+            # self.diam_train[self.diam_train<12.] = 12.
+            self.scale_range = 0.5
+        else:
+            self.scale_range = 1.
+        
+        # average cell diameter
+        # self.diam_train = np.array([utils.diameters(raw_labels[i])[0] for i in range(len(raw_labels))])
+        # self.diam_train_mean = self.diam_train[self.diam_train > 0].mean() if not target else median_diam
+            
+        print(f"Calculated/Given median diams of the train: {self.diam_train_mean}")         
         if target:
             if target_median_diam is None:
-                target_median_diam = calc_median_dim(raw_labels)
+                diams = []
+                for t_label in raw_labels:
+                    diams = diams + diam_range(t_label)
+                target_median_diam = np.percentile(np.array(diams), 75) 
             
-            print(f"Calculated median diams of the target: {target_median_diam}, \nWill get resized to equalize {median_diam}")
-            self.resize_measure = float(median_diam/target_median_diam)
+            print(f"Calculated median diams of the target: {target_median_diam}, \nWill get resized to equalize {self.diam_train_mean}")
+            self.resize_measure = float(self.diam_train_mean/target_median_diam)
         
             self.target_data_samples = self.data
             self.target_label_samples = self.labels
             for _ in range(1, math.ceil(batch_size / len(self.data))):
                 self.data = self.data + self.target_data_samples
                 self.labels = self.labels + self.target_label_samples
-
-        # average cell diameter
-        # self.diam_train = np.array([utils.diameters(raw_labels[i])[0] for i in range(len(raw_labels))])
-        self.diam_train_mean = median_diam #self.diam_train[self.diam_train > 0].mean() if not target else median_diam
-        print(f"Calculated/Given median diams of the train: {self.diam_train_mean}")
-        self.diam_train_median_percentile = np.array([np.percentile(np.array(diam_range(raw_labels[i])), 75) for i in trange(len(raw_labels), desc='Calculating Diam...')])
-        self.diam_train_median_percentile[self.diam_train_median_percentile<12.] = 12.
-        
-        # if self.rescale:
-        #     self.diam_train[self.diam_train<5] = 5.
-        #     self.scale_range = 0.5
-        #     print(f'Median diameter {self.diam_train_mean}')
-        # else:
-        #     self.scale_range = 1.
-        
-        # cellpose original
-        # self.resize_array = [float(curr_diam/self.diam_train_mean) if self.rescale else 1.0 for curr_diam in self.diam_train]    
-        self.resize_array = [float(curr_diam/self.diam_train_mean) if self.rescale else 1.0 for curr_diam in self.diam_train_median_percentile]    
+                
+            self.resize_array = np.full(len(self.data), 1./self.resize_measure )    
+        else:           
+            
+            self.diam_train_median_percentile = np.array([np.percentile(np.array(diam_range(raw_labels[i])), 75) for i in trange(len(raw_labels), desc='Calculating Diam...')])
+            self.diam_train_median_percentile[self.diam_train_median_percentile<12.] = 12.
+            # cellpose original
+            # self.resize_array = [float(curr_diam/self.diam_train_mean) if self.rescale else 1.0 for curr_diam in self.diam_train]    
+            self.resize_array = [float(curr_diam/self.diam_train_mean) if self.rescale else 1.0 for curr_diam in self.diam_train_median_percentile]
+         
+            
         
         if not self.do_every_epoch:
             data_samples = []
@@ -147,7 +128,7 @@ class TrainCellTransposeData(Dataset):
                     
     def process_training_data(self, index):
         data, labels = self.data[index], self.labels[index]
-        data, labels = random_rotate_and_resize(data, Y=labels[0], rescale=self.resize_array[index], scale_range=0.5, xy=(self.crop_size,self.crop_size))
+        data, labels = random_rotate_and_resize(data, Y=labels[0], rescale=self.resize_array[index], scale_range=self.rescale, xy=(self.crop_size,self.crop_size))
         labels =  labels_to_flows(labels[0])  
         return data.copy(), labels.copy()
         
@@ -191,7 +172,7 @@ class ValCellTransposeData(Dataset):
             else:
                 raw_lbl_vol = cv2.imread(self.l_list[index], -1).astype('float')
             
-            lbl_diam = np.percentile(np.array(diam_range(raw_lbl_vol)), 75) # utils.diameters(raw_lbl_vol)[0] # 
+            lbl_diam =np.percentile(np.array(diam_range(raw_lbl_vol)), 75) #  utils.diameters(raw_lbl_vol)[0] # 
             resize_measure = median_diam/(lbl_diam if lbl_diam > 12. else 12.)
                 
             curr_lbl = reformat(raw_lbl_vol)
@@ -266,7 +247,7 @@ class EvalCellTransposeData(Dataset):
                 else:
                     raw_lbl_vol = cv2.imread(self.l_list[index], -1).astype('float')
                 self.labels.append(raw_lbl_vol) 
-                lbl_diam = np.percentile(np.array(diam_range(raw_lbl_vol)), 75) # utils.diameters(raw_lbl_vol)[0] # 
+                lbl_diam = np.percentile(np.array(diam_range(raw_lbl_vol)), 75) #  utils.diameters(raw_lbl_vol)[0] # 
                 self.resize_measure_range.append(float(median_diam/(lbl_diam if lbl_diam > 12. else 12.)))
             else:
                 self.resize_measure_range.append(resize_measure)
