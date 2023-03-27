@@ -153,10 +153,10 @@ def eval_network_2D(model: nn.Module, data_loader: DataLoader, device, patch_per
             curr_sample, set_corner, unpadded_dims, resized_dims = padding_2D(sample_data, patch_size)
             predictions = run_overlaps(model, curr_sample, batch_size=patch_per_batch, device=device, augment=augment, 
                                         patch_size=patch_size, min_overlap=min_overlap)           
-            yf = predictions[:,set_corner[0]:set_corner[0]+unpadded_dims[0], set_corner[1]:set_corner[1]+unpadded_dims[1]]
+            predictions = predictions[:,set_corner[0]:set_corner[0]+unpadded_dims[0], set_corner[1]:set_corner[1]+unpadded_dims[1]]
             
             #resizing back to the original dim     
-            yf = resize_image(yf, sample_shape[1], sample_shape[2])
+            yf = resize_image(predictions, sample_shape[1], sample_shape[2])
             sample_mask = followflows(yf)
             
             masks.append(sample_mask)

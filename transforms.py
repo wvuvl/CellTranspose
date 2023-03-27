@@ -352,7 +352,7 @@ def padding_2D(sample_data,  patch_size):
         sd[:, set_corner[0]:set_corner[0] + sample_data.shape[1],
             set_corner[1]:set_corner[1] + sample_data.shape[2]] = sample_data
         
-        resized_dims = (sample_data.shape[1], sample_data.shape[2])
+        resized_dims = (sd.shape[1], sd.shape[2])
         
         return sd, set_corner, unpadded_dims, resized_dims
     else:
@@ -373,7 +373,7 @@ def padding_3D(sample_data,  patch_size):
         sd[:, :, set_corner[0]:set_corner[0] + sample_data.shape[2],
             set_corner[1]:set_corner[1] + sample_data.shape[3]] = sample_data
         
-        resized_dims = (sample_data.shape[2], sample_data.shape[3])
+        resized_dims = (sd.shape[2], sd.shape[3])
         
         return sd, set_corner, unpadded_dims, resized_dims
     else:

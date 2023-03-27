@@ -9,7 +9,7 @@ from tqdm import trange
 import tifffile
 import cv2
 import numpy as np
-from transforms import reformat, normalize1stto99th, train_generate_rand_crop, labels_to_flows, resize_image, padding_2D, calc_median_dim,random_rotate_and_resize, train_generate_rand_crop, remove_cut_cells, diam_range
+from transforms import reformat, normalize1stto99th, train_generate_rand_crop, labels_to_flows, resize_image, padding_2D, calc_median_dim,random_rotate_and_resize, train_generate_rand_crop, diam_range
 from cellpose_src import transforms, utils
 
     
@@ -49,12 +49,12 @@ class TrainCellTransposeData(Dataset):
                                                     os.listdir(os.path.join(dir_i, 'flows')) if f.lower()
                                                 .endswith('.tiff') or f.lower().endswith('.tif')
                                                     or f.lower().endswith('.png')])   
-            else:
-                flow_dir = os.path.join(dir_i,'flows')
-                os.makedirs(flow_dir)
-                for lbl_name in self.l_list:
-                    self.save_pf_list.append(os.path.join(flow_dir,os.path.splitext(os.path.basename(lbl_name))[0]+".tif"))
-                print(f"Flows directory {os.path.join(dir_i,'flows')} does not exist, \n    will continue without loading flows and will compute")  
+            # else:
+            #     # flow_dir = os.path.join(dir_i,'flows')
+            #     # os.makedirs(flow_dir)
+            #     # for lbl_name in self.l_list:
+            #     #     self.save_pf_list.append(os.path.join(flow_dir,os.path.splitext(os.path.basename(lbl_name))[0]+".tif"))
+            #     # print(f"Flows directory {os.path.join(dir_i,'flows')} does not exist, \n    will continue without loading flows and will compute")  
                    
         self.data = []
         self.labels = []
@@ -76,20 +76,21 @@ class TrainCellTransposeData(Dataset):
                 raw_lbl_vol = cv2.imread(self.l_list[index], -1).astype('float')
             raw_labels.append(raw_lbl_vol)
             
-            
-            if len(self.pf_list)>0:
-                ext = os.path.splitext(self.pf_list[index])[-1]
-                if ext == '.tif' or ext == '.tiff':
-                    flow_lbl = tifffile.imread(self.pf_list[index]).astype('float')
-                else:
-                    flow_lbl = cv2.imread(self.pf_list[index], -1).astype('float')   
+            # temp
+            self.labels.append(reformat(raw_lbl_vol))
+            # if len(self.pf_list)>0:
+            #     ext = os.path.splitext(self.pf_list[index])[-1]
+            #     if ext == '.tif' or ext == '.tiff':
+            #         flow_lbl = tifffile.imread(self.pf_list[index]).astype('float')
+            #     else:
+            #         flow_lbl = cv2.imread(self.pf_list[index], -1).astype('float')   
                 
-            else:
-                flow_lbl = labels_to_flows(raw_lbl_vol)
-                tifffile.imwrite(self.save_pf_list[index], flow_lbl)
+            # else:
+            #     flow_lbl = labels_to_flows(raw_lbl_vol)
+            #     tifffile.imwrite(self.save_pf_list[index], flow_lbl)
                 
-            flow_lbl = reformat(flow_lbl, n_chan=flow_lbl.shape[0])   
-            self.labels.append(flow_lbl)
+            # flow_lbl = reformat(flow_lbl, n_chan=flow_lbl.shape[0])   
+            # self.labels.append(flow_lbl)
             
                     
                 
@@ -117,10 +118,11 @@ class TrainCellTransposeData(Dataset):
                 self.labels = self.labels + self.target_label_samples
 
         # average cell diameter
-        self.diam_train = np.array([utils.diameters(raw_labels[i])[0] for i in range(len(raw_labels))])
-        self.diam_train_mean = self.diam_train[self.diam_train > 0].mean() if not target else median_diam
+        # self.diam_train = np.array([utils.diameters(raw_labels[i])[0] for i in range(len(raw_labels))])
+        self.diam_train_mean = median_diam #self.diam_train[self.diam_train > 0].mean() if not target else median_diam
+        print(f"Calculated/Given median diams of the train: {self.diam_train_mean}")
         self.diam_train_median_percentile = np.array([np.percentile(np.array(diam_range(raw_labels[i])), 75) for i in trange(len(raw_labels), desc='Calculating Diam...')])
-        self.diam_train_median_percentile[self.diam_train_median_percentile<5] = 5.
+        self.diam_train_median_percentile[self.diam_train_median_percentile<12.] = 12.
         
         # if self.rescale:
         #     self.diam_train[self.diam_train<5] = 5.
@@ -145,24 +147,8 @@ class TrainCellTransposeData(Dataset):
                     
     def process_training_data(self, index):
         data, labels = self.data[index], self.labels[index]
-        
-        
-        # rand_scale = self.median_diam/(np.percentile(np.array(diam_range(labels[0])), 75)*np.random.uniform(0.75, 1.25))
-        rand_scale = (1/self.resize_array[index])*np.random.uniform(0.75, 1.25)
-        data = resize_image(data, rsz=rand_scale)
-        labels_flows = resize_image(labels[1:], rsz=rand_scale)
-        labels_mask = resize_image(labels[0][np.newaxis,:,:], rsz=rand_scale, interpolation=cv2.INTER_NEAREST)
-        labels = np.concatenate((labels_mask, labels_flows))
-        data, labels = train_generate_rand_crop(data, labels, crop=self.crop_size)
-        # random horizontal flip
-        if np.random.rand() > .5:
-            data = data[..., ::-1]
-            labels = labels[..., ::-1]
-            # x-flows values are inverted when fliped, thus, inverting back
-            labels[2] = -labels[2]
-            
-        # data, labels = random_rotate_and_resize(data, Y=labels, rescale=self.resize_array[index], scale_range=self.scale_range, xy=(self.crop_size,self.crop_size))
-        
+        data, labels = random_rotate_and_resize(data, Y=labels[0], rescale=self.resize_array[index], scale_range=0.5, xy=(self.crop_size,self.crop_size))
+        labels =  labels_to_flows(labels[0])  
         return data.copy(), labels.copy()
         
 
@@ -206,12 +192,12 @@ class ValCellTransposeData(Dataset):
                 raw_lbl_vol = cv2.imread(self.l_list[index], -1).astype('float')
             
             lbl_diam = np.percentile(np.array(diam_range(raw_lbl_vol)), 75) # utils.diameters(raw_lbl_vol)[0] # 
-            resize_measure = median_diam/(lbl_diam if lbl_diam > 5. else 5.)
+            resize_measure = median_diam/(lbl_diam if lbl_diam > 12. else 12.)
                 
             curr_lbl = reformat(raw_lbl_vol)
             # lable interpolation changed to nearest neighbour from linear
             curr_lbl = resize_image(curr_lbl, rsz=resize_measure, interpolation=cv2.INTER_NEAREST)
-            curr_lbl = labels_to_flows(curr_lbl[0]) # curr_lbl[0] because it has one channel in the front idx 0
+            # curr_lbl = labels_to_flows(curr_lbl[0]) # curr_lbl[0] because it has one channel in the front idx 0
             curr_lbl, _, _, _ = padding_2D(curr_lbl, patch_size)
             LBL, _, _, _, _ = transforms.make_tiles(curr_lbl, bsize=patch_size, augment=augment, tile_overlap=min_overlap)
             ny, nx, nchan, ly, lx = LBL.shape
@@ -232,12 +218,9 @@ class ValCellTransposeData(Dataset):
             ny, nx, nchan, ly, lx = IMG.shape
             IMG = np.reshape(IMG, (ny*nx, nchan, ly, lx))
             self.data = IMG if len(self.data) == 0 else np.concatenate((self.data, IMG))
-            
-            
         
-        # should work since the shape of the data will be the same
-        self.data = np.asarray(self.data)
-        self.labels = np.asarray(self.labels)
+        self.labels = np.array([labels_to_flows(self.labels[i][0]) for i in trange(len(self.labels), desc='Computing Val Patch Flows')])
+    
     def __len__(self):
         return len(self.data)
     
@@ -284,7 +267,7 @@ class EvalCellTransposeData(Dataset):
                     raw_lbl_vol = cv2.imread(self.l_list[index], -1).astype('float')
                 self.labels.append(raw_lbl_vol) 
                 lbl_diam = np.percentile(np.array(diam_range(raw_lbl_vol)), 75) # utils.diameters(raw_lbl_vol)[0] # 
-                self.resize_measure_range.append(float(median_diam/(lbl_diam if lbl_diam > 5. else 5.)))
+                self.resize_measure_range.append(float(median_diam/(lbl_diam if lbl_diam > 12. else 12.)))
             else:
                 self.resize_measure_range.append(resize_measure)
             
