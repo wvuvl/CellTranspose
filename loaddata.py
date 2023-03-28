@@ -95,7 +95,7 @@ class TrainCellTransposeData(Dataset):
                 for t_label in raw_labels:
                     diams = diams + diam_range(t_label)
                 target_median_diam = np.percentile(np.array(diams), 75) 
-            
+            target_median_diam = target_median_diam if target_median_diam > 12. else 12.    
             print(f"Calculated median diams of the target: {target_median_diam}, \nWill get resized to equalize {self.diam_train_mean}")
             self.resize_measure = float(self.diam_train_mean/target_median_diam)
         

@@ -13,7 +13,7 @@
 #     --calculate-ap
 
 python3 "CellTranspose.py" \
-    --min-overlap 0.1 \
+    --min-overlap 0.75 \
     --eval-only \
     --n-chan 2 \
     --eval-batch-size 48 \
