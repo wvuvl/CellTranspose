@@ -138,6 +138,7 @@ def reformat(x, n_chan=1, do_3D=False):
         elif len(x.shape) == 4:
             if x.shape[3] > x.shape[0]:
                 x = x.transpose(1, 2, 3, 0)
+            # checking if the array has information, sometimes they are just 0. i.e., cellpose dataset
             info_chans = [len(np.unique(x[:, :, :, i])) > 1 for i in range(x.shape[3])]
             x = x[:, :, :, info_chans]
             x = np.transpose(x, (3, 0, 1, 2))[:n_chan]  # Remove any additional channels
@@ -153,6 +154,7 @@ def reformat(x, n_chan=1, do_3D=False):
         elif len(x.shape) == 3:
             if x.shape[2] > x.shape[0]:
                 x = x.transpose(1, 2, 0)
+            # checking if the array has information, sometimes they are just 0
             info_chans = [len(np.unique(x[:, :, i])) > 1 for i in range(x.shape[2])]
             x = x[:, :, info_chans]
             x = np.transpose(x, (2, 0, 1))[:n_chan]  # Remove any additional channels
@@ -209,7 +211,10 @@ def resize_image(img0, Ly=None, Lx=None, rsz=None, interpolation=cv2.INTER_LINEA
             # for 4D data, consider the input stack is Z x ch x Y x X format
             imgs = np.zeros((img0.shape[0],img0.shape[1], Ly, Lx), np.float32)
         for i,img in enumerate(img0):
-            imgs[i] = cv2.resize(img.transpose(1, 2, 0), (Lx, Ly), interpolation=interpolation).transpose(2,0,1)
+            if img.shape[0] == 1:
+                imgs[i] = cv2.resize(img.transpose(1, 2, 0), (Lx, Ly), interpolation=interpolation)[np.newaxis,:,:]
+            else:
+                imgs[i] = cv2.resize(img.transpose(1, 2, 0), (Lx, Ly), interpolation=interpolation).transpose(2,0,1)
     else:
         # 2D image with channels in the front
         if img0.shape[0] == 1:
@@ -218,7 +223,6 @@ def resize_image(img0, Ly=None, Lx=None, rsz=None, interpolation=cv2.INTER_LINEA
             imgs = cv2.resize(img0.transpose(1, 2, 0), (Lx, Ly), interpolation=interpolation).transpose(2,0,1)
         
     return imgs
-
 
 def normalize1stto99th(x):
     """

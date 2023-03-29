@@ -29,7 +29,7 @@ class TrainCellTransposeData(Dataset):
         self.min_train_masks = min_train_masks
         self.rescale = rescale
         self.resize_measure = 1.0
-        
+        self.target_median_diam = target_median_diam
         for dir_i in data_dirs:
             assert os.path.exists(os.path.join(dir_i,'labels')), f"Training folder {os.path.join(dir_i,'labels')} does not exists, it is needed for training."
             self.d_list = self.d_list + sorted([dir_i + os.sep + 'data' + os.sep + f for f in
@@ -90,14 +90,14 @@ class TrainCellTransposeData(Dataset):
             
         print(f"Calculated/Given median diams of the train: {self.diam_train_mean}")         
         if target:
-            if target_median_diam is None:
+            if self.target_median_diam is None:
                 diams = []
                 for t_label in raw_labels:
                     diams = diams + diam_range(t_label)
-                target_median_diam = np.percentile(np.array(diams), 75) 
-            target_median_diam = target_median_diam if target_median_diam > 12. else 12.    
-            print(f"Calculated median diams of the target: {target_median_diam}, \nWill get resized to equalize {self.diam_train_mean}")
-            self.resize_measure = float(self.diam_train_mean/target_median_diam)
+                self.target_median_diam = np.percentile(np.array(diams), 75) 
+            self.target_median_diam = self.target_median_diam if self.target_median_diam > 12. else 12.    
+            print(f"Calculated median diams of the target: {self.target_median_diam}, \nWill get resized to equalize {self.diam_train_mean}")
+            self.resize_measure = float(self.diam_train_mean/self.target_median_diam)
         
             self.target_data_samples = self.data
             self.target_label_samples = self.labels

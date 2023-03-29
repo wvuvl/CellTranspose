@@ -80,7 +80,7 @@ parser.add_argument('--test-dataset', help='The directory(s) containing data to 
 parser.add_argument('--test-from-3D', help='Whether the input test data is 3D: assumes 2D if set to False.',
                     action='store_true')
 parser.add_argument('--median-diams-test', type=int,
-                    help='3D median diams that will be used to equalize original median-diams', default=30)
+                    help='3D median diams that will be used to equalize original median-diams', default=None)
 
 
 # Note: do-3D not currently implemented. Can be used for further development with volumetric approach
@@ -190,12 +190,15 @@ if not args.eval_only:
 if not args.train_only:
     start_eval = time.time()
     
-    if target_dataset is not None:
-        resize_measure = target_dataset.resize_measure
+    if args.median_diams_test is not None:
+        resize_measure = float(args.median_diams/args.median_diams_test)
+        print(f'Median Diameter for test dataset is provided: {args.median_diams_test}, \n it will be used to resize the image to equalize {args.median_diams}')
+    elif target_dataset is not None:
+        resize_measure = float(args.median_diams/target_dataset.target_median_diam)
+        print(f'Median Diameter for test dataset is not provided, target calculated diam {target_dataset.target_median_diam} will be used, \n it will be used to resize the image to equalize {args.median_diams}')
     else:
-        resize_measure = float(args.median_diams/args.median_diams_test)        
-    
-    
+        resize_measure = 1.0        
+
     if not args.test_from_3D:
         test_dataset = EvalCellTransposeData( args.test_dataset, args.n_chan, resize_measure=resize_measure, median_diam=args.median_diams)
         eval_dl = DataLoader(test_dataset, batch_size=1, shuffle=False, num_workers=args.num_workers)
