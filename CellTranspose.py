@@ -16,7 +16,7 @@ parser = argparse.ArgumentParser()
 
 # Model hyperparameters
 parser.add_argument('--n-chan', type=int,
-                    help='Maximum number of channels in input images (i.e. 2 for cytoplasm + nuclei images).')
+                    help='Maximum number of channels in input images (i.e. 2 for cytoplasm + nuclei images).', default=2)
 parser.add_argument('--learning-rate', type=float, default=0.01)
 parser.add_argument('--momentum', type=float, default=0.9)
 parser.add_argument('--weight-decay', type=float, default=1e-5)
