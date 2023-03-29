@@ -9,7 +9,9 @@ import tifffile
 import cv2
 import pickle
 import matplotlib.pyplot as plt
-from cellpose_src.metrics import average_precision
+
+# cellpose_src import
+import cellpose_src.metrics as cp_metrics
 
 sns.set()
 
@@ -152,7 +154,7 @@ def save_pred(masks, test_dataset, prediction_list, data_list, results_dir, data
 
                     labels.append(label)
                 tau = np.arange(0.0, 1.01, 0.01)
-                ap_info = average_precision(labels, masks, threshold=tau)
+                ap_info = cp_metrics.average_precision(labels, masks, threshold=tau)
                 ap_per_im = ap_info[0]
                 ap_overall = np.average(ap_per_im, axis=0)
                 tp_overall = np.sum(ap_info[1], axis=0).astype('int32')

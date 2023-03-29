@@ -4,11 +4,11 @@ import os
 import numpy as np
 import tifffile
 import cv2
-from cellpose_src.metrics import average_precision
 import pickle
 import matplotlib.pyplot as plt
 import argparse
 
+from cellpose_src.metrics import average_precision
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--mask-path')

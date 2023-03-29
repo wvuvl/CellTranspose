@@ -2,169 +2,19 @@ import math
 import torch
 import cv2
 import numpy as np
-from tqdm import tqdm
-from cellpose_src.dynamics import masks_to_flows, follow_flows, get_masks, compute_masks
-from cellpose_src.utils import fill_holes_and_remove_small_masks
-from cellpose_src.transforms import _taper_mask
 import random
-import torchvision.transforms.functional as TF
+from tqdm import tqdm
 
-# cellpose source, changed for celltranspose
-def random_rotate_and_resize(X, Y=None, scale_range=1., xy = (112,112), 
-                             do_flip=True, rescale=None, unet=False):
-    """ augmentation by random rotation and resizing
-
-        X and Y are lists or arrays of length nimg, with dims channels x Ly x Lx (channels optional)
-
-        Parameters
-        ----------
-        X: LIST of ND-arrays, float
-            list of image arrays of size [nchan x Ly x Lx] or [Ly x Lx]
-
-        Y: LIST of ND-arrays, float (optional, default None)
-            list of image labels of size [nlabels x Ly x Lx] or [Ly x Lx]. The 1st channel
-            of Y is always nearest-neighbor interpolated (assumed to be masks or 0-1 representation).
-            If Y.shape[0]==3 and not unet, then the labels are assumed to be [cell probability, Y flow, X flow]. 
-            If unet, second channel is dist_to_bound.
-
-        scale_range: float (optional, default 1.0)
-            Range of resizing of images for augmentation. Images are resized by
-            (1-scale_range/2) + scale_range * np.random.rand()
-
-        xy: tuple, int (optional, default (112,112))
-            size of transformed images to return
-
-        do_flip: bool (optional, default True)
-            whether or not to flip images horizontally
-
-        rescale: array, float (optional, default None)
-            how much to resize images by before performing augmentations
-
-        unet: bool (optional, default False)
-
-        Returns
-        -------
-        imgi: ND-array, float
-            transformed images in array [nimg x nchan x xy[0] x xy[1]]
-
-        lbl: ND-array, float
-            transformed labels in array [nimg x nchan x xy[0] x xy[1]]
-
-        scale: array, float
-            amount each image was resized by
-
-    """
-    scale_range = max(0, min(2, float(scale_range)))
-
-    if X.ndim>2:
-        nchan = X.shape[0]
-    else:
-        nchan = 1
-        
-    imgi  = np.zeros((nchan, xy[0], xy[1]), np.float32)
-
-    
-    if Y is not None:
-        if Y.ndim>2:
-            nt = Y.shape[0]
-        else:
-            nt = 1
-        lbl = np.zeros((nt, xy[0], xy[1]), np.float32)
-
-   
-    
-    Ly, Lx = X.shape[-2:]
-
-    # generate random augmentation parameters
-    flip = np.random.rand()>.5
-    theta = np.random.rand() * np.pi * 2
-    scale = (1-scale_range/2) + scale_range * np.random.rand()
-    if rescale is not None:
-        scale*= 1. / rescale
-    dxy = np.maximum(0, np.array([Lx*scale-xy[1],Ly*scale-xy[0]]))
-    dxy = (np.random.rand(2,) - .5) * dxy
-
-    # create affine transform
-    cc = np.array([Lx/2, Ly/2])
-    cc1 = cc - np.array([Lx-xy[1], Ly-xy[0]])/2 + dxy
-    pts1 = np.float32([cc,cc + np.array([1,0]), cc + np.array([0,1])])
-    pts2 = np.float32([cc1,
-            cc1 + scale*np.array([np.cos(theta), np.sin(theta)]),
-            cc1 + scale*np.array([np.cos(np.pi/2+theta), np.sin(np.pi/2+theta)])])
-    M = cv2.getAffineTransform(pts1,pts2)
-
-    img = X.copy()
-    if Y is not None:
-        labels = Y.copy()
-        if labels.ndim<3:
-            labels = labels[np.newaxis,:,:]
-
-    if flip and do_flip:
-        img = img[..., ::-1]
-        if Y is not None:
-            labels = labels[..., ::-1]
-            if nt > 1 and not unet:
-                labels[2] = -labels[2]
-
-    for k in range(nchan):
-        I = cv2.warpAffine(img[k], M, (xy[1],xy[0]), flags=cv2.INTER_LINEAR)
-        imgi[k] = I
-
-    if Y is not None:
-        for k in range(nt):
-            if k==0:
-                lbl[k] = cv2.warpAffine(labels[k], M, (xy[1],xy[0]), flags=cv2.INTER_NEAREST)
-            else:
-                lbl[k] = cv2.warpAffine(labels[k], M, (xy[1],xy[0]), flags=cv2.INTER_LINEAR)
-
-        if nt > 1 and not unet:
-            v1 = lbl[2].copy()
-            v2 = lbl[1].copy()
-            lbl[1] = (-v1 * np.sin(-theta) + v2*np.cos(-theta))
-            lbl[2] = (v1 * np.cos(-theta) + v2*np.sin(-theta))
-
-    return imgi, lbl
+# local cellpose_src imports
+import cellpose_src.dynamics as cp_dynamics
+import cellpose_src.utils as cp_utils
+import cellpose_src.transforms as  cp_transforms
 
 
-def reformat(x, n_chan=1, do_3D=False):
-    """
-    Reformats raw input data with the following expected output:
-    If 2-D ->  ndarray with shape [channels, y_dim, x_dim] or [channels, z_dim, y_dim, x_dim]
-    """
-    if do_3D:
-        if len(x.shape) == 3:
-            x = x[np.newaxis,:,:,:]
-        
-        elif len(x.shape) == 4:
-            if x.shape[3] > x.shape[0]:
-                x = x.transpose(1, 2, 3, 0)
-            # checking if the array has information, sometimes they are just 0. i.e., cellpose dataset
-            info_chans = [len(np.unique(x[:, :, :, i])) > 1 for i in range(x.shape[3])]
-            x = x[:, :, :, info_chans]
-            x = np.transpose(x, (3, 0, 1, 2))[:n_chan]  # Remove any additional channels
+##### 
+##### Code below is from Cellpose Source, modiefied slightly for our purposes
+#####
 
-            
-        # Concatenate copies of other channels if image has fewer than the specified number of channels
-        if x.shape[0] < n_chan:
-            x = np.tile(x, (math.ceil(n_chan/x.shape[0]), 1, 1, 1))
-            x = x[:n_chan]
-    else:    
-        if len(x.shape) == 2:
-            x = x[np.newaxis,:,:]
-        elif len(x.shape) == 3:
-            if x.shape[2] > x.shape[0]:
-                x = x.transpose(1, 2, 0)
-            # checking if the array has information, sometimes they are just 0
-            info_chans = [len(np.unique(x[:, :, i])) > 1 for i in range(x.shape[2])]
-            x = x[:, :, info_chans]
-            x = np.transpose(x, (2, 0, 1))[:n_chan]  # Remove any additional channels
-        # Concatenate copies of other channels if image has fewer than the specified number of channels
-        if x.shape[0] < n_chan:
-            x = np.tile(x, (math.ceil(n_chan/x.shape[0]), 1, 1))
-            x = x[:n_chan]
-    return x
-
-# changed cellpose src code for nchan, y, x format
 def resize_image(img0, Ly=None, Lx=None, rsz=None, interpolation=cv2.INTER_LINEAR, no_channels=False):
     """ resize image for computing flows / unresize for computing dynamics
 
@@ -224,19 +74,233 @@ def resize_image(img0, Ly=None, Lx=None, rsz=None, interpolation=cv2.INTER_LINEA
         
     return imgs
 
+# cellpose source, changed for celltranspose
+def random_rotate_and_resize(X, Y=None, scale_range=1., xy = (112,112), 
+                             do_flip=True, rescale=None):
+    """ augmentation by random rotation and resizing
+
+        X and Y are arrays with dims channels x Ly x Lx (channels optional)
+
+        Parameters
+        ----------
+        X: ND-array, float
+            image array of size [nchan x Ly x Lx] or [Ly x Lx]
+
+        Y: ND-array, float (optional, default None)
+            image labels of size [nlabels x Ly x Lx] or [Ly x Lx]. The 1st channel
+            of Y is always nearest-neighbor interpolated (assumed to be masks or 0-1 representation).
+            If Y.shape[0]==3, then the labels are assumed to be [cell probability, Y flow, X flow]. 
+
+        scale_range: float (optional, default 1.0)
+            Range of resizing of images for augmentation. Images are resized by
+            (1-scale_range/2) + scale_range * np.random.rand()
+
+        xy: tuple, int (optional, default (112,112))
+            size of transformed images to return
+
+        do_flip: bool (optional, default True)
+            whether or not to flip images horizontally
+
+        rescale: array, float (optional, default None)
+            how much to resize images by before performing augmentations
+
+        Returns
+        -------
+        imgi: ND-array, float 
+            transformed image [nchan x xy[0] x xy[1]]
+
+        lbl: ND-array, float
+            transformed labels[nchan x xy[0] x xy[1]]
+
+    """
+    scale_range = max(0, min(2, float(scale_range)))
+
+    if X.ndim>2:
+        nchan = X.shape[0]
+    else:
+        nchan = 1
+        
+    imgi  = np.zeros((nchan, xy[0], xy[1]), np.float32)
+
+    
+    if Y is not None:
+        if Y.ndim>2:
+            nt = Y.shape[0]
+        else:
+            nt = 1
+        lbl = np.zeros((nt, xy[0], xy[1]), np.float32)
+
+    Ly, Lx = X.shape[-2:]
+
+    # generate random augmentation parameters
+    flip = np.random.rand()>.5
+    theta = np.random.rand() * np.pi * 2
+    scale = (1-scale_range/2) + scale_range * np.random.rand()
+    if rescale is not None:
+        scale*= 1. / rescale
+    dxy = np.maximum(0, np.array([Lx*scale-xy[1],Ly*scale-xy[0]]))
+    dxy = (np.random.rand(2,) - .5) * dxy
+
+    # create affine transform
+    cc = np.array([Lx/2, Ly/2])
+    cc1 = cc - np.array([Lx-xy[1], Ly-xy[0]])/2 + dxy
+    pts1 = np.float32([cc,cc + np.array([1,0]), cc + np.array([0,1])])
+    pts2 = np.float32([cc1,
+            cc1 + scale*np.array([np.cos(theta), np.sin(theta)]),
+            cc1 + scale*np.array([np.cos(np.pi/2+theta), np.sin(np.pi/2+theta)])])
+    M = cv2.getAffineTransform(pts1,pts2)
+
+    img = X.copy()
+    if Y is not None:
+        labels = Y.copy()
+        if labels.ndim<3:
+            labels = labels[np.newaxis,:,:]
+
+    if flip and do_flip:
+        img = img[..., ::-1]
+        if Y is not None:
+            labels = labels[..., ::-1]
+            if nt > 1:
+                labels[2] = -labels[2]
+
+    for k in range(nchan):
+        I = cv2.warpAffine(img[k], M, (xy[1],xy[0]), flags=cv2.INTER_LINEAR)
+        imgi[k] = I
+
+    if Y is not None:
+        for k in range(nt):
+            if k==0:
+                lbl[k] = cv2.warpAffine(labels[k], M, (xy[1],xy[0]), flags=cv2.INTER_NEAREST)
+            else:
+                lbl[k] = cv2.warpAffine(labels[k], M, (xy[1],xy[0]), flags=cv2.INTER_LINEAR)
+
+        if nt > 1:
+            v1 = lbl[2].copy()
+            v2 = lbl[1].copy()
+            lbl[1] = (-v1 * np.sin(-theta) + v2*np.cos(-theta))
+            lbl[2] = (v1 * np.cos(-theta) + v2*np.sin(-theta))
+
+    return imgi, lbl
+
+
+##### 
+##### Code below is our implementation
+#####
+
+def reformat(x, n_chan=1, chan_use=-1, do_3D=False):
+    """
+    Reformats raw input data with the following expected output:
+    If 2-D ->  ndarray with shape [channels, y_dim, x_dim] or [channels, z_dim, y_dim, x_dim]
+    
+        Parameters
+        ----------
+        
+        x: ndarray (raw input data)
+
+        n_chan: number of channels the data should be processed to, default 1
+        
+        do_3D: data volume is 3D, default False
+        
+        Returns
+        -------
+        
+        x: ndarray with shape [channels, y_dim, x_dim] or [channels, z_dim, y_dim, x_dim]
+    """
+    if do_3D:
+        if len(x.shape) == 3:
+            x = x[np.newaxis,:,:,:]
+        
+        elif len(x.shape) == 4:
+            if x.shape[3] > x.shape[0]:
+                x = x.transpose(1, 2, 3, 0)
+            # checking if the array has information, sometimes they are just 0. i.e., cellpose dataset
+            info_chans = [len(np.unique(x[:, :, :, i])) > 1 for i in range(x.shape[3])]
+            x = x[:, :, :, info_chans]
+            x = np.transpose(x, (3, 0, 1, 2))
+            
+        # Concatenate copies of other channels if image has fewer than the specified number of channels
+        if (x.shape[0] < n_chan and chan_use==-1) or x.shape[0] <= chan_use:
+            x = np.tile(x, (math.ceil(n_chan/x.shape[0]), 1, 1, 1))         
+            
+        if chan_use!=-1 and x.shape[0] > 1:   
+            x_temp = np.zeros((n_chan, x.shape[1], x.shape[2], x.shape[3]))
+            x_temp[0 if n_chan==1 else chan_use] = x[chan_use] #chan bottleneck, mono channel training works, but othet than that, model channels must match at least chan_use 
+            x = x_temp
+
+        
+            
+    else:    
+        if len(x.shape) == 2:
+            x = x[np.newaxis,:,:]
+        elif len(x.shape) == 3:
+            if x.shape[2] > x.shape[0]:
+                x = x.transpose(1, 2, 0)
+            # checking if the array has information, sometimes they are just 0
+            info_chans = [len(np.unique(x[:, :, i])) > 1 for i in range(x.shape[2])]
+            x = x[:, :, info_chans]
+            x = np.transpose(x, (2, 0, 1))
+                
+        # Concatenate copies of other channels if image has fewer than the specified number of channels
+        if (x.shape[0] < n_chan and chan_use==-1) or x.shape[0] <= chan_use:
+            x = np.tile(x, (math.ceil(n_chan/x.shape[0]), 1, 1))       
+        
+        if chan_use!=-1 and x.shape[0] > 1:
+            x_temp = np.zeros((n_chan, x.shape[1], x.shape[2]))
+            x_temp[0 if n_chan==1 else chan_use] = x[chan_use] #chan bottleneck, mono channel training works, but othet than that, model channels must match at least chan_use
+            x = x_temp
+    return x[:n_chan]
+
+
+
 def normalize1stto99th(x):
     """
     Normalize each channel of input image so that 0.0 corresponds to 1st percentile and 1.0 corresponds to 99th g-
     Made to mimic Cellpose's normalization implementation
+        
+        Parameters
+        ----------
+        
+        x: ndarray with shape [channels, y_dim, x_dim] or [channels, z_dim, y_dim, x_dim]
+        
+        Returns
+        -------
+        
+        sample: normalized ndarray with shape [channels, y_dim, x_dim] or [channels, z_dim, y_dim, x_dim]
+    
     """
-    sample = x.clone() if torch.is_tensor(x) else x.copy()
+    sample = x.copy()
     for chan in range(len(sample)):
-        if len(torch.unique(sample[chan]) if torch.is_tensor(sample) else np.unique(sample[chan])) != 1:
+        if len(np.unique(sample[chan])) != 1:
             sample[chan] = (sample[chan] - np.percentile(sample[chan], 1))\
                            / (np.percentile(sample[chan], 99) - np.percentile(sample[chan], 1))
     return sample
 
 def train_generate_rand_crop(data, label, crop=112, min_masks=1):
+    
+    """
+    Generates a random crop with greater than min_masks masks for a given pair of data and labels with shape [channels, y_dim, x_dim],
+    if smaller than the given crop size, will get padded
+        
+        Parameters
+        ----------
+        
+        data: ndarray with shape [channels, y_dim, x_dim]
+        
+        label: ndarray with shape [channels, y_dim, x_dim]
+        
+        crop: crop size, default, 112
+        
+        min_masks: min_masks to be kept in a random crop, default 1
+        
+        Returns
+        -------
+        
+        d_patch: ndarray with shape [channels, crop, crop]
+        
+        l_patch: ndarray with shape [channels, crop, crop]
+    
+    """
+    
     data, _, _, _ = padding_2D(data, crop)
     label, _, _, _ = padding_2D(label, crop)
     
@@ -259,11 +323,20 @@ def train_generate_rand_crop(data, label, crop=112, min_masks=1):
 def labels_to_flows(label):
     """
     Converts labels to flows for training and validation - Interfaces with Cellpose's masks_to_flows dynamics
-    Returns:
+    
+        Parameters
+        ----------
+                
+        label: masks 2D or 3D
+        
+        Returns
+        -------
+        
         flows:  3 x Ly x Lx array
+        
         flows[k][0] is cell probability, flows[k][1] is Y flow, and flows[k][2] is X flow
     """
-    flows = masks_to_flows(label.astype(int))[0]
+    flows = cp_dynamics.masks_to_flows(label.astype(int))[0]
     label = (label[np.newaxis, :] > 0.5).astype(np.float32)
     return np.concatenate((label, flows))
 
@@ -271,30 +344,38 @@ def labels_to_flows(label):
 def followflows(flows):
     """
     Combines follow_flows, get_masks, and fill_holes_and_remove_small_masks from Cellpose implementation
+    
     """
     niter = 400; interp = True; use_gpu = True; cellprob_threshold = 0.0; flow_threshold = 0.4; min_size = 15
     
     cellprob = flows[0]
     dP = flows[1:]
     
-    p = follow_flows(dP * (cellprob > cellprob_threshold) / 5., niter, interp, use_gpu)
-    masks = get_masks(p, iscell=(cellprob > cellprob_threshold), flows=dP, threshold=flow_threshold)
-    masks = fill_holes_and_remove_small_masks(masks, min_size=min_size)
+    p = cp_dynamics.follow_flows(dP * (cellprob > cellprob_threshold) / 5., niter, interp, use_gpu)
+    masks = cp_dynamics.get_masks(p, iscell=(cellprob > cellprob_threshold), flows=dP, threshold=flow_threshold)
+    masks = cp_utils.fill_holes_and_remove_small_masks(masks, min_size=min_size)
     
     return masks
 
 
 def followflows3D(dP, cellprob, cell_metric=12, device=None):
     """
-    Combines follow_flows, get_masks, and fill_holes_and_remove_small_masks from Cellpose implementation
+    computes masks for 3D
     """
     niter = 200; interp = True; use_gpu = True; cellprob_threshold = 0.0; flow_threshold = 0.4
+    
     # Smallest size of calculated mask allowed; masks lower than this value will be removed
     min_size = (cell_metric ** 3) / 125
-    masks = compute_masks(dP, cellprob, niter=niter, interp=interp, use_gpu=use_gpu, mask_threshold=cellprob_threshold,
+    masks = cp_dynamics.compute_masks(dP, cellprob, niter=niter, interp=interp, use_gpu=use_gpu, mask_threshold=cellprob_threshold,
                           flow_threshold=flow_threshold, min_size=min_size, device=device)
     return masks
-                   
+
+ 
+
+####
+#### Utility functions
+####   
+               
 # Removes all cell labels on the edges of the given samples
 def remove_cut_cells(labels, flows=False):
     if flows:
@@ -382,31 +463,8 @@ def padding_3D(sample_data,  patch_size):
         return sd, set_corner, unpadded_dims, resized_dims
     else:
         return sample_data, [0,0], unpadded_dims, unpadded_dims
-    
-# Creates recombined images after averaging together
-def recombine_patches(labels, im_dims, min_overlap):
-    num_x_patches = math.ceil((im_dims[1] - min_overlap[0]) / (labels.shape[3] - min_overlap[0]))
-    x_patches = np.linspace(0, im_dims[1] - labels.shape[3], num_x_patches, dtype=int)
-    num_y_patches = math.ceil((im_dims[0] - min_overlap[1]) / (labels.shape[2] - min_overlap[1]))
-    y_patches = np.linspace(0, im_dims[0] - labels.shape[2], num_y_patches, dtype=int)
 
-    mask_patch = torch.tensor(_taper_mask(lx=labels.shape[3], ly=labels.shape[2], sig=7.5)).to('cuda')
-    num_ims = labels.shape[0] // (num_x_patches * num_y_patches)
-    recombined_labels = torch.zeros((num_ims, 3, im_dims[0], im_dims[1])).to('cuda')
-    recombined_mask = torch.zeros((num_ims, 3, im_dims[0], im_dims[1])).to('cuda')
-
-    for b in range(num_ims):
-        for i in range(num_x_patches):
-            for j in range(num_y_patches):
-                recombined_labels[b, :, y_patches[j]:y_patches[j] + labels.shape[2],
-                                  x_patches[i]:x_patches[i] + labels.shape[3]] +=\
-                    labels[(b * num_y_patches * num_x_patches) + (num_y_patches * i + j)] * mask_patch
-                recombined_mask[b, :, y_patches[j]:y_patches[j] + labels.shape[2],
-                                x_patches[i]:x_patches[i] + labels.shape[3]] += mask_patch
-    recombined_labels /= recombined_mask
-    return recombined_labels
-
-
+# calculates diam range for masks
 def diam_range(masks):
     masks = np.int32(masks)
     masks = remove_cut_cells(masks)
@@ -421,13 +479,14 @@ def diam_range(masks):
         diams.append(int(math.sqrt(x_ranges[-1] * y_ranges[-1])))
     return diams if len(diams)>0 else [0] 
 
-
+# calculates range for a given cell
 def cell_range(masks, mask_val):
     inds = np.where(masks == mask_val)
     x_range = np.amax(inds[1]) - np.amin(inds[1])
     y_range = np.amax(inds[0]) - np.amin(inds[0])
     return int(math.sqrt(x_range * y_range))
 
+# calculates mask diameter
 def diameters(masks):
     _, counts = np.unique(np.int32(masks), return_counts=True)
     counts = counts[1:]
@@ -437,6 +496,7 @@ def diameters(masks):
     md /= (np.pi**0.5) / 2
     return md, counts**0.5
 
+# calculates median diams
 def calc_median_dim(masks):
     median_list = []
     count_list = []

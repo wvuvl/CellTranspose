@@ -1,12 +1,13 @@
 import argparse
+import os
+import time
 from torch.utils.data import DataLoader, RandomSampler, BatchSampler
 from torch import nn, device, load, save, jit
 from torch.cuda import is_available, empty_cache
 from torch.optim import SGD
 from torch.optim.lr_scheduler import CosineAnnealingLR, StepLR
-import os
-import time
 
+# local imports
 from loaddata import TrainCellTransposeData, ValCellTransposeData, EvalCellTransposeData, EvalCellTransposeData3D
 from network import CellTransposeModel, ClassLoss, FlowLoss, SASMaskLoss, ContrastiveFlowLoss
 from train_eval import train_network, adapt_network, eval_network_2D, eval_network_3D
@@ -17,6 +18,8 @@ parser = argparse.ArgumentParser()
 # Model hyperparameters
 parser.add_argument('--n-chan', type=int,
                     help='Maximum number of channels in input images (i.e. 2 for cytoplasm + nuclei images).', default=2)
+parser.add_argument('--chan-use', type=int,
+                    help='chan to use for mono-channel training and testing., default -1, algorithm decides, otherwise uses user-specified', default=-1)
 parser.add_argument('--learning-rate', type=float, default=0.01)
 parser.add_argument('--momentum', type=float, default=0.9)
 parser.add_argument('--weight-decay', type=float, default=1e-5)
@@ -120,10 +123,8 @@ if args.train_dataset is not None:
     else:
         if not args.do_adaptation:
             args.process_each_epoch = True
-        
-        train_dataset = TrainCellTransposeData(args.train_dataset, args.n_chan, crop_size=args.patch_size, batch_size=args.batch_size,
-                                               proc_every_epoch=args.process_each_epoch, result_dir=args.results_dir, 
-                                                median_diam=args.median_diams)
+        train_dataset = TrainCellTransposeData(args.train_dataset, args.n_chan, args.chan_use, crop_size=args.patch_size, batch_size=args.batch_size,
+                                               proc_every_epoch=args.process_each_epoch, median_diam=args.median_diams)
     args.median_diams = train_dataset.diam_train_mean
 
 if args.save_dataset:
@@ -133,8 +134,8 @@ if args.save_dataset:
         
 if args.target_dataset is not None:
     
-    target_dataset = TrainCellTransposeData(args.target_dataset, args.n_chan, crop_size=args.patch_size, median_diam=args.median_diams, 
-                                            target_median_diam=args.median_diams_target, result_dir=args.results_dir, batch_size=args.batch_size, target=True)
+    target_dataset = TrainCellTransposeData(args.target_dataset, args.n_chan, args.chan_use, crop_size=args.patch_size, median_diam=args.median_diams, 
+                                            target_median_diam=args.median_diams_target, batch_size=args.batch_size, target=True)
     
     rs = RandomSampler(target_dataset, replacement=False)
     bs = BatchSampler(rs, args.batch_size, True)
@@ -156,7 +157,7 @@ if not args.eval_only:
     train_dl = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, drop_last=True, num_workers=args.num_workers, )
 
     if args.val_dataset is not None:
-        val_dataset = ValCellTransposeData(args.val_dataset, args.n_chan, patch_size=args.patch_size, median_diam=args.median_diams)
+        val_dataset = ValCellTransposeData(args.val_dataset, args.n_chan, args.chan_use, patch_size=args.patch_size, median_diam=args.median_diams)
         val_dl = DataLoader(val_dataset, batch_size=args.batch_size, shuffle=False, num_workers=args.num_workers)
     else:
         val_dl = None
@@ -200,14 +201,14 @@ if not args.train_only:
         resize_measure = 1.0        
 
     if not args.test_from_3D:
-        test_dataset = EvalCellTransposeData( args.test_dataset, args.n_chan, resize_measure=resize_measure, median_diam=args.median_diams)
+        test_dataset = EvalCellTransposeData( args.test_dataset, args.n_chan, args.chan_use, resize_measure=resize_measure, median_diam=args.median_diams)
         eval_dl = DataLoader(test_dataset, batch_size=1, shuffle=False, num_workers=args.num_workers)
         masks, prediction_list, data_list = eval_network_2D(model, eval_dl, device, patch_per_batch=args.eval_batch_size,
                                                           patch_size=args.patch_size, min_overlap=args.min_overlap)
         save_pred(masks, test_dataset, prediction_list, data_list, args.results_dir, args.dataset_name, args.calculate_ap)
     
     else:    
-        test_dataset_3D = EvalCellTransposeData3D( args.test_dataset, args.n_chan, resize_measure=resize_measure)
+        test_dataset_3D = EvalCellTransposeData3D( args.test_dataset, args.n_chan, args.chan_use, resize_measure=resize_measure)
         eval_dl_3D = DataLoader(test_dataset_3D, batch_size=1, shuffle=False, num_workers=args.num_workers)
         eval_network_3D(model, eval_dl_3D, device, patch_per_batch=args.eval_batch_size,
                         patch_size=args.patch_size, min_overlap=args.min_overlap, results_dir=args.results_dir)

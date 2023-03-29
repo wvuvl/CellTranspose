@@ -2,11 +2,12 @@ python3 "CellTranspose.py" \
     --learning-rate 0.01 \
     --num-workers 4 \
     --epochs 500 \
-    --n-chan 2 \
+    --n-chan 1 \
+    --chan-use 1 \
     --batch-size 16 \
     --eval-batch-size 48 \
     --dataset-name "Cellpose" \
-    --results-dir "/mnt/12F9CADD61CB0337/syGlass/inquiry_test/cp_data_results_500_cp_diam_min_12_cp_normalization_cyto2/" \
+    --results-dir "/mnt/12F9CADD61CB0337/syGlass/inquiry_test/cp_data_results_500_cp_diam_min_12_nucleus/" \
     --train-dataset "/mnt/5400C9CC66E778B9/Ram/work/cell_analysis/datasets/datasets/generalist_cellpose/Generalized/train" \
     --val-dataset "/mnt/5400C9CC66E778B9/Ram/work/cell_analysis/datasets/datasets/generalist_cellpose/Generalized/test" \
     --test-dataset "/mnt/5400C9CC66E778B9/Ram/work/cell_analysis/datasets/datasets/generalist_cellpose/Generalized/test" \
