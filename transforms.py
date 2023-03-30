@@ -199,6 +199,8 @@ def reformat(x, n_chan=1, chan_use=-1, do_3D=False):
 
         n_chan: number of channels the data should be processed to, default 1
         
+        chan_use: what channel to use, default -1, the code decides
+        
         do_3D: data volume is 3D, default False
         
         Returns
@@ -206,6 +208,10 @@ def reformat(x, n_chan=1, chan_use=-1, do_3D=False):
         
         x: ndarray with shape [channels, y_dim, x_dim] or [channels, z_dim, y_dim, x_dim]
     """
+    
+    assert n_chan >= chan_use+1,\
+    f"channel user chose to use, cannot be used because chan_use {chan_use} index > n_chan {n_chan}"
+     
     if do_3D:
         if len(x.shape) == 3:
             x = x[np.newaxis,:,:,:]
@@ -216,8 +222,8 @@ def reformat(x, n_chan=1, chan_use=-1, do_3D=False):
             # checking if the array has information, sometimes they are just 0. i.e., cellpose dataset
             info_chans = [len(np.unique(x[:, :, :, i])) > 1 for i in range(x.shape[3])]
             x = x[:, :, :, info_chans]
-            x = np.transpose(x, (3, 0, 1, 2))
-            
+            x = np.transpose(x, (3, 0, 1, 2))    
+        
         # Concatenate copies of other channels if image has fewer than the specified number of channels
         if (x.shape[0] < n_chan and chan_use==-1) or x.shape[0] <= chan_use+1:
             x = np.tile(x, (math.ceil(n_chan/x.shape[0]), 1, 1, 1))         
@@ -226,7 +232,9 @@ def reformat(x, n_chan=1, chan_use=-1, do_3D=False):
             x_temp = np.zeros((n_chan, x.shape[1], x.shape[2], x.shape[3]))
             x_temp[0 if n_chan==1 else chan_use] = x[chan_use] #chan bottleneck, mono channel training works, but othet than that, model channels must match at least chan_use 
             x = x_temp
+        
         x = x[:n_chan]
+        
         if len(x.shape)==3 and n_chan==1:
             x = x[np.newaxis,:,:,:]
         
@@ -251,8 +259,10 @@ def reformat(x, n_chan=1, chan_use=-1, do_3D=False):
             x_temp[0 if n_chan==1 else chan_use] = x[chan_use] #chan bottleneck, mono channel training works, but othet than that, model channels must match at least chan_use
             x = x_temp
         x = x[:n_chan]
+        
         if len(x.shape)==2  and n_chan==1:
             x = x[np.newaxis,:,:] 
+    
     return x
 
 
