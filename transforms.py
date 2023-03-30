@@ -219,14 +219,16 @@ def reformat(x, n_chan=1, chan_use=-1, do_3D=False):
             x = np.transpose(x, (3, 0, 1, 2))
             
         # Concatenate copies of other channels if image has fewer than the specified number of channels
-        if (x.shape[0] < n_chan and chan_use==-1) or x.shape[0] <= chan_use:
+        if (x.shape[0] < n_chan and chan_use==-1) or x.shape[0] <= chan_use+1:
             x = np.tile(x, (math.ceil(n_chan/x.shape[0]), 1, 1, 1))         
             
         if chan_use!=-1 and x.shape[0] > 1:   
             x_temp = np.zeros((n_chan, x.shape[1], x.shape[2], x.shape[3]))
             x_temp[0 if n_chan==1 else chan_use] = x[chan_use] #chan bottleneck, mono channel training works, but othet than that, model channels must match at least chan_use 
             x = x_temp
-
+        x = x[:n_chan]
+        if len(x.shape)==3 and n_chan==1:
+            x = x[np.newaxis,:,:,:]
         
             
     else:    
@@ -241,14 +243,17 @@ def reformat(x, n_chan=1, chan_use=-1, do_3D=False):
             x = np.transpose(x, (2, 0, 1))
                 
         # Concatenate copies of other channels if image has fewer than the specified number of channels
-        if (x.shape[0] < n_chan and chan_use==-1) or x.shape[0] <= chan_use:
+        if (x.shape[0] < n_chan and chan_use==-1) or x.shape[0] <= chan_use+1:
             x = np.tile(x, (math.ceil(n_chan/x.shape[0]), 1, 1))       
         
         if chan_use!=-1 and x.shape[0] > 1:
             x_temp = np.zeros((n_chan, x.shape[1], x.shape[2]))
             x_temp[0 if n_chan==1 else chan_use] = x[chan_use] #chan bottleneck, mono channel training works, but othet than that, model channels must match at least chan_use
             x = x_temp
-    return x[:n_chan]
+        x = x[:n_chan]
+        if len(x.shape)==2  and n_chan==1:
+            x = x[np.newaxis,:,:] 
+    return x
 
 
 
