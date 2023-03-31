@@ -18,6 +18,7 @@ for version in 01 02 03 04 05
             --calculate-ap
     done
     
+    
     python3 "CellTranspose.py" \
         --learning-rate 0.01 \
         --num-workers 4 \
