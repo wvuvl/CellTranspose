@@ -208,10 +208,7 @@ def reformat(x, n_chan=1, chan_use=-1, do_3D=False):
         
         x: ndarray with shape [channels, y_dim, x_dim] or [channels, z_dim, y_dim, x_dim]
     """
-    
-    assert n_chan >= chan_use+1,\
-    f"channel user chose to use, cannot be used because chan_use {chan_use} index > n_chan {n_chan}"
-     
+         
     if do_3D:
         if len(x.shape) == 3:
             x = x[np.newaxis,:,:,:]
