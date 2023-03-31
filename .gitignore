@@ -4,3 +4,4 @@ __pycache__
 results
 scripts
 temp.py
+scripts/run_cellTranspose.sh
