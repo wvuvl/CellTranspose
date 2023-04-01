@@ -31,7 +31,7 @@ class TrainCellTransposeData(Dataset):
     the ith element of data corresponds to the ith label
     """
     
-    def __init__(self, data_dirs, n_chan, chan_use=-1, crop_size=112, batch_size=1, proc_every_epoch=True, 
+    def __init__(self, data_dirs, n_chan, crop_size=112, batch_size=1, proc_every_epoch=True, 
                  median_diam=30, target_median_diam=None, target=False, rescale=True, min_train_masks=1):
         
         """
@@ -53,7 +53,6 @@ class TrainCellTransposeData(Dataset):
         self.crop_size = crop_size
         self.do_every_epoch = proc_every_epoch
         self.n_chan = n_chan
-        self.chan_use = chan_use
         self.min_train_masks = min_train_masks
         self.resize_measure = 1.0
         self.target_median_diam = target_median_diam
@@ -87,7 +86,7 @@ class TrainCellTransposeData(Dataset):
             else:
                 raw_data_vol = cv2.imread(self.d_list[index], -1).astype('float')
             
-            curr_data = transforms.normalize1stto99th(transforms.reformat(raw_data_vol, self.n_chan, chan_use=self.chan_use))
+            curr_data = transforms.normalize1stto99th(transforms.reformat(raw_data_vol, self.n_chan))
             self.data.append(curr_data) 
             
             ext = os.path.splitext(self.l_list[index])[-1]
@@ -175,7 +174,7 @@ class ValCellTransposeData(Dataset):
     the ith element of data corresponds to the ith label
     """
     
-    def __init__(self, data_dirs, n_chan, chan_use=-1, patch_size=112, median_diam=30., min_overlap=0.1):
+    def __init__(self, data_dirs, n_chan, patch_size=112, median_diam=30., min_overlap=0.1):
         
         """
             Parameters
@@ -188,7 +187,6 @@ class ValCellTransposeData(Dataset):
         """
         
         self.n_chan = n_chan
-        self.chan_use = chan_use
         self.d_list = []
         self.l_list = []
         
@@ -234,7 +232,7 @@ class ValCellTransposeData(Dataset):
                 raw_data_vol = tifffile.imread(self.d_list[index]).astype('float')
             else:
                 raw_data_vol = cv2.imread(self.d_list[index], -1).astype('float')    
-            curr_data = transforms.normalize1stto99th(transforms.reformat(raw_data_vol, self.n_chan, chan_use=self.chan_use))
+            curr_data = transforms.normalize1stto99th(transforms.reformat(raw_data_vol, self.n_chan))
             curr_data = transforms.resize_image(curr_data, rsz=resize_measure)
             curr_data, _, _, _ = transforms.padding_2D(curr_data, patch_size)
             IMG, _, _, _, _ = cp_transform.make_tiles(curr_data, bsize=patch_size, tile_overlap=min_overlap)
@@ -266,7 +264,7 @@ class EvalCellTransposeData(Dataset):
     *** NOTE: Data and labels are expected to be named in such a way that when sorted in ascending order,
     the ith element of data corresponds to the ith label
     """
-    def __init__(self, data_dirs, n_chan, chan_use=-1, resize_measure=1.0, median_diam=30.):
+    def __init__(self, data_dirs, n_chan, resize_measure=1.0, median_diam=30.):
         
         """
             Parameters
@@ -278,7 +276,6 @@ class EvalCellTransposeData(Dataset):
         """
         
         self.n_chan = n_chan
-        self.chan_use = chan_use
         self.d_list = []
         self.l_list = []
         
@@ -297,13 +294,16 @@ class EvalCellTransposeData(Dataset):
         self.labels = []
         self.resize_measure_range = []
         
-        for index in range(len(self.d_list)):
+        for index in trange(len(self.d_list), desc="Processing Eval Data: "):
             ext = os.path.splitext(self.d_list[index])[-1]
             if ext == '.tif' or ext == '.tiff':
                 raw_data_vol = tifffile.imread(self.d_list[index]).astype('float')
             else:
                 raw_data_vol = cv2.imread(self.d_list[index], -1).astype('float')
-            self.data.append(transforms.normalize1stto99th(transforms.reformat(raw_data_vol, self.n_chan, chan_use=self.chan_use))) 
+            
+            
+            
+            self.data.append(transforms.normalize1stto99th(transforms.reformat(raw_data_vol, self.n_chan))) 
             
             if os.path.exists(os.path.join(dir_i,'labels')):
                 
@@ -318,7 +318,9 @@ class EvalCellTransposeData(Dataset):
             else:
                 self.resize_measure_range.append(resize_measure)
             
-        if len(self.labels) != 0: print("Labels exist, they will be used to resize the image for evaluation...")  
+        if len(self.labels) != 0: 
+            print("Labels exist, they will be used to resize the image for evaluation...")  
+            
             
     def __len__(self):
         return len(self.data)
@@ -342,7 +344,7 @@ class EvalCellTransposeData3D(Dataset):
     *** NOTE: Data and labels are expected to be named in such a way that when sorted in ascending order,
     the ith element of data corresponds to the ith label
     """
-    def __init__(self, data_dirs, n_chan, chan_use=-1, resize_measure=1.0):
+    def __init__(self, data_dirs, n_chan, resize_measure=1.0):
         
         """
             Parameters
@@ -354,7 +356,6 @@ class EvalCellTransposeData3D(Dataset):
         
         self.resize_measure = resize_measure
         self.n_chan = n_chan
-        self.chan_use = chan_use
         self.d_list = []
         
         for dir_i in data_dirs:
@@ -377,5 +378,5 @@ class EvalCellTransposeData3D(Dataset):
         print(f">>> Image path: {self.d_list[index]}")
         print(f">>> Processing 3D data")
                 
-        data = transforms.normalize1stto99th(transforms.reformat(raw_data_vol, self.n_chan, chan_use=self.chan_use, do_3D=True))
+        data = transforms.normalize1stto99th(transforms.reformat(raw_data_vol, self.n_chan, do_3D=True))
         return data, self.d_list[index], self.resize_measure
