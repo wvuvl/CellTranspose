@@ -8,7 +8,6 @@ from tqdm import tqdm
 # local cellpose_src imports
 import cellpose_src.dynamics as cp_dynamics
 import cellpose_src.utils as cp_utils
-import cellpose_src.transforms as  cp_transforms
 
 
 ##### 
@@ -217,27 +216,30 @@ def reformat(x, n_chan=1, do_3D=False):
             # checking if the array has information, sometimes they are just 0. i.e., cellpose dataset
             info_chans = [len(np.unique(x[:, :, :, i])) > 1 for i in range(x.shape[3])]
             x = x[:, :, :, info_chans]
-            x = np.transpose(x, (3, 0, 1, 2))[:n_chan]  
+            x = np.transpose(x, (3, 0, 1, 2))[:n_chan] # remove any additional channels
         
         # Concatenate copies of other channels if image has fewer than the specified number of channels
         if x.shape[0] < n_chan:
-            x = np.tile(x, (math.ceil(n_chan/x.shape[0]), 1, 1, 1))         
+            x = np.tile(x, (math.ceil(n_chan/x.shape[0]), 1, 1, 1))
+            x = x[:n_chan]         
               
     else:    
         if len(x.shape) == 2:
             x = x[np.newaxis,:,:]
+            
         elif len(x.shape) == 3:
             if x.shape[2] > x.shape[0]:
                 x = x.transpose(1, 2, 0)
-            # checking if the array has information, sometimes they are just 0
+            # checking if the array has information, sometimes they are just 0. i.e., cellpose dataset
             info_chans = [len(np.unique(x[:, :, i])) > 1 for i in range(x.shape[2])]
             x = x[:, :, info_chans]
-            x = np.transpose(x, (2, 0, 1))[:n_chan]
+            x = np.transpose(x, (2, 0, 1))[:n_chan] # remove any additional channels
                 
         # Concatenate copies of other channels if image has fewer than the specified number of channels
         if x.shape[0] < n_chan:
-            x = np.tile(x, (math.ceil(n_chan/x.shape[0]), 1, 1))       
-    
+            x = np.tile(x, (math.ceil(n_chan/x.shape[0]), 1, 1))
+            x = x[:n_chan]
+            
     return x
 
 
