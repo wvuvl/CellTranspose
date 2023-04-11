@@ -215,39 +215,46 @@ def map_coordinates(I, yc, xc, Y):
                        np.float32(I[c, yf1, xf1]) * y * x)
 
 
-def steps2D_interp(p, dP, niter, use_gpu=False):
+def steps2D_interp(p, dP, niter, use_gpu=False, device=None):
     shape = dP.shape[1:]
-
-    ###
-    TORCH_ENABLED = True
-    torch_GPU = 'cuda'
-    ###
-
-    if use_gpu and TORCH_ENABLED:
-        device = torch_GPU
-        pt = torch.from_numpy(p[[1, 0]].T).double().to(device)
-        pt = pt.unsqueeze(0).unsqueeze(0)
-        pt[:, :, :, 0] = (pt[:, :, :, 0] / (shape[1] - 1))  # normalize to between  0 and 1
-        pt[:, :, :, 1] = (pt[:, :, :, 1] / (shape[0] - 1))  # normalize to between  0 and 1
-        pt = pt * 2 - 1  # normalize to between -1 and 1
-        im = torch.from_numpy(dP[[1, 0]]).double().to(device)
-        im = im.unsqueeze(0)
-        for k in range(2):
-            im[:, k, :, :] /= (shape[1 - k] - 1) / 2.
+    if use_gpu:
+        if device is None:
+            device = torch_GPU
+        shape = np.array(shape)[[1,0]].astype('float')-1  # Y and X dimensions (dP is 2.Ly.Lx), flipped X-1, Y-1
+        pt = torch.from_numpy(p[[1,0]].T).float().to(device).unsqueeze(0).unsqueeze(0) # p is n_points by 2, so pt is [1 1 2 n_points]
+        im = torch.from_numpy(dP[[1,0]]).float().to(device).unsqueeze(0) #covert flow numpy array to tensor on GPU, add dimension 
+        # normalize pt between  0 and  1, normalize the flow
+        for k in range(2): 
+            im[:,k,:,:] *= 2./shape[k]
+            pt[:,:,:,k] /= shape[k]
+            
+        # normalize to between -1 and 1
+        pt = pt*2-1 
+        
+        #here is where the stepping happens
         for t in range(niter):
-            dPt = torch.nn.functional.grid_sample(im, pt)
-            for k in range(2):
-                pt[:, :, :, k] = torch.clamp(pt[:, :, :, k] - dPt[:, k, :, :], -1., 1.)
-        pt = (pt + 1) * 0.5
-        pt[:, :, :, 0] = pt[:, :, :, 0] * (shape[1] - 1)
-        pt[:, :, :, 1] = pt[:, :, :, 1] * (shape[0] - 1)
-        return pt[:, :, :, [1, 0]].cpu().numpy().squeeze().T
+            # align_corners default is False, just added to suppress warning
+            dPt = torch.nn.functional.grid_sample(im, pt, align_corners=False)
+            
+            for k in range(2): #clamp the final pixel locations
+                pt[:,:,:,k] = torch.clamp(pt[:,:,:,k] + dPt[:,k,:,:], -1., 1.)
+            
+
+        #undo the normalization from before, reverse order of operations 
+        pt = (pt+1)*0.5
+        for k in range(2): 
+            pt[:,:,:,k] *= shape[k]        
+        
+        p =  pt[:,:,:,[1,0]].cpu().numpy().squeeze().T
+        return p
+
     else:
         dPt = np.zeros(p.shape, np.float32)
+            
         for t in range(niter):
-            map_coordinates(dP, p[0], p[1], dPt)
-            p[0] = np.minimum(shape[0] - 1, np.maximum(0, p[0] - dPt[0]))
-            p[1] = np.minimum(shape[1] - 1, np.maximum(0, p[1] - dPt[1]))
+            map_coordinates(dP.astype(np.float32), p[0], p[1], dPt)
+            for k in range(len(p)):
+                p[k] = np.minimum(shape[k]-1, np.maximum(0, p[k] + dPt[k]))
         return p
 
 
@@ -324,7 +331,7 @@ def steps2D(p, dP, inds, niter):
     return p
 
 
-def follow_flows(dP, niter=200, interp=True, use_gpu=False):
+def follow_flows(dP, niter=200, interp=True, use_gpu=False, device=None):
     """ define pixels and run dynamics to recover masks in 2D
 
     Pixels are meshgrid. Only pixels with non-zero cell-probability
@@ -364,7 +371,7 @@ def follow_flows(dP, niter=200, interp=True, use_gpu=False):
             p = steps2D(p, dP, inds, niter)
         else:
             p[:, inds[:, 0], inds[:, 1]] = steps2D_interp(p[:, inds[:, 0], inds[:, 1]],
-                                                          dP, niter, use_gpu=use_gpu)
+                                                          dP, niter, use_gpu=use_gpu, device=device)
     return p
 
 
@@ -430,90 +437,81 @@ def get_masks(p, iscell=None, rpad=20, flows=None, threshold=0.4, use_gpu=False,
 
     
     """
-    ###
-    import matplotlib.pyplot as plt
-    ###
-
     pflows = []
     edges = []
     shape0 = p.shape[1:]
     dims = len(p)
     if iscell is not None:
-        if dims == 3:
+        if dims==3:
             inds = np.meshgrid(np.arange(shape0[0]), np.arange(shape0[1]),
-                               np.arange(shape0[2]), indexing='ij')
-        elif dims == 2:
+                np.arange(shape0[2]), indexing='ij')
+        elif dims==2:
             inds = np.meshgrid(np.arange(shape0[0]), np.arange(shape0[1]),
-                               indexing='ij')
+                     indexing='ij')
         for i in range(dims):
             p[i, ~iscell] = inds[i][~iscell]
 
     for i in range(dims):
         pflows.append(p[i].flatten().astype('int32'))
-        edges.append(np.arange(-.5 - rpad, shape0[i] + .5 + rpad, 1))
+        edges.append(np.arange(-.5-rpad, shape0[i]+.5+rpad, 1))
 
-    h, _ = np.histogramdd(tuple(pflows), bins=edges)
+    h,_ = np.histogramdd(tuple(pflows), bins=edges)
     hmax = h.copy()
-    
-    
     for i in range(dims):
         hmax = maximum_filter1d(hmax, 5, axis=i)
 
-    seeds = np.nonzero(np.logical_and(h - hmax > -1e-6, h > 10))
+    seeds = np.nonzero(np.logical_and(h-hmax>-1e-6, h>10))
     Nmax = h[seeds]
     isort = np.argsort(Nmax)[::-1]
-    
     for s in seeds:
         s = s[isort]
-    
+
     pix = list(np.array(seeds).T)
 
     shape = h.shape
-    if dims == 3:
-        expand = np.nonzero(np.ones((3, 3, 3)))
+    if dims==3:
+        expand = np.nonzero(np.ones((3,3,3)))
     else:
-        expand = np.nonzero(np.ones((3, 3)))
-    
+        expand = np.nonzero(np.ones((3,3)))
     for e in expand:
-        e = np.expand_dims(e, 1)
+        e = np.expand_dims(e,1)
 
-  
     for iter in range(5):
         for k in range(len(pix)):
-            if iter == 0:
+            if iter==0:
                 pix[k] = list(pix[k])
             newpix = []
             iin = []
-            for i, e in enumerate(expand):
-                epix = e[:, np.newaxis] + np.expand_dims(pix[k][i], 0) - 1
+            for i,e in enumerate(expand):
+                epix = e[:,np.newaxis] + np.expand_dims(pix[k][i], 0) - 1
                 epix = epix.flatten()
-                iin.append(np.logical_and(epix >= 0, epix < shape[i]))
+                iin.append(np.logical_and(epix>=0, epix<shape[i]))
                 newpix.append(epix)
             iin = np.all(tuple(iin), axis=0)
             for p in newpix:
                 p = p[iin]
             newpix = tuple(newpix)
-            igood = h[newpix] > 2
+            igood = h[newpix]>2
             for i in range(dims):
                 pix[k][i] = newpix[i][igood]
-            if iter == 4:
+            if iter==4:
                 pix[k] = tuple(pix[k])
-
-            
-    M = np.zeros(h.shape, np.int32)
+    
+    M = np.zeros(h.shape, np.uint32)
     for k in range(len(pix)):
-        M[pix[k]] = 1 + k
-
+        M[pix[k]] = 1+k
+        
     for i in range(dims):
         pflows[i] = pflows[i] + rpad
     M0 = M[tuple(pflows)]
 
     # remove big masks
-    _, counts = np.unique(M0, return_counts=True)
+    uniq, counts = fastremap.unique(M0, return_counts=True)
     big = np.prod(shape0) * 0.4
-    for i in np.nonzero(counts > big)[0]:
-        M0[M0 == i] = 0
-    _, M0 = np.unique(M0, return_inverse=True)
+    bigc = uniq[counts > big]
+    if len(bigc) > 0 and (len(bigc)>1 or bigc[0]!=0):
+        M0 = fastremap.mask(M0, bigc)
+    fastremap.renumber(M0, in_place=True) #convenient to guarantee non-skipped labels
     M0 = np.reshape(M0, shape0)
 
     if threshold is not None and threshold > 0 and flows is not None and dims < 3:
@@ -551,16 +549,16 @@ def compute_masks(dP, cellprob, bd=None, p=None, inds=None, niter=200, mask_thre
         # follow flows
         if p is None:
             p = follow_flows(dP * cp_mask / 5., niter=niter, interp=interp, 
-                                            use_gpu=use_gpu)
+                                            use_gpu=use_gpu, device=device)
             
-            #print("p shape in compute_masks: ", p.shape)
+            print("p shape in compute_masks: ", p.shape)
 
         else: 
             print(">>>there must be p")
             raise(ValueError)
         
         #calculate masks
-        mask = get_masks(p, iscell=cp_mask, flows=dP, use_gpu=use_gpu)
+        mask = get_masks(p, iscell=cp_mask, flows=dP, use_gpu=use_gpu, device=device)
        
         if resize is not None:
             #if verbose:

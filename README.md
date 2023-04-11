@@ -32,7 +32,7 @@ For 3-D training data, dataset containing 2-D slices should be passed in and for
 --train-dataset <\path\to\training\dataset> [--val-dataset <\path\to\validation\dataset>]
 --test-dataset <\path\to\test\dataset> --test-from-3D</code>
 
-Note that due to memory constraints, AP calculation cannot occur for 3-D data. Instead, once the initial code has been run, it should be followed by <code>Calc_AP.py</code>.
+Note that due to memory constraints, AP calculation cannot occur for 3-D data. Instead, once the initial code has been run, it should be followed by <code>calc_ap_f1.py</code>.
 
 It should also be noted that training can be broken into separate training and evaluation steps (via
 <code>--train-only</code> and <code>--eval-only</code>), but since this is not likely to be used, we only show options

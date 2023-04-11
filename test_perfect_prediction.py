@@ -1,15 +1,18 @@
 import argparse
 import matplotlib.pyplot as plt
-from torch import as_tensor, squeeze
 import numpy as np
 import cv2
 import os
 import pickle
 import tifffile
+from torch import as_tensor, squeeze
 
+# local imports 
 from transforms import Resize, reformat, labels_to_flows, followflows
 from loaddata import CellTransposeData
-from cellpose_src.metrics import average_precision
+
+# cellpose_src imports
+import cellpose_src.metrics as cp_metrics
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--dataset-name')
@@ -81,7 +84,7 @@ with open(os.path.join(results_dir, 'counted_cells.txt'), 'w') as cc:
     print('Total cell count:\nPredicted: {}; True: {}'.format(predicted_count, true_count))
     print('Total counting error rate: {}'.format(counting_error))
     tau = np.arange(0.0, 1.01, 0.01)
-    ap_info = average_precision(labels, masks, threshold=tau)
+    ap_info = cp_metrics.average_precision(labels, masks, threshold=tau)
     ap_per_im = ap_info[0]
     ap_overall = np.average(ap_per_im, axis=0)
     tp_overall = np.sum(ap_info[1], axis=0).astype('int32')

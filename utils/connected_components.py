@@ -4,9 +4,9 @@ Takes mono-labelled .tif files and returns with a distinct label for each segmen
 
 import os
 import numpy as np
-from scipy.ndimage.measurements import label
 import tifffile
 import argparse
+from scipy.ndimage.measurements import label
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--input-folder', help='The directory containing the data to be segmented.')

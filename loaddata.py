@@ -2,21 +2,163 @@
 Data Loader implementation, specifically designed for in-house datasets. Code will be designed to reflect flexibility in
 custom data loaders for new data.
 """
-from torch.utils.data import Dataset
-from torch import Tensor, empty, as_tensor, tensor, cat, unsqueeze, float32
-import torch.nn.functional as F
+
 import os
 import math
-from tqdm import tqdm
-from tqdm.contrib import tzip
 import tifffile
 import cv2
-import random
 import numpy as np
-from transforms import reformat, normalize1stto99th, Resize, random_horizontal_flip, labels_to_flows, generate_patches
+import transforms
+from tqdm import trange
+from torch.utils.data import Dataset
+
+# cellpose_src imports
+from cellpose_src import transforms as cp_transform
+    
+class TrainCellTransposeData(Dataset):
+    """
+    Dataset subclass for loading in any tiff data.
+    The dataset is expected to possess the following structure:
+        - /data
+            - vol1.tiff
+            ...
+            - voln.tiff
+        - /labels
+            - lbl1.tiff
+            ...
+            - lbln.tiff
+    *** NOTE: Data and labels are expected to be named in such a way that when sorted in ascending order,
+    the ith element of data corresponds to the ith label
+    """
+    
+    def __init__(self, data_dirs, n_chan, crop_size=112, batch_size=1, proc_every_epoch=True, 
+                 median_diam=30, target_median_diam=None, target=False, rescale=True, min_train_masks=1):
+        
+        """
+            Parameters
+            ------------------------------------------------------------------------------------------------
+            data_dirs: root directory/directories of the dataset, containing 'data' and 'labels' folders
+            n_chan: Maximum number of channels in input images (i.e. 2 for cytoplasm + nuclei images)
+            crop_size: crop size to use for random cropping, default 112
+            batch_size: batch size parameter
+            proc_every_epoch: process random cropping and augmentation every epoch, default True
+            median_diam: median diam for resizing training data, default 30
+            target_median_diam: target median diam for resizing target data if provided
+            target: provided data if target, True, default False
+            rescale: rescaling boolean parameter for training to be rescaled randomly, default true
+            min_train_masks: min masks each crop must have, default 1
+        """
+        
+        self.diam_train_mean = median_diam
+        self.crop_size = crop_size
+        self.do_every_epoch = proc_every_epoch
+        self.n_chan = n_chan
+        self.min_train_masks = min_train_masks
+        self.resize_measure = 1.0
+        self.target_median_diam = target_median_diam
+        self.scale_range = 0.5 if rescale else 1.
+        
+        self.d_list = []
+        self.l_list = []
+        self.pf_list = []
+        self.save_pf_list = []
+
+        for dir_i in data_dirs:
+            assert os.path.exists(os.path.join(dir_i,'labels')), f"Training folder {os.path.join(dir_i,'labels')} does not exists, it is needed for training."
+            self.d_list = self.d_list + sorted([dir_i + os.sep + 'data' + os.sep + f for f in
+                                                os.listdir(os.path.join(dir_i, 'data')) if f.lower()
+                                            .endswith('.tiff') or f.lower().endswith('.tif')
+                                                or f.lower().endswith('.png')])
+            
+            
+            self.l_list = self.l_list + sorted([dir_i + os.sep + 'labels' + os.sep + f for f in
+                                                os.listdir(os.path.join(dir_i, 'labels')) if f.lower()
+                                            .endswith('.tiff') or f.lower().endswith('.tif')
+                                                or f.lower().endswith('.png')]) 
+                   
+        self.data = []
+        self.labels = []
+        raw_labels = []
+        for index in trange(len(self.d_list), desc='Loading training data...'):
+            ext = os.path.splitext(self.d_list[index])[-1]
+            if ext == '.tif' or ext == '.tiff':
+                raw_data_vol = tifffile.imread(self.d_list[index]).astype('float')
+            else:
+                raw_data_vol = cv2.imread(self.d_list[index], -1).astype('float')
+            
+            curr_data = transforms.normalize1stto99th(transforms.reformat(raw_data_vol, self.n_chan))
+            self.data.append(curr_data) 
+            
+            ext = os.path.splitext(self.l_list[index])[-1]
+            if ext == '.tif' or ext == '.tiff':
+                raw_lbl_vol = tifffile.imread(self.l_list[index]).astype('float')
+            else:
+                raw_lbl_vol = cv2.imread(self.l_list[index], -1).astype('float')
+            raw_labels.append(raw_lbl_vol)
+            self.labels.append(transforms.reformat(raw_lbl_vol))
+            
+                   
+        # cellpose source
+        nmasks = np.array([raw_label.max() for raw_label in raw_labels])
+        nremove = (nmasks < min_train_masks).sum()
+        if nremove > 0:
+            print(f'{nremove} train images with number of masks less than min_train_masks ({min_train_masks}), removing from train set')
+            ikeep = np.nonzero(nmasks >= min_train_masks)[0]
+            self.data = [self.data[i] for i in ikeep]
+            self.labels = [self.labels[i] for i in ikeep]
+           
+        print(f"Calculated/Given median diams of the train: {self.diam_train_mean}")         
+        if target:
+            if self.target_median_diam is None:
+                diams = []
+                for t_label in raw_labels:
+                    diams = diams + transforms.diam_range(t_label)
+                self.target_median_diam = np.percentile(np.array(diams), 75) 
+            self.target_median_diam = self.target_median_diam if self.target_median_diam > 12. else 12.    
+            print(f"Calculated median diams of the target: {self.target_median_diam}, \nWill get resized to equalize {self.diam_train_mean}")
+            self.resize_measure = float(self.diam_train_mean/self.target_median_diam)
+        
+            self.target_data_samples = self.data
+            self.target_label_samples = self.labels
+            for _ in range(1, math.ceil(batch_size / len(self.data))):
+                self.data = self.data + self.target_data_samples
+                self.labels = self.labels + self.target_label_samples
+                
+            self.resize_array = np.full(len(self.data), 1./self.resize_measure )    
+        else:           
+            
+            self.diam_train_median_percentile = np.array([np.percentile(np.array(transforms.diam_range(raw_labels[i])), 75) for i in trange(len(raw_labels), desc='Calculating Diam...')])
+            self.diam_train_median_percentile[self.diam_train_median_percentile<12.] = 12.   
+            self.resize_array = [float(curr_diam/self.diam_train_mean) if rescale else 1.0 for curr_diam in self.diam_train_median_percentile]
+         
+        if not self.do_every_epoch:
+            data_samples = []
+            label_samples = []
+            for index in trange(len(self.data), desc='Preprocessing training data once only...'):
+                data, labels = self.process_training_data(index)
+                data_samples.append(data)
+                label_samples.append(labels)   
+            self.data = data_samples
+            self.labels = label_samples
+                    
+    def process_training_data(self, index):
+        data, labels = self.data[index], self.labels[index]
+        data, labels = transforms.random_rotate_and_resize(data, Y=labels[0], rescale=self.resize_array[index], scale_range=self.scale_range, xy=(self.crop_size,self.crop_size))
+        labels =  transforms.labels_to_flows(labels[0])  
+        return data.copy(), labels.copy()
+        
+
+    def __getitem__(self, index):
+        if self.do_every_epoch:
+            return self.process_training_data(index)
+        else:
+            return self.data[index], self.labels[index]
+
+    def __len__(self):
+        return len(self.data)
 
 
-class CellTransposeData(Dataset):
+class ValCellTransposeData(Dataset):
     """
     Dataset subclass for loading in any tiff data, serving as a superclass to each dataset type for CellTranspose.
     The dataset is expected to possess the following structure:
@@ -31,36 +173,116 @@ class CellTransposeData(Dataset):
     *** NOTE: Data and labels are expected to be named in such a way that when sorted in ascending order,
     the ith element of data corresponds to the ith label
     """
-
-    def __init__(self, split_name, data_dirs, n_chan, pf_dirs=None, do_3D=False, from_3D=False,
-                 evaluate=False, batch_size=1, resize: Resize = None):
+    
+    def __init__(self, data_dirs, n_chan, patch_size=112, median_diam=30., min_overlap=0.1):
+        
         """
-        Parameters
-        ------------------------------------------------------------------------------------------------
-
-            split_name: name corresponding to the split (i.e. train, validation, test, target)
+            Parameters
+            ------------------------------------------------------------------------------------------------
             data_dirs: root directory/directories of the dataset, containing 'data' and 'labels' folders
             n_chan: Maximum number of channels in input images (i.e. 2 for cytoplasm + nuclei images)
-            pf_dirs: root directory/directories of pre-calculated flows, if they exist
-            do_3D: whether or not to train 3D CellTranspose model (requires that from_3d is true)
-            from_3D: whether input samples are 2D images (False) or 3D volumes (True)
-            evaluate: if set to true, returns additional information when calling __getitem__()
-            batch_size: default 1
-            resize: Resize object containing parameters by which to resize input samples accordingly
+            patch_size: patch size to use, default 112
+            median_diam: median diam for resizing training data, default 30
+            min_overlap: minimum overlap for the patches to be processed into the network
         """
-        self.do_3D = do_3D
-        self.from_3D = from_3D
-        self.split_name = split_name
-        self.evaluate = evaluate
-        self.d_list_3D = []
-        self.l_list_3D = []
+        
+        self.n_chan = n_chan
         self.d_list = []
         self.l_list = []
+        
+        for dir_i in data_dirs:
+            assert os.path.exists(os.path.join(dir_i,'labels')), f"Validation folder {os.path.join(dir_i,'labels')} does not exists, it is needed for validation."
+            self.d_list = self.d_list + sorted([dir_i + os.sep + 'data' + os.sep + f for f in
+                                                os.listdir(os.path.join(dir_i, 'data')) if f.lower()
+                                            .endswith('.tiff') or f.lower().endswith('.tif')
+                                                or f.lower().endswith('.png')])
+            
+            
+            self.l_list = self.l_list + sorted([dir_i + os.sep + 'labels' + os.sep + f for f in
+                                                os.listdir(os.path.join(dir_i, 'labels')) if f.lower()
+                                            .endswith('.tiff') or f.lower().endswith('.tif')
+                                                or f.lower().endswith('.png')])
+        
+        self.data = np.array([])
+        self.labels = np.array([])
+        for index in trange(len(self.d_list), desc='Loading and Processing Validation Dataset...'):
+            ext = os.path.splitext(self.l_list[index])[-1]
+            if ext == '.tif' or ext == '.tiff':
+                raw_lbl_vol = tifffile.imread(self.l_list[index]).astype('float')
+            else:
+                raw_lbl_vol = cv2.imread(self.l_list[index], -1).astype('float')
+            
+            lbl_diam =np.percentile(np.array(transforms.diam_range(raw_lbl_vol)), 75) #  utils.diameters(raw_lbl_vol)[0] # 
+            resize_measure = median_diam/(lbl_diam if lbl_diam > 12. else 12.)
+                
+            curr_lbl = transforms.reformat(raw_lbl_vol)
+            # lable interpolation changed to nearest neighbour from linear
+            curr_lbl = transforms.resize_image(curr_lbl, rsz=resize_measure, interpolation=cv2.INTER_NEAREST)
+            # curr_lbl = labels_to_flows(curr_lbl[0]) # curr_lbl[0] because it has one channel in the front idx 0
+            curr_lbl, _, _, _ = transforms.padding_2D(curr_lbl, patch_size)
+            LBL, _, _, _, _ = cp_transform.make_tiles(curr_lbl, bsize=patch_size, tile_overlap=min_overlap)
+            ny, nx, nchan, ly, lx = LBL.shape
+            LBL = np.reshape(LBL, (ny*nx, nchan, ly, lx))
+            self.labels = LBL if len(self.labels) == 0 else np.concatenate((self.labels, LBL))
 
+            
+            
+            ext = os.path.splitext(self.d_list[index])[-1]
+            if ext == '.tif' or ext == '.tiff':
+                raw_data_vol = tifffile.imread(self.d_list[index]).astype('float')
+            else:
+                raw_data_vol = cv2.imread(self.d_list[index], -1).astype('float')    
+            curr_data = transforms.normalize1stto99th(transforms.reformat(raw_data_vol, self.n_chan))
+            curr_data = transforms.resize_image(curr_data, rsz=resize_measure)
+            curr_data, _, _, _ = transforms.padding_2D(curr_data, patch_size)
+            IMG, _, _, _, _ = cp_transform.make_tiles(curr_data, bsize=patch_size, tile_overlap=min_overlap)
+            ny, nx, nchan, ly, lx = IMG.shape
+            IMG = np.reshape(IMG, (ny*nx, nchan, ly, lx))
+            self.data = IMG if len(self.data) == 0 else np.concatenate((self.data, IMG))
+        
+        self.labels = np.array([transforms.labels_to_flows(self.labels[i][0]) for i in trange(len(self.labels), desc='Computing Val Patch Flows')])
+    
+    def __len__(self):
+        return len(self.data)
+    
+    def __getitem__(self, index):   
+        return self.data[index], self.labels[index]
+    
+
+class EvalCellTransposeData(Dataset):
+    """
+    Dataset subclass for loading in any tiff data, serving as a superclass to each dataset type for CellTranspose.
+    The dataset is expected to possess the following structure:
+        - /data
+            - vol1.tiff
+            ...
+            - voln.tiff
+        - /labels
+            - lbl1.tiff
+            ...
+            - lbln.tiff
+    *** NOTE: Data and labels are expected to be named in such a way that when sorted in ascending order,
+    the ith element of data corresponds to the ith label
+    """
+    def __init__(self, data_dirs, n_chan, resize_measure=1.0, median_diam=30.):
+        
+        """
+            Parameters
+            ------------------------------------------------------------------------------------------------
+            data_dirs: root directory/directories of the dataset, containing 'data' and 'labels' folders
+            n_chan: Maximum number of channels in input images (i.e. 2 for cytoplasm + nuclei images)
+            resize_measure: resize measure computed based on train median diameter and test median diameter
+            median_diam: median diam for resizing training data, default 30
+        """
+        
+        self.n_chan = n_chan
+        self.d_list = []
+        self.l_list = []
+        
         for dir_i in data_dirs:
             self.d_list = self.d_list + sorted([dir_i + os.sep + 'data' + os.sep + f for f in
                                                 os.listdir(os.path.join(dir_i, 'data')) if f.lower()
-                                               .endswith('.tiff') or f.lower().endswith('.tif')
+                                            .endswith('.tiff') or f.lower().endswith('.tif')
                                                 or f.lower().endswith('.png')])
             
             if os.path.exists(os.path.join(dir_i,'labels')):
@@ -68,261 +290,93 @@ class CellTransposeData(Dataset):
                                                     os.listdir(os.path.join(dir_i, 'labels')) if f.lower()
                                                 .endswith('.tiff') or f.lower().endswith('.tif')
                                                     or f.lower().endswith('.png')])
-        if pf_dirs is not None:
-            self.pf_list = []
-            for dir_i in pf_dirs:
-                self.pf_list = self.pf_list + sorted([dir_i + os.sep + 'labels' + os.sep + f for f in
-                                                      os.listdir(os.path.join(dir_i, 'labels')) if f.lower()
-                                                     .endswith('.tiff') or f.lower().endswith('.tif')])
         self.data = []
         self.labels = []
-        self.original_dims = []
-        self.lbl_len = len(self.l_list)
+        self.resize_measure_range = []
         
-        if self.lbl_len == 0: 
-            assert self.evaluate == True,\
-                '>>> Folder containing labelled images does not exist, cannot continue without it for training OR validation purposes...'
-            print('>>> Folder containing labelled images does not exist, continueing without it for evaluation purposes...')
+        for index in trange(len(self.d_list), desc="Processing Eval Data: "):
+            ext = os.path.splitext(self.d_list[index])[-1]
+            if ext == '.tif' or ext == '.tiff':
+                raw_data_vol = tifffile.imread(self.d_list[index]).astype('float')
+            else:
+                raw_data_vol = cv2.imread(self.d_list[index], -1).astype('float')
             
-        if from_3D:
-            print('>>> Utilizing 2D model for evaluation on 3D volumes...')
-        else:
-            for ind in tqdm(range(len(self.d_list)), desc='Loading {} Dataset...'.format(split_name)):
-                ext = os.path.splitext(self.d_list[ind])[-1]
-                if ext == '.tif' or ext == '.tiff':
-                    new_data = as_tensor(tifffile.imread(self.d_list[ind]).astype('float'))
-                    if self.lbl_len != 0: 
-                        new_label = as_tensor(tifffile.imread(self.l_list[ind]).astype('int16'))
-                else:
-                    new_data = as_tensor(cv2.imread(self.d_list[ind], -1).astype('float'))
-                    if self.lbl_len != 0: 
-                        new_label = as_tensor(cv2.imread(self.l_list[ind], -1).astype('int16'))
+            
+            
+            self.data.append(transforms.normalize1stto99th(transforms.reformat(raw_data_vol, self.n_chan))) 
+            
+            if os.path.exists(os.path.join(dir_i,'labels')):
                 
-                new_data = reformat(new_data, n_chan)
-                new_data = normalize1stto99th(new_data)
-                if self.lbl_len != 0:
-                    new_label = reformat(new_label)
+                ext = os.path.splitext(self.l_list[index])[-1]
+                if ext == '.tif' or ext == '.tiff':
+                    raw_lbl_vol = tifffile.imread(self.l_list[index]).astype('float')
                 else:
-                    new_label = []
-                if pf_dirs is not None:
-                    new_pf = tifffile.imread(self.pf_list[ind])
-                    new_pf = new_pf.reshape(1, new_pf.shape[0], new_pf.shape[1], new_pf.shape[2])
-                else:
-                    new_pf = None
-                if resize is not None:
-                    new_data, new_label, original_dim, _ = resize(new_data, new_label, new_pf)
-                    self.original_dims.append(original_dim)
-                self.data.append(new_data)
-                self.labels.append(new_label)
-
-        self.target_data_samples = self.data
-        self.target_label_samples = self.labels
-        
-        if self.split_name.lower() == 'target' and len(self.data) < batch_size and not from_3D and not do_3D:
-            for _ in range(1, math.ceil(batch_size / len(self.data))):
-                self.data = self.data + self.target_data_samples
-                if self.lbl_len != 0: 
-                    self.labels = self.labels + self.target_label_samples
-
-        self.data_samples = self.data
-        self.label_samples = self.labels
-
-    def __len__(self):
-        return len(self.d_list) if (self.do_3D or self.from_3D) else len(self.data)
-
-
-class TrainCellTransposeData(CellTransposeData):
-    def __init__(self, split_name, data_dirs, n_chan, pf_dirs=None, do_3D=False, from_3D=False, evaluate=False,
-                 crop_size=(112, 112), has_flows=False, batch_size=1, resize: Resize = None,
-                 preprocessed_data=None, proc_every_epoch=True, result_dir=None):
-        self.resize = resize
-        self.crop_size = crop_size
-        self.has_flows = has_flows
-        self.from_3D = from_3D
-        self.preprocessed_data = preprocessed_data
-        self.do_every_epoch = proc_every_epoch
-        
-        if self.preprocessed_data is None:
-            super().__init__(split_name, data_dirs, n_chan, pf_dirs=pf_dirs, do_3D=do_3D,
-                             from_3D=from_3D, evaluate=evaluate, batch_size=batch_size, resize=None)
-        
-        if self.preprocessed_data is not None:
-            print('Training preprocessed data provided...')
-            self.data = as_tensor(np.load(os.path.join(self.preprocessed_data, 'train_preprocessed_data.npy')))
-            self.labels = as_tensor(np.load(os.path.join(self.preprocessed_data, 'train_preprocessed_labels.npy')))
-        elif self.do_every_epoch is False and self.preprocessed_data is None:
+                    raw_lbl_vol = cv2.imread(self.l_list[index], -1).astype('float')
+                self.labels.append(raw_lbl_vol) 
+                lbl_diam = np.percentile(np.array(transforms.diam_range(raw_lbl_vol)), 75) #  utils.diameters(raw_lbl_vol)[0] # 
+                self.resize_measure_range.append(float(median_diam/(lbl_diam if lbl_diam > 12. else 12.)))
+            else:
+                self.resize_measure_range.append(resize_measure)
             
-            data_samples = tensor([])
-            label_samples = tensor([])
-            for i in tqdm(range(len(self.data)), desc='Preprocessing training data once only...'):
-                try:
-                    data, labels, dim, _ = self.resize(self.data[i], self.labels[i],
-                                                    random_scale=random.uniform(0.75, 1.25))
-                    data, labels = random_horizontal_flip(data, labels)
-                    data, labels = train_generate_rand_crop(unsqueeze(data, 0), labels,
-                                                            crop=crop_size, lbl_flows=has_flows)
-                    if labels.ndim == 3:
-                        labels = as_tensor(np.array([labels_to_flows(labels[i].numpy()) for i in range(len(labels))]),
-                                           dtype=float32)
-                    data_samples = cat((data_samples, data))
-                    label_samples = cat((label_samples, labels))
-                    
-                except RuntimeError:
-                    print('Caught Size Mismatch.')
-            self.data = data_samples
-            self.labels = label_samples
-            if result_dir is not None: 
-                np.save(os.path.join(result_dir, 'train_preprocessed_data.npy'), self.data.cpu().detach().numpy())
-                np.save(os.path.join(result_dir, 'train_preprocessed_labels.npy'), self.labels.cpu().detach().numpy())
-
-    # Augmentations and tiling applied to input data (for training and adaptation) -
-    # separated from DataLoader to allow for possibility of running only once or once per epoch
-    def process_training_data(self, index, crop_size, has_flows=False):
-        samples_generated = []
-        data, labels = self.data[index], self.labels[index]
-        try:
-            data, labels, dim, _ = self.resize(data, labels, random_scale=random.uniform(0.75, 1.25))
-            data, labels = random_horizontal_flip(data, labels)
-            data, labels = train_generate_rand_crop(unsqueeze(data, 0), labels, crop=crop_size, lbl_flows=has_flows)
-            if labels.ndim == 3:
-                labels = as_tensor(np.array([labels_to_flows(labels[i].numpy())
-                                             for i in range(len(labels))]), dtype=float32)
-            return data[0], labels[0]
-        except RuntimeError:
-            print('Caught Size Mismatch.')
-            samples_generated.append(-1)
-
-    def __getitem__(self, index):
-        if self.preprocessed_data is None and self.do_every_epoch:
-            return self.process_training_data(index, self.crop_size, has_flows=self.has_flows)
-        else:
-            return self.data[index], self.labels[index]
-
+        if len(self.labels) != 0: 
+            print("Labels exist, they will be used to resize the image for evaluation...")  
+            
+            
     def __len__(self):
         return len(self.data)
-
-
-def train_generate_rand_crop(data, label=None, crop=(112, 112), lbl_flows=False):
-    if data.shape[3] < crop[0]:
-        pad_x = math.ceil((crop[0] - data.shape[3]) / 2)
-        data = F.pad(data, (pad_x, pad_x))
-        label = F.pad(label, (pad_x, pad_x))
-
-    if data.shape[2] < crop[1]:
-        pad_y = math.ceil((crop[1] - data.shape[2]) / 2)
-        data = F.pad(data, (0, 0, pad_y, pad_y))
-        label = F.pad(label, (0, 0, pad_y, pad_y))
-
-    x_max = data.shape[3] - crop[0]
-    y_max = data.shape[2] - crop[1]
-    patch_data = empty((data.shape[0] * 1 * 1, data.shape[1], crop[0], crop[1]))
-    if lbl_flows:
-        patch_label = empty((1 * 1, 3, crop[0], crop[1]))
-    else:
-        patch_label = empty((label.shape[0] * 1 * 1, crop[0], crop[1]))
-    i = random.randint(0, x_max)
-    j = random.randint(0, y_max)
-    d_patch = data[0, :, j:j + crop[1], i:i + crop[0]]
-    patch_data[0] = d_patch
-
-    if lbl_flows:
-        l_patch = label[:, j:j + crop[1], i:i + crop[0]]
-    else:
-        l_patch = label[0, j:j + crop[1], i:i + crop[0]]
-    patch_label[0] = l_patch
-
-    return patch_data, patch_label
-
-
-class EvalCellTransposeData(CellTransposeData):
-    def __init__(self, split_name, data_dirs, n_chan, pf_dirs=None, do_3D=False, from_3D=False,
-                 evaluate=False, resize: Resize = None):
-        self.from_3D = from_3D
-        super().__init__(split_name, data_dirs, n_chan, pf_dirs=pf_dirs, do_3D=do_3D, from_3D=from_3D,
-                         evaluate=evaluate, resize=resize)
-
-    # Generates patches for validation dataset - only happens once
-    def pre_generate_validation_patches(self, patch_size, min_overlap):
-        self.data_samples = tensor([])
-        self.label_samples = tensor([])
-        new_d_list = []
-        new_original_dims = []
-        for (data, labels, data_fname, original_dim) in tzip(self.data, self.labels, self.d_list, self.original_dims,
-                                                              desc='Processing Validation Dataset...'):
-            
-
-            
-
-            if data.shape[1] >= patch_size[0] and data.shape[2] >= patch_size[1]:
-                if len(labels) != 0: 
-                    data, labels = generate_patches(unsqueeze(data, 0), labels, patch=patch_size,
-                                                min_overlap=min_overlap, lbl_flows=False)
-                    labels = as_tensor(np.array([labels_to_flows(labels[i].numpy()) for i in range(len(labels))]))
-                else:
-                     data = generate_patches(unsqueeze(data, 0), patch=patch_size,
-                                                min_overlap=min_overlap, lbl_flows=False)
-
-                self.data_samples = cat((self.data_samples, data))
-                self.label_samples = cat((self.label_samples, labels))
-
-                for _ in range(len(data)):
-                    new_d_list.append(data_fname)
-                    new_original_dims.append(original_dim)
-        self.d_list = new_d_list
-        self.original_dims = new_original_dims
-
-    def __getitem__(self, index):
-        if len(self.label_samples) == 0:
-            label = []
-        else:
-            label = self.label_samples[index]
-        if self.evaluate and not self.from_3D:
-            return self.data_samples[index], label, self.d_list[index], self.original_dims[index]
-        else:
-            return self.data_samples[index], label
-
-
-# final version of 3D validation dataloader
-class EvalCellTransposeData3D(CellTransposeData):
-    def __init__(self, split_name, data_dirs, n_chan, do_3D=False,
-                 from_3D=False, evaluate=False, resize: Resize = None):
-        self.resize = resize
-        self.n_chan = n_chan
-        super().__init__(split_name, data_dirs, n_chan, do_3D=do_3D, from_3D=from_3D, evaluate=evaluate, resize=resize)
     
-    def process_eval_3D(self, index):
+    def __getitem__(self, index):   
+        return self.data[index], self.d_list[index], self.resize_measure_range[index]
+
+# Updated more efficient version    
+class EvalCellTransposeData3D(Dataset):
+    """
+    Dataset subclass for loading in any tiff data, serving as a superclass to each dataset type for CellTranspose.
+    The dataset is expected to possess the following structure:
+        - /data
+            - vol1.tiff
+            ...
+            - voln.tiff
+        - /labels
+            - lbl1.tiff
+            ...
+            - lbln.tiff
+    *** NOTE: Data and labels are expected to be named in such a way that when sorted in ascending order,
+    the ith element of data corresponds to the ith label
+    """
+    def __init__(self, data_dirs, n_chan, resize_measure=1.0):
+        
+        """
+            Parameters
+            ------------------------------------------------------------------------------------------------
+            data_dirs: root directory/directories of the dataset, containing 'data' and 'labels' folders
+            n_chan: Maximum number of channels in input images (i.e. 2 for cytoplasm + nuclei images)
+            resize_measure: resize measure computed based on train median diameter and test median diameter
+        """
+        
+        self.resize_measure = resize_measure
+        self.n_chan = n_chan
+        self.d_list = []
+        
+        for dir_i in data_dirs:
+            self.d_list = self.d_list + sorted([dir_i + os.sep + 'data' + os.sep + f for f in
+                                                os.listdir(os.path.join(dir_i, 'data')) if f.lower()
+                                            .endswith('.tiff') or f.lower().endswith('.tif')
+                                                or f.lower().endswith('.png')])
+    
+    def __len__(self):
+        return len(self.d_list)
+    
+    def __getitem__(self, index):
         ext = os.path.splitext(self.d_list[index])[-1]
 
         if ext == '.tif' or ext == '.tiff':
             raw_data_vol = tifffile.imread(self.d_list[index]).astype('float')
         else:
             raw_data_vol = cv2.imread(self.d_list[index], -1).astype('float')
-
-        axis = ('Z', 'Y', 'X')
-        plane = ('YX', 'ZX', 'ZY')
-        TP = [(0, 1, 2), (1, 0, 2), (2, 0, 1)]
-        data_vol = []
-        original_dim = []
         
         print(f">>> Image path: {self.d_list[index]}")
-        for ind in range(len(plane)):
-            new_data = raw_data_vol.transpose(TP[ind])
-            print(f">>> Processing 3D data on {new_data.shape[0]} {plane[ind]} planes in {axis[ind]} direction...")
-            new_data_vol = []
-            new_origin_dim = []
-            for i in range(len(new_data)):
-                d = reformat(as_tensor(new_data[i]), self.n_chan)
-                data = normalize1stto99th(d)
-                label = []
-                if self.resize is not None:
-                    data, label, dim, diam = self.resize(data, label)
-                else:
-                    dim = (data[0], data[1])
-                new_data_vol.append(data)
-                new_origin_dim.append(dim)
-            data_vol.append(new_data_vol)
-            original_dim.append(new_origin_dim)
-        return data_vol, self.d_list[index], plane, original_dim, diam
-
-    def __getitem__(self, index):
-        return self.process_eval_3D(index)
+        print(f">>> Processing 3D data")
+                
+        data = transforms.normalize1stto99th(transforms.reformat(raw_data_vol, self.n_chan, do_3D=True))
+        return data, self.d_list[index], self.resize_measure
