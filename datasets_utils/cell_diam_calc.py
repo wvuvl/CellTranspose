@@ -1,5 +1,6 @@
 import numpy as np
 import tifffile as tiff
+import cv2
 import os
 import matplotlib.pyplot as plt
 from tqdm import tqdm
@@ -20,7 +21,12 @@ def calc_median_dim(dir, plot=False):
     count_list = []
 
     for img_name in tqdm(os.listdir(dir)):
-        mask = tiff.imread(os.path.join(dir, img_name))
+        ext = os.path.splitext(img_name)[-1]
+        if ext == '.tif' or ext == '.tiff':
+            mask = tiff.imread(os.path.join(dir, img_name)).astype('float')
+        else:
+            mask = cv2.imread(os.path.join(dir, img_name), -1).astype('float')
+                    
         md, counts = diameters(mask)
         median_list = np.append(median_list, md)
         count_list = np.append(count_list, counts)
@@ -63,8 +69,9 @@ def calc_median_dim(dir, plot=False):
 #             print(f"\n{tissue}-{platform}: ")
 #             calc_median_dim(dir)
 
-
-for cell_type in ["A172", "BT474", "BV2", "Huh7", "MCF7", "SHSY5Y", "SkBr3", "SKOV3"]:
-    dir = f'/mnt/5400C9CC66E778B9/Ram/work/cell_analysis/datasets/datasets/LiveCell/livecell_split/split_data_refined/{cell_type}/train/labels'
-    print(f'{cell_type}: ')
-    calc_median_dim(dir)
+dir = '/mnt/5400C9CC66E778B9/Ram/work/cell_analysis/datasets/datasets/generalist_cellpose/Generalized/test/labels'
+calc_median_dim(dir)
+# for cell_type in ["A172", "BT474", "BV2", "Huh7", "MCF7", "SHSY5Y", "SkBr3", "SKOV3"]:
+#     dir = f'/mnt/5400C9CC66E778B9/Ram/work/cell_analysis/datasets/datasets/LiveCell/livecell_split/split_data_refined/{cell_type}/train/labels'
+#     print(f'{cell_type}: ')
+#     calc_median_dim(dir)
