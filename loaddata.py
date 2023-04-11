@@ -11,6 +11,7 @@ import numpy as np
 import transforms
 from tqdm import trange
 from torch.utils.data import Dataset
+from skimage.segmentation import find_boundaries
 
 # cellpose_src imports
 from cellpose_src import transforms as cp_transform
@@ -79,6 +80,7 @@ class TrainCellTransposeData(Dataset):
         self.data = []
         self.labels = []
         raw_labels = []
+        
         for index in trange(len(self.d_list), desc='Loading training data...'):
             ext = os.path.splitext(self.d_list[index])[-1]
             if ext == '.tif' or ext == '.tiff':
@@ -96,8 +98,9 @@ class TrainCellTransposeData(Dataset):
                 raw_lbl_vol = cv2.imread(self.l_list[index], -1).astype('float')
             raw_labels.append(raw_lbl_vol)
             self.labels.append(transforms.reformat(raw_lbl_vol))
+           
             
-                   
+                  
         # cellpose source
         nmasks = np.array([raw_label.max() for raw_label in raw_labels])
         nremove = (nmasks < min_train_masks).sum()
@@ -144,8 +147,21 @@ class TrainCellTransposeData(Dataset):
     def process_training_data(self, index):
         data, labels = self.data[index], self.labels[index]
         data, labels = transforms.random_rotate_and_resize(data, Y=labels[0], rescale=self.resize_array[index], scale_range=self.scale_range, xy=(self.crop_size,self.crop_size))
-        labels =  transforms.labels_to_flows(labels[0])  
-        return data.copy(), labels.copy()
+        
+        # calculating mask boundary
+        msk_within = labels[0].copy()
+        msk_boundary = labels[0].copy()
+        boundary = find_boundaries(labels[0], mode="thick").astype(np.uint16)
+        indices = np.where(boundary==1)
+        diff_indices = np.where(boundary!=1)
+        msk_within[indices] = 0
+        msk_boundary[diff_indices] = 0
+        
+        labels =  transforms.labels_to_flows(labels[0])
+        
+            
+          
+        return data.copy(), labels.copy(), msk_within.copy(), msk_boundary.copy()
         
 
     def __getitem__(self, index):

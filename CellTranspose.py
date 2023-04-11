@@ -9,7 +9,7 @@ from torch.optim.lr_scheduler import CosineAnnealingLR, StepLR
 
 # local imports
 from loaddata import TrainCellTransposeData, ValCellTransposeData, EvalCellTransposeData, EvalCellTransposeData3D
-from network import CellTransposeModel, ClassLoss, FlowLoss, SASMaskLoss, ContrastiveFlowLoss
+from network import CellTransposeModel, ClassLoss, FlowLoss, SASMaskLoss, ContrastiveFlowLoss, PixelContrastMorphologyLoss
 from train_eval import train_network, adapt_network, eval_network_2D, eval_network_3D
 from calculate_results import produce_logfile, plot_loss, save_pred
 
@@ -55,6 +55,8 @@ parser.add_argument('--load-from-torch', help='If true, assumes dataset is being
 parser.add_argument('--process-each-epoch', help='If true, assumes processing occurs every epoch.', action='store_true')
 parser.add_argument('--num-workers', type=int,
                     help='number of workers for the dataloader', default=0)
+parser.add_argument('--easy-contrast', help='easy contrast for the contrastive morphology loss.',
+                    action='store_true')
 
 # Training data
 parser.add_argument('--train-dataset', help='The directory(s) containing (source) data to be used for training.',
@@ -148,8 +150,11 @@ if args.pretrained_model is not None:
     model.load_state_dict(load(args.pretrained_model, map_location=device))
 
 if not args.eval_only:
+    
     class_loss = ClassLoss(nn.BCEWithLogitsLoss(reduction='mean'))
     flow_loss = FlowLoss(nn.MSELoss(reduction='mean'))
+    seg_morphology_contrast = PixelContrastMorphologyLoss(args.easy_contrast)
+    
     optimizer = SGD(model.parameters(), lr=args.learning_rate, momentum=args.momentum, weight_decay=args.weight_decay)
     
     train_dl = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, drop_last=True, num_workers=args.num_workers, )
@@ -168,7 +173,7 @@ if not args.eval_only:
         start_train = time.time()
         scheduler = StepLR(optimizer, step_size=1, gamma=args.step_gamma)
         train_losses, val_losses = adapt_network(model, train_dl, target_dl, val_dl, sas_class_loss, c_flow_loss,
-                                                 class_loss, flow_loss, train_direct=args.no_adaptation_loss,
+                                                 class_loss, flow_loss, seg_morphology_contrast, train_direct=args.no_adaptation_loss,
                                                  optimizer=optimizer, scheduler=scheduler, device=device,
                                                  n_epochs=args.epochs, k=args.k, gamma_1=args.gamma_1,
                                                  gamma_2=args.gamma_2, n_thresh=args.n_thresh,
@@ -176,7 +181,7 @@ if not args.eval_only:
     else:
         start_train = time.time()
         scheduler = CosineAnnealingLR(optimizer, T_max=args.epochs, eta_min=args.learning_rate/100, last_epoch=-1)
-        train_losses, val_losses = train_network(model, train_dl, val_dl, class_loss, flow_loss, optimizer=optimizer,
+        train_losses, val_losses = train_network(model, train_dl, val_dl, class_loss, flow_loss, seg_morphology_contrast, optimizer=optimizer,
                                                  scheduler=scheduler, device=device, n_epochs=args.epochs)
     # compiled_model = jit.script(model)
     # jit.save(compiled_model, os.path.join(args.results_dir, 'trained_model.pt'))

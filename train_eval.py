@@ -12,7 +12,7 @@ import transforms
 # cellpose_scr import
 from cellpose_src import transforms as cp_transform
 
-def train_network(model, train_dl, val_dl, class_loss, flow_loss, optimizer, scheduler, device, n_epochs):  
+def train_network(model, train_dl, val_dl, class_loss, flow_loss, seg_morphology_contrast, optimizer, scheduler, device, n_epochs):  
     
     
     train_losses = []
@@ -26,14 +26,18 @@ def train_network(model, train_dl, val_dl, class_loss, flow_loss, optimizer, sch
         model.train()
         print(scheduler.get_last_lr())
         
-        for (sample_data, sample_labels) in tqdm(train_dl, desc='Training - Epoch {}/{}'.format(e, n_epochs)):           
+        for (sample_data, sample_labels, msk_within, msk_boundary) in tqdm(train_dl, desc='Training - Epoch {}/{}'.format(e, n_epochs)):
+                       
             sample_data = sample_data.float().to(device)
             sample_labels = sample_labels.float().to(device)
             optimizer.zero_grad()
-            output = model(sample_data)
+            output, rep = model(sample_data)
             mask_loss = class_loss(output, sample_labels)
             grad_loss = flow_loss(output, sample_labels)
-            train_loss = mask_loss + grad_loss
+            
+            pix_contrast = 0.1*seg_morphology_contrast(rep, msk_within, msk_boundary,output[:,0]) 
+            train_loss = mask_loss + grad_loss + pix_contrast
+            
             train_epoch_losses.append(train_loss.item())
             train_loss.backward()
             optimizer.step()
@@ -55,7 +59,7 @@ def train_network(model, train_dl, val_dl, class_loss, flow_loss, optimizer, sch
 
 
 def adapt_network(model: nn.Module, source_dl, target_dl, val_dl, sas_mask_loss, contrastive_flow_loss,
-                  class_loss, flow_loss, train_direct, optimizer, scheduler, device, n_epochs,
+                  class_loss, flow_loss, seg_morphology_contrast, train_direct, optimizer, scheduler, device, n_epochs,
                   k, gamma_1, gamma_2, n_thresh, temperature):
     
     train_losses = []
@@ -72,13 +76,13 @@ def adapt_network(model: nn.Module, source_dl, target_dl, val_dl, sas_mask_loss,
         train_target_flow_losses = []
         target_dl_iter = iter(target_dl)
 
-        for i, (source_sample_data, source_sample_labels) in enumerate(tqdm(
+        for i, (source_sample_data, source_sample_labels, source_msk_within, source_msk_boundary) in enumerate(tqdm(
                 source_dl, desc='Training - Epoch {}/{}'.format(e, n_epochs))):
             optimizer.zero_grad()
 
             source_sample_data = source_sample_data.float().to(device)
             source_sample_labels = source_sample_labels.float().to(device)
-            source_output = model(source_sample_data)
+            source_output, source_rep = model(source_sample_data)
 
             try:
                 target_sample = next(target_dl_iter)
@@ -87,7 +91,12 @@ def adapt_network(model: nn.Module, source_dl, target_dl, val_dl, sas_mask_loss,
                 target_sample = next(target_dl_iter)
             target_sample_data = target_sample[0].float().to(device)
             target_sample_labels = target_sample[1].float().to(device)
-            target_output = model(target_sample_data)
+            tareget_msk_within = target_sample[2].to(device)
+            target_msk_boundary = target_sample[3].to(device)
+            target_output, target_rep = model(target_sample_data)
+            
+            pix_morphology_loss = 0.1*seg_morphology_contrast(target_rep, tareget_msk_within, target_msk_boundary,target_output[:,0])
+            
             if not train_direct:
                 if e <= n_epochs/2:
                     adaptation_class_loss = sas_mask_loss(source_output[:, 0], source_sample_labels[:, 0],
@@ -101,16 +110,17 @@ def adapt_network(model: nn.Module, source_dl, target_dl, val_dl, sas_mask_loss,
                                                                  temperature=temperature)
                     target_flow_loss = flow_loss(target_output, target_sample_labels)
                     f_loss = target_flow_loss + adaptation_flow_loss
-                    train_loss = c_loss + f_loss
+                    curr_loss = c_loss + f_loss
                 else:
                     target_class_loss = class_loss(target_output, target_sample_labels)
                     target_flow_loss = flow_loss(target_output, target_sample_labels)
-                    train_loss = target_class_loss + target_flow_loss
+                    curr_loss = target_class_loss + target_flow_loss
             else:
                 target_class_loss = class_loss(target_output, target_sample_labels)
                 target_flow_loss = flow_loss(target_output, target_sample_labels)
-                train_loss = target_class_loss + target_flow_loss
+                curr_loss = target_class_loss + target_flow_loss
 
+            train_loss = curr_loss + pix_morphology_loss
             train_epoch_losses.append(train_loss.item())
             train_target_class_losses.append(target_class_loss.item())
             train_target_flow_losses.append(target_flow_loss.item())
@@ -139,7 +149,7 @@ def validate_network(model, data_loader, flow_loss, class_loss, device):
         for (val_sample_data, val_sample_labels) in tqdm(data_loader, desc='Performing validation'):
             val_sample_data = val_sample_data.float().to(device)
             val_sample_labels = val_sample_labels.float().to(device)
-            output = model(val_sample_data)
+            output, rep = model(val_sample_data)
             grad_loss = flow_loss(output, val_sample_labels).item()
             mask_loss = class_loss(output, val_sample_labels).item()
             val_loss = grad_loss + mask_loss
@@ -187,8 +197,8 @@ def run_overlaps(model: nn.Module, imgi, batch_size, device, patch_size=112, min
         
         with no_grad():
             X = from_numpy(IMG[irange]).float().to(device)
-            y0 = model(X).detach().cpu().numpy()
-        
+            y0, rep = model(X)
+            y0 = y0.detach().cpu().numpy()
         y[irange] = y0.reshape(len(irange), y0.shape[-3], y0.shape[-2], y0.shape[-1])
            
     yf = cp_transform.average_tiles(y, ysub, xsub, Ly, Lx)
@@ -227,7 +237,8 @@ def run_3D_network(model: nn.Module,device, curr_stack, patch_size, patch_per_ba
             model.eval()
             with no_grad():
                 X = from_numpy(IMGa).float().to(device)
-                ya = model(X).detach().cpu().numpy()
+                ya, rep = model(X)
+                ya = ya.detach().cpu().numpy()
             
             for i in range(min(Lz-k*nimgs, nimgs)):
                 y = ya[i*ntiles:(i+1)*ntiles]
