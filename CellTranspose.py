@@ -8,7 +8,7 @@ from torch.optim import SGD
 from torch.optim.lr_scheduler import CosineAnnealingLR, StepLR
 
 # local imports
-from loaddata import TrainCellTransposeData, ValCellTransposeData, EvalCellTransposeData, EvalCellTransposeData3D
+from loaddata import TrainCellTransposeData, ValCellTransposeData, EvalCellTransposeData, EvalCellTransposeData3D, find_shots
 from network import CellTransposeModel, ClassLoss, FlowLoss, SASMaskLoss, ContrastiveFlowLoss, PixelContrastMorphologyLoss
 from train_eval import train_network, adapt_network, eval_network_2D, eval_network_3D
 from calculate_results import produce_logfile, plot_loss, save_pred
@@ -65,6 +65,8 @@ parser.add_argument('--train-from-3D', help='Whether the input training source d
                     action='store_true')
 
 # Target data
+parser.add_argument('--random-shots', help='automated shots finding', action='store_true')
+parser.add_argument('--num-shots', type=int, default=3)
 parser.add_argument('--target-dataset',
                     help='The directory containing target data to be used for domain adaptation. Note: if do-adaptation'
                          ' is set to False, this parameter will be ignored.', nargs='+')
@@ -134,6 +136,11 @@ if args.save_dataset:
         
 if args.target_dataset is not None:
     
+    # finding random shots from the target data
+    if args.random_shots:
+        find_random_shots = find_shots(args.target_dataset, save_dir=args.results_dir,shots=args.num_shots, patch_size=args.patch_size, nominal_cell_metric=args.median_diams)
+        args.target_dataset = [find_random_shots.random_shots()]
+        
     target_dataset = TrainCellTransposeData(args.target_dataset, args.n_chan, crop_size=args.patch_size, median_diam=args.median_diams, 
                                             target_median_diam=args.median_diams_target, batch_size=args.batch_size, target=True)
     

@@ -2,16 +2,19 @@
 Data Loader implementation, specifically designed for in-house datasets. Code will be designed to reflect flexibility in
 custom data loaders for new data.
 """
-
+import copy
 import os
 import math
 import tifffile
 import cv2
 import numpy as np
-import transforms
-from tqdm import trange
+from math import ceil
+from tqdm import trange, tqdm
 from torch.utils.data import Dataset
 from skimage.segmentation import find_boundaries
+
+# local import
+import transforms
 
 # cellpose_src imports
 from cellpose_src import transforms as cp_transform
@@ -133,14 +136,18 @@ class TrainCellTransposeData(Dataset):
             self.diam_train_median_percentile = np.array([np.percentile(np.array(transforms.diam_range(raw_labels[i])), 75) for i in trange(len(raw_labels), desc='Calculating Diam...')])
             self.diam_train_median_percentile[self.diam_train_median_percentile<12.] = 12.   
             self.resize_array = [float(curr_diam/self.diam_train_mean) if rescale else 1.0 for curr_diam in self.diam_train_median_percentile]
-         
+        
+        self.msk_within = []
+        self.msk_boundary = [] 
         if not self.do_every_epoch:
             data_samples = []
             label_samples = []
             for index in trange(len(self.data), desc='Preprocessing training data once only...'):
-                data, labels = self.process_training_data(index)
+                data, labels, msk_within, msk_boundary = self.process_training_data(index)
                 data_samples.append(data)
-                label_samples.append(labels)   
+                label_samples.append(labels)
+                self.msk_within.append(msk_within)
+                self.msk_boundary.append(msk_boundary)
             self.data = data_samples
             self.labels = label_samples
                     
@@ -168,7 +175,7 @@ class TrainCellTransposeData(Dataset):
         if self.do_every_epoch:
             return self.process_training_data(index)
         else:
-            return self.data[index], self.labels[index]
+            return self.data[index], self.labels[index], self.msk_within[index], self.msk_boundary[index]
 
     def __len__(self):
         return len(self.data)
@@ -396,3 +403,112 @@ class EvalCellTransposeData3D(Dataset):
                 
         data = transforms.normalize1stto99th(transforms.reformat(raw_data_vol, self.n_chan, do_3D=True))
         return data, self.d_list[index], self.resize_measure
+
+class find_shots:
+    
+    def __init__(self, data_dirs, save_dir, shots=3, patch_size=112, nominal_cell_metric=30, scaling_factor=1.25, min_cells=1):
+        self.shots = shots
+        self.patch_size = patch_size
+        self.nominal_cell_metric = nominal_cell_metric
+        self.scaling_factor = scaling_factor
+        self.save_dir = save_dir   
+        self.min_cells = min_cells
+        
+        self.d_list = []
+        self.l_list = []
+        for dir_i in data_dirs:
+            assert os.path.exists(os.path.join(dir_i,'labels')), f"Training folder {os.path.join(dir_i,'labels')} does not exists, it is needed for training."
+            self.d_list = self.d_list + sorted([dir_i + os.sep + 'data' + os.sep + f for f in
+                                                os.listdir(os.path.join(dir_i, 'data')) if f.lower()
+                                            .endswith('.tiff') or f.lower().endswith('.tif')
+                                                or f.lower().endswith('.png')])
+            
+            
+            self.l_list = self.l_list + sorted([dir_i + os.sep + 'labels' + os.sep + f for f in
+                                                os.listdir(os.path.join(dir_i, 'labels')) if f.lower()
+                                            .endswith('.tiff') or f.lower().endswith('.tif')
+                                                or f.lower().endswith('.png')])
+                
+    
+    def select_sample_window(self, d, lbl, smpl_cntr):
+        
+        exemplar_cell = lbl[smpl_cntr]
+        cell_metric = transforms.cell_range(lbl, exemplar_cell)
+        patch_metric = ceil((cell_metric / self.nominal_cell_metric) * self.patch_size * self.scaling_factor / 2)
+        
+        crp_lbl = copy.deepcopy(lbl[max(smpl_cntr[0]-patch_metric, 0): min(smpl_cntr[0]+patch_metric, lbl.shape[0]),
+                                max(smpl_cntr[1]-patch_metric, 0): min(smpl_cntr[1]+patch_metric, lbl.shape[1])])
+        
+        # CH x h x w
+        if len(d.shape)>2:
+            crp_dta = copy.deepcopy(d[:,max(smpl_cntr[0]-patch_metric, 0): min(smpl_cntr[0]+patch_metric, d.shape[1]),
+                                max(smpl_cntr[1]-patch_metric, 0): min(smpl_cntr[1]+patch_metric, d.shape[2])])
+        else:
+            crp_dta = copy.deepcopy(d[max(smpl_cntr[0]-patch_metric, 0): min(smpl_cntr[0]+patch_metric, d.shape[0]),
+                                max(smpl_cntr[1]-patch_metric, 0): min(smpl_cntr[1]+patch_metric, d.shape[1])])
+        
+        return crp_dta, crp_lbl
+
+    
+    def random_shots(self):
+        """
+        Generates square shots from the randomly sampled images based on Cellpose 2.0 guidelines
+        also generates flows
+        
+        """
+        save_path = os.path.join(self.save_dir,str(self.shots)+'-shot')
+        os.makedirs(os.path.join(save_path, 'data'))
+        os.makedirs(os.path.join(save_path, 'labels'))
+            
+        d_l_list = list(zip(self.d_list, self.l_list))
+        np.random.shuffle(d_l_list)
+        
+        data_shots = []
+        labels_shots = []
+        total_masks=0
+        
+        curr_shot=0
+        while len(data_shots)<self.shots:
+            
+            d_name = d_l_list[curr_shot][0]
+            l_name = d_l_list[curr_shot][1]
+            
+            d_ext = os.path.splitext(d_name)[1]
+            l_ext = os.path.splitext(l_name)[1]
+            data = tifffile.imread(d_name) if d_ext == '.tif' or '.tiff' else cv2.imread(d_name, -1)
+            label = tifffile.imread(l_name) if l_ext == '.tif' or '.tiff' else cv2.imread(l_name, -1)
+            
+            mask_IDs = np.unique(label)[1:]
+            running_masks=0
+            finalized_crop_data=np.array([])
+            finalized_crop_label=np.array([])
+            
+            for ID in tqdm(mask_IDs, desc='Investigating Masks: '):
+                sample_center = np.mean(np.argwhere(label==ID), axis=0).astype('int')
+                sample_center = (sample_center[0],sample_center[1])
+                crop_data, crop_label = self.select_sample_window(data, label, sample_center)
+                current_masks =np.unique(crop_label)[1:]
+                if len(current_masks) > running_masks: 
+                    finalized_crop_data=crop_data
+                    finalized_crop_label=crop_label
+                    running_masks=len(current_masks)
+                    
+
+            if running_masks >= self.min_cells:
+                print(f'Shape {finalized_crop_label.shape[-1]} x {finalized_crop_label.shape[-2]}')
+                data_shots.append(finalized_crop_data)
+                labels_shots.append(finalized_crop_label)
+                total_masks += running_masks
+                
+                
+                if d_ext == '.tif' or '.tiff': tifffile.imwrite(os.path.join(save_path, 'data', 'Crop_'+os.path.basename(d_name)),finalized_crop_data)
+                else: cv2.imwrite(os.path.join(save_path, 'data', 'Crop_'+os.path.basename(d_name)), finalized_crop_data)
+                if l_ext == '.tif' or '.tiff': tifffile.imwrite(os.path.join(save_path, 'labels', 'Crop_'+os.path.basename(l_name)), finalized_crop_label)
+                else: cv2.imwrite(os.path.join(save_path, 'labels', 'Crop_'+os.path.basename(l_name)), finalized_crop_label)
+                    
+            else:
+                print(f'Masks collected for this shot are less than the user defined value - {self.min_cells}, therefore, moving to the next random image!')    
+            curr_shot += 1
+        print(f'Total masks collected: {total_masks}')
+        
+        return save_path

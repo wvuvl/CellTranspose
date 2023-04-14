@@ -191,7 +191,7 @@ class PixelContrastMorphologyLoss(nn.Module):
         self.base_temperature = configer_contrast['base_temperature']
         self.max_samples = configer_contrast['max_samples']
         self.max_views = configer_contrast['max_views']
-        self.ignore_label = 0
+        self.ignore_label = -1
 
     def _hard_anchor_sampling(self, X, y_within, y_boundary, y):
         batch_size, feat_dim = X.shape[0], X.shape[-1]
@@ -267,7 +267,7 @@ class PixelContrastMorphologyLoss(nn.Module):
                         num_hard_keep = num_hard
                         num_easy_keep = n_view - num_hard_keep
                     else:
-                        logger.info('this shoud be never touched! {} {} {}'.format(num_hard, num_easy, n_view))
+                        print('this shoud be never touched! {} {} {}'.format(num_hard, num_easy, n_view))
                         raise Exception
 
                     perm = torch.randperm(num_hard)
@@ -276,7 +276,6 @@ class PixelContrastMorphologyLoss(nn.Module):
                     easy_indices = easy_indices[perm[:num_easy_keep]]
                     indices = torch.cat((hard_indices, easy_indices), dim=0)
 
-                
                 
                 X_[X_ptr, :, :] = X[ii, indices, :].squeeze(1)
                 y_[X_ptr] = cls_id
