@@ -191,7 +191,7 @@ class PixelContrastMorphologyLoss(nn.Module):
         self.base_temperature = configer_contrast['base_temperature']
         self.max_samples = configer_contrast['max_samples']
         self.max_views = configer_contrast['max_views']
-        self.ignore_label = -1
+        self.ignore_label = 0
 
     def _hard_anchor_sampling(self, X, y_within, y_boundary, y):
         batch_size, feat_dim = X.shape[0], X.shape[-1]

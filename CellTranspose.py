@@ -136,12 +136,15 @@ if args.save_dataset:
         
 if args.target_dataset is not None:
     
+    target_dataset = TrainCellTransposeData(args.target_dataset, args.n_chan, crop_size=args.patch_size, median_diam=args.median_diams, 
+                                            target_median_diam=args.median_diams_target, batch_size=args.batch_size, target=True)
+    args.median_diams_target = target_dataset.target_median_diam
+    
     # finding random shots from the target data
     if args.random_shots:
         find_random_shots = find_shots(args.target_dataset, save_dir=args.results_dir,shots=args.num_shots, patch_size=args.patch_size, nominal_cell_metric=args.median_diams)
         args.target_dataset = [find_random_shots.random_shots()]
-        
-    target_dataset = TrainCellTransposeData(args.target_dataset, args.n_chan, crop_size=args.patch_size, median_diam=args.median_diams, 
+        target_dataset = TrainCellTransposeData(args.target_dataset, args.n_chan, crop_size=args.patch_size, median_diam=args.median_diams, 
                                             target_median_diam=args.median_diams_target, batch_size=args.batch_size, target=True)
     
     rs = RandomSampler(target_dataset, replacement=False)
