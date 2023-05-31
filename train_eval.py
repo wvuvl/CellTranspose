@@ -95,7 +95,7 @@ def adapt_network(model: nn.Module, source_dl, target_dl, val_dl, sas_mask_loss,
             target_msk_boundary = target_sample[3].to(device)
             target_output, target_rep = model(target_sample_data)
             
-            pix_morphology_loss = 0.1*seg_morphology_contrast(target_rep, tareget_msk_within, target_msk_boundary,target_output[:,0])
+            # pix_morphology_loss = 0.1*seg_morphology_contrast(target_rep, tareget_msk_within, target_msk_boundary,target_output[:,0])
             
             if not train_direct:
                 if e <= n_epochs/2:
@@ -120,7 +120,7 @@ def adapt_network(model: nn.Module, source_dl, target_dl, val_dl, sas_mask_loss,
                 target_flow_loss = flow_loss(target_output, target_sample_labels)
                 curr_loss = target_class_loss + target_flow_loss
 
-            train_loss = curr_loss + pix_morphology_loss
+            train_loss = curr_loss # + pix_morphology_loss
             train_epoch_losses.append(train_loss.item())
             train_target_class_losses.append(target_class_loss.item())
             train_target_flow_losses.append(target_flow_loss.item())
@@ -192,17 +192,24 @@ def run_overlaps(model: nn.Module, imgi, batch_size, device, patch_size=112, min
     niter = int(np.ceil(IMG.shape[0] / batch_size))
     
     y = np.zeros((IMG.shape[0], 3, ly, lx))
+    rep = np.zeros((IMG.shape[0], 256, ly, lx))
     for k in range(niter):
         irange = np.arange(batch_size*k, min(IMG.shape[0], batch_size*k+batch_size))
         
         with no_grad():
             X = from_numpy(IMG[irange]).float().to(device)
-            y0, rep = model(X)
+            y0, rep0 = model(X)
             y0 = y0.detach().cpu().numpy()
+            rep0 = rep0.detach().cpu().numpy()
         y[irange] = y0.reshape(len(irange), y0.shape[-3], y0.shape[-2], y0.shape[-1])
-           
+        rep[irange] = rep0.reshape(len(irange), rep0.shape[-3], rep0.shape[-2], rep0.shape[-1])
+    
     yf = cp_transform.average_tiles(y, ysub, xsub, Ly, Lx)
     yf = yf[:,:imgi.shape[1],:imgi.shape[2]]
+    
+    repf = cp_transform.average_tiles(rep, ysub, xsub, Ly, Lx)
+    repf = repf[:,:imgi.shape[1],:imgi.shape[2]]
+    
     return yf  
 
 
