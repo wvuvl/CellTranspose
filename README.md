@@ -1,4 +1,17 @@
-# Few-Shot Domain-Adaptive Cell Segmentation with Cellpose
+# CellTranspose: Few-shot Domain Adaptation for Cellular Instance Segmentation
+
+<div align="center">
+![Static Badge](https://img.shields.io/badge/WACV-2023-blue?link=https%3A%2F%2Fopenaccess.thecvf.com%2Fcontent%2FWACV2023%2Fpapers%2FKeaton_CellTranspose_Few-Shot_Domain_Adaptation_for_Cellular_Instance_Segmentation_WACV_2023_paper.pdf)
+![Static Badge](https://img.shields.io/badge/Project_website-green?link=https%3A%2F%2Fgithub.com%2Fwvuvl%2FCellTranspose)
+
+[Matthew Keaton](https://www.linkedin.com/in/matthew-keaton/),
+[Ram Zaveri](https://ramzaveri.com/),
+[Gianfranco Doretto](https://vision.csee.wvu.edu/people/gianfranco-doretto/)
+
+WACV 2023
+</div>
+
+This is the official repository of [CellTranspose][https://openaccess.thecvf.com/content/WACV2023/papers/Keaton_CellTranspose_Few-Shot_Domain_Adaptation_for_Cellular_Instance_Segmentation_WACV_2023_paper.pdf], an adaptation-based framework for achieving accurate automated cellular instance segmentation on any type of tissue data using a minimal amount of expert annotations (typically 3 to 5 cell instances). This work is built on [Cellpose][https://github.com/MouseLand/cellpose], a state-of-the-art method developed by Janelia for cellular instance segmentation without user annotation.
 
 This code base can be utilized in a number of ways, including for initial model training, adaptation, and evaluation on both 2-D and 3-D data.
 
