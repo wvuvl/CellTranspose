@@ -1,8 +1,11 @@
 # CellTranspose: Few-shot Domain Adaptation for Cellular Instance Segmentation
 
 <div align="center">
-[![Static Badge](https://img.shields.io/badge/WACV-2023-blue?link=https%3A%2F%2Fopenaccess.thecvf.com%2Fcontent%2FWACV2023%2Fpapers%2FKeaton_CellTranspose_Few-Shot_Domain_Adaptation_for_Cellular_Instance_Segmentation_WACV_2023_paper.pdf)](https://openaccess.thecvf.com/content/WACV2023/papers/Keaton_CellTranspose_Few-Shot_Domain_Adaptation_for_Cellular_Instance_Segmentation_WACV_2023_paper.pdf)
-[![Static Badge](https://img.shields.io/badge/Project_website-green?link=https%3A%2F%2Fgithub.com%2Fwvuvl%2FCellTranspose)](https://github.com/wvuvl/CellTranspose)
+
+[![Static Badge](https://img.shields.io/badge/WACV-2023-blue)](https://openaccess.thecvf.com/content/WACV2023/html/Keaton_CellTranspose_Few-Shot_Domain_Adaptation_for_Cellular_Instance_Segmentation_WACV_2023_paper.html)
+[![Static Badge](https://img.shields.io/badge/Paper_website-orange)](https://wvuvl.github.io/CellTranspose/)
+
+
 
 [Matthew Keaton](https://www.linkedin.com/in/matthew-keaton/),
 [Ram Zaveri](https://ramzaveri.com/),
