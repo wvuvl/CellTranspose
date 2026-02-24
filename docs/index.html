@@ -1,0 +1,373 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  
+  <!-- Primary Meta Tags -->
+  <meta name="WVUVL - CellTranspose" content="CellTranspose - Matthew R Keaton, Ram J Zaveri, Gianfranco Doretto">
+  <meta name="description" content="CellTranspose: Few-shot Domain Adaptation for Cellular Instance Segmentation">
+  <meta name="keywords" content="machine learning, computer vision, segmentation, domain adaptation, few-shot learning">
+  <!-- TODO: List all authors -->
+  <meta name="author" content="Matthew R Keaton, Ram J Zaveri, Gianfranco Doretto">
+  <meta name="robots" content="index, follow">
+  <meta name="language" content="English">
+  
+  <!-- Open Graph / Facebook -->
+  <meta property="og:type" content="article">
+  <meta property="og:site_name" content="WVU Vision and Learning Group">
+  <meta property="og:title" content="CellTranspose: Few-shot Domain Adaptation for Cellular Instance Segmentation">
+  <meta property="og:description" content="CellTranspose: Few-shot Domain Adaptation for Cellular Instance Segmentation">
+  <meta property="og:url" content="vision.csee.wvu.edu">
+  <!-- TODO: Create a 1200x630px preview image and update path -->
+  <meta property="og:image" content="https://YOUR_DOMAIN.com/static/images/social_preview.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="PAPER_TITLE - Research Preview">
+  <meta property="article:published_time" content="2024-01-01T00:00:00.000Z">
+  <meta property="article:author" content="Matthew R Keaton">
+  <meta property="article:section" content="Research">
+  <meta property="article:tag" content="KEYWORD1">
+  <meta property="article:tag" content="KEYWORD2">
+
+  <!-- Academic/Research Specific -->
+  <meta name="citation_title" content="CellTranspose: Few-shot Domain Adaptation for Cellular Instance Segmentation">
+  <meta name="citation_author" content="Keaton, Matthew">
+  <meta name="citation_author" content="Zaveri, Ram">
+  <meta name="citation_author" content="Doretto, Gianfranco">
+  <meta name="citation_publication_date" content="2023">
+  <meta name="citation_conference_title" content="WACV">
+  <meta name="citation_pdf_url" content="https://openaccess.thecvf.com/content/WACV2023/html/Keaton_CellTranspose_Few-Shot_Domain_Adaptation_for_Cellular_Instance_Segmentation_WACV_2023_paper.html">
+  
+  <!-- Additional SEO -->
+  <meta name="theme-color" content="#2563eb">
+  <meta name="msapplication-TileColor" content="#2563eb">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  
+  <!-- Preconnect for performance -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="preconnect" href="https://ajax.googleapis.com">
+  <link rel="preconnect" href="https://documentcloud.adobe.com">
+  <link rel="preconnect" href="https://cdn.jsdelivr.net">
+
+
+  <title>CellTranspose: Few-shot Domain Adaptation for Cellular Instance Segmentation - Matthew R Keaton, Ram J Zaveri, Gianfranco Doretto | Academic Research</title>
+  
+  <!-- Favicon and App Icons -->
+  <link rel="icon" type="image/" href="static/images/vl_logo_100x100.png">
+  <!-- <link rel="apple-touch-icon" href="static/images/favicon.ico"> -->
+  
+  <!-- Critical CSS - Load synchronously -->
+  <link rel="stylesheet" href="static/css/bulma.min.css">
+  <link rel="stylesheet" href="static/css/index.css">
+  
+  <!-- Non-critical CSS - Load asynchronously -->
+  <link rel="preload" href="static/css/bulma-carousel.min.css" as="style" onload="this.onload=null;this.rel='stylesheet'">
+  <link rel="preload" href="static/css/bulma-slider.min.css" as="style" onload="this.onload=null;this.rel='stylesheet'">
+  <link rel="preload" href="static/css/fontawesome.all.min.css" as="style" onload="this.onload=null;this.rel='stylesheet'">
+  <link rel="preload" href="https://cdn.jsdelivr.net/gh/jpswalsh/academicons@1/css/academicons.min.css" as="style" onload="this.onload=null;this.rel='stylesheet'">
+  
+  <!-- Fallback for browsers that don't support preload -->
+  <noscript>
+    <link rel="stylesheet" href="static/css/bulma-carousel.min.css">
+    <link rel="stylesheet" href="static/css/bulma-slider.min.css">
+    <link rel="stylesheet" href="static/css/fontawesome.all.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/jpswalsh/academicons@1/css/academicons.min.css">
+  </noscript>
+  
+  <!-- Fonts - Optimized loading -->
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  
+  <!-- Defer non-critical JavaScript -->
+  <script defer src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
+  <script defer src="https://documentcloud.adobe.com/view-sdk/main.js"></script>
+  <script defer src="static/js/fontawesome.all.min.js"></script>
+  <script defer src="static/js/bulma-carousel.min.js"></script>
+  <script defer src="static/js/bulma-slider.min.js"></script>
+  <script defer src="static/js/index.js"></script>
+  
+  <!-- Structured Data for Academic Papers -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "ScholarlyArticle",
+    "headline": "PAPER_TITLE",
+    "description": "BRIEF_DESCRIPTION_OF_YOUR_RESEARCH_CONTRIBUTION_AND_FINDINGS",
+    "author": [
+      {
+        "@type": "Person",
+        "name": "FIRST_AUTHOR_NAME",
+        "affiliation": {
+          "@type": "Organization",
+          "name": "INSTITUTION_NAME"
+        }
+      },
+      {
+        "@type": "Person",
+        "name": "SECOND_AUTHOR_NAME",
+        "affiliation": {
+          "@type": "Organization",
+          "name": "INSTITUTION_NAME"
+        }
+      }
+    ],
+    "datePublished": "2024-01-01",
+    "publisher": {
+      "@type": "Organization",
+      "name": "CONFERENCE_OR_JOURNAL_NAME"
+    },
+    "url": "https://YOUR_DOMAIN.com/YOUR_PROJECT_PAGE",
+    "image": "https://YOUR_DOMAIN.com/static/images/social_preview.png",
+    "keywords": ["KEYWORD1", "KEYWORD2", "KEYWORD3", "machine learning", "computer vision"],
+    "abstract": "FULL_ABSTRACT_TEXT_HERE",
+    "citation": "BIBTEX_CITATION_HERE",
+    "isAccessibleForFree": true,
+    "license": "https://creativecommons.org/licenses/by/4.0/",
+    "mainEntity": {
+      "@type": "WebPage",
+      "@id": "https://YOUR_DOMAIN.com/YOUR_PROJECT_PAGE"
+    },
+    "about": [
+      {
+        "@type": "Thing",
+        "name": "RESEARCH_AREA_1"
+      },
+      {
+        "@type": "Thing", 
+        "name": "RESEARCH_AREA_2"
+      }
+    ]
+  }
+  </script>
+  
+  <!-- Website/Organization Structured Data -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "Organization",
+    "name": "INSTITUTION_OR_LAB_NAME",
+    "url": "https://YOUR_INSTITUTION_WEBSITE.com",
+    "logo": "https://YOUR_DOMAIN.com/static/images/favicon.ico",
+    "sameAs": [
+      "https://twitter.com/YOUR_TWITTER_HANDLE",
+      "https://github.com/YOUR_GITHUB_USERNAME"
+    ]
+  }
+  </script>
+</head>
+<body>
+
+  <!-- Scroll to Top Button -->
+  <button class="scroll-to-top" onclick="scrollToTop()" title="Scroll to top" aria-label="Scroll to top">
+    <i class="fas fa-chevron-up"></i>
+  </button>
+
+  <main id="main-content">
+  <section class="hero">
+    <div class="hero-body">
+      <div class="container is-max-desktop">
+        <div class="columns is-centered">
+          <div class="column has-text-centered">
+            <h1 class="title is-1 publication-title">CellTranspose: Few-shot Domain Adaptation for Cellular Instance Segmentation</h1>
+            <div class="is-size-5 publication-authors">
+              <span class="author-block">
+                <a href="https://www.linkedin.com/in/matthew-keaton/" target="_blank">Matthew R Keaton</a>,</span>
+                <span class="author-block">
+                  <a href="https://ramzaveri.com" target="_blank">Ram J Zaveri</a>,</span>
+                  <span class="author-block">
+                    <a href="https://vision.csee.wvu.edu/people/gianfranco-doretto/" target="_blank">Gianfranco Doretto</a>
+                  </span>
+                  </div>
+
+                  <div class="is-size-5 publication-authors">
+                    <span class="author-block">West Virginia University<br>WACV 2023</span>
+                  </div>
+
+                  <div class="column has-text-centered">
+                    <div class="publication-links">
+                      <span class="link-block">
+                        <a href="https://openaccess.thecvf.com/content/WACV2023/html/Keaton_CellTranspose_Few-Shot_Domain_Adaptation_for_Cellular_Instance_Segmentation_WACV_2023_paper.html" target="_blank"
+                        class="external-link button is-normal is-rounded is-dark">
+                          <span class="icon">
+                            <i class="fas fa-file-pdf"></i>
+                          </span>
+                          <span>Paper</span>
+                        </a>
+                      </span>
+
+                  <span class="link-block">
+                    <a href="https://github.com/wvuvl/CellTranspose" target="_blank"
+                    class="external-link button is-normal is-rounded is-dark">
+                    <span class="icon">
+                      <i class="fab fa-github"></i>
+                    </span>
+                    <span>Code</span>
+                  </a>
+                </span>
+            </div>
+          </div>
+          <!-- Segmentation teaser -->
+            <div class="container is-max-desktop">
+              <div class="hero-body">
+                <img src="static/images/celltranspose_splash.png" alt="Qualitative segmentation results">
+                <h2 class="subtitle has-text-centered">
+                        Robust segmentation across various imaging modalities and cell types.
+                </h2>
+              </div>
+            </div>
+          <!-- End segmentation teaser -->
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Paper abstract -->
+<section class="section hero is-light">
+  <div class="container is-max-desktop">
+    <div class="columns is-centered has-text-centered">
+      <div class="column is-four-fifths">
+        <h2 class="title is-3">Abstract</h2>
+        <div class="content has-text-justified">
+          <p>
+                  Automated cellular instance segmentation is a process utilized for accelerating biological research for the past two decades, and recent advancements have produced higher quality results with less effort from the biologist. Most current endeavors focus on completely cutting the researcher out of the picture by generating highly generalized models. However, these models invariably fail when faced with novel data, distributed differently than the ones used for training. In this work, rather than approaching the problem with methods that presume the availability of large amounts of target data and computing power for retraining, we address the even greater challenge of designing an approach that requires minimal amounts of new annotated data as well as training time. We do so by designing specialized contrastive losses that leverage the few annotated samples very efficiently. A large set of results show that 3 to 5 annotations lead to models with accuracy that: 1) significantly mitigate the covariate shift effects; 2) matches or surpasses other adaptation methods; 3) even approaches the performance of methods that have been fully retrained on the target distribution. The adaptation training is only a few minutes, paving a path towards a balance between model performance, computing requirements and expert-level annotation needs.
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+<!-- End paper abstract -->
+
+<!-- Qualitative results -->
+<section class="hero teaser">
+  <div class="container is-max-desktop">
+    <div class="hero-body">
+      <h2 class="title is-3 has-text-centered">Qualitative results</h2>
+      <img src="static/images/Qualitative_BBBC006.png" alt="Qualitative segmentation results">
+      <h2 class="subtitle has-text-centered">
+        CellTranspose is able to reliably adapt to unseen data with as few as 3 labeled cells, and outperforms the generalist baseline regardless of different features of the data. In this case, z corresponds to the imaging plane, where z=16 is in focus.
+      </h2>
+    </div>
+  </div>
+</section>
+<!-- End qualitative results -->
+
+<!-- Image carousel -->
+<section class="hero is-small is-light">
+  <div class="hero-body">
+    <div class="container">
+      <h2 class="title is-3 has-text-centered">CellTranspose prediction and adaptation overview</h2>
+      <div id="results-carousel" class="carousel results-carousel">
+       <div class="item">
+        <img src="static/images/prediction_process_v3.png" alt="CellTranspose prediction process" loading="lazy"/>
+        <h2 class="subtitle has-text-centered">
+          Prediction process. Similar to Cellpose, our approach generates a per-pixel cell prediction mask as well as x-y gradient flows pointing to the direction to the center of the cell, which enables individual cell instances to be predicted.
+        </h2>
+      </div>
+      <div class="item">
+        <!-- Your image here -->
+        <img src="static/images/adaptation_process_v2.png" alt="CellTranspose adaptation process" loading="lazy"/>
+        <h2 class="subtitle has-text-centered">
+          Adaptation process. Using source-target domain sample pairs, predictions are updated utilizing specialized contrastive losses for both the mask and flow predictions.
+        </h2>
+      </div>
+      <div class="item">
+        <!-- Your image here -->
+        <img src="static/images/Mask-based_Contrastive_Loss.png" alt="Mask-based Contrastive Loss" loading="lazy"/>
+        <h2 class="subtitle has-text-centered">
+          Mask-based Contrastive Loss. On a per-pixel basis, the model prediction is updated to ensure predictions from the target samples are representationally aligned to source samples when belonging to the same class (cell/non-cell), and otherwise distant from each other.
+       </h2>
+     </div>
+     <div class="item">
+      <!-- Your image here -->
+      <img src="static/images/Contrastive_Flow_Loss_v3.png" alt="Contrastive Flow Loss" loading="lazy"/>
+      <h2 class="subtitle has-text-centered">
+        2 examples of our Contrastive Flow Loss, with relative errors between the prediction (blue) and both positive (yellow) and negative (gray) source dataset samples represented by line weight. For each pixel corresponding to a cell in the target sample, we identify a location from the source sample which possesses a gradient flow vector with the highest cosine similarity, and utilize a hard-mining strategy to select multiple negative samples which are roughly a fixed cosine distance away from the target label. Similarly to the Mask-based Contrastive Loss, we utilize a loss function that aligns the target sample representation with that of the positive source sample, while moving away from each negative sample.
+      </h2>
+    </div>
+  </div>
+</div>
+</div>
+</section>
+<!-- End image carousel -->
+
+<!-- TissueNet results -->
+<section class="hero teaser">
+  <div class="container is-max-desktop">
+    <div class="hero-body">
+      <h2 class="title is-3 has-text-centered">Comparative results with generalist approaches</h2>
+      <img src="static/images/TissueNet Results.png" alt="TissueNet results">
+      <h2 class="subtitle has-text-centered">
+        CellTranspose is able to adapt to a number of imaging and tissue types, in some cases significantly outperforming the "generalist" Cellpose baseline as well as another generalist approach published alongside the TissueNet dataset. With only 3 target samples, CellTranspose in most cases even approaches the upper bound defined by training the original Cellpose model directly on each individual subtype.
+      </h2>
+    </div>
+  </div>
+</section>
+<!-- End TissueNet results -->
+
+<!-- TNBC results -->
+<section class="hero teaser">
+  <div class="container is-max-desktop">
+    <div class="hero-body">
+      <h2 class="title is-3 has-text-centered">Comparative results with unsupervised method</h2>
+      <img src="static/images/TNBC Results.png" alt="TNBC results">
+      <h2 class="subtitle has-text-centered">
+        We also compare our approach to unsupervised methods which aim to utilize the entire target dataset without any labels. A clear comparison is difficult, as factors including the size of the target dataset and amount of data variability have different effects on either approach. In this case, more training samples are required to perform as well as the unsupervised method, which may in part be due to the fact that the target training data and test data come from different tissue types.
+      </h2>
+    </div>
+  </div>
+</section>
+<!-- End TNBC results -->
+
+<!--BibTex citation -->
+  <section class="section" id="BibTeX">
+    <div class="container is-max-desktop content">
+      <div class="bibtex-header is-light">
+        <h2 class="title">BibTeX</h2>
+        <button class="copy-bibtex-btn" onclick="copyBibTeX()" title="Copy BibTeX to clipboard">
+          <i class="fas fa-copy"></i>
+          <span class="copy-text">Copy</span>
+        </button>
+      </div>
+      <pre id="bibtex-code"><code>@inproceedings{keaton2023celltranspose,
+        title={Celltranspose: Few-shot domain adaptation for cellular instance segmentation},
+        author={Keaton, Matthew R and Zaveri, Ram J and Doretto, Gianfranco},
+        booktitle={Proceedings of the IEEE/CVF winter conference on applications of computer vision},
+        pages={455-466},
+        year={2023},
+        url={https://openaccess.thecvf.com/content/WACV2023/html/Keaton_CellTranspose_Few-Shot_Domain_Adaptation_for_Cellular_Instance_Segmentation_WACV_2023_paper.html}
+    }</code></pre>
+  </div>
+</section>
+<!--End BibTex citation -->
+
+
+  <footer class="footer">
+  <div class="container">
+    <div class="columns is-centered">
+      <div class="column is-8">
+        <div class="content">
+
+          <p>
+            This page was built using the <a href="https://github.com/eliahuhorwitz/Academic-project-page-template" target="_blank">Academic Project Page Template</a> which was adopted from the <a href="https://nerfies.github.io" target="_blank">Nerfies</a> project page.
+            You are free to borrow the source code of this website, we just ask that you link back to this page in the footer. <br> This website is licensed under a <a rel="license"  href="http://creativecommons.org/licenses/by-sa/4.0/" target="_blank">Creative
+            Commons Attribution-ShareAlike 4.0 International License</a>.
+          </p>
+
+        </div>
+      </div>
+    </div>
+  </div>
+</footer>
+
+<!-- Statcounter tracking code -->
+  
+<!-- You can add a tracker to track page visits by creating an account at statcounter.com -->
+
+    <!-- End of Statcounter Code -->
+
+  </body>
+  </html>
