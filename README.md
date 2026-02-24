@@ -81,3 +81,22 @@ is computationally expensive).
 As a final remark, the code as is currently does not implement certain components that may be useful in the future.
 Some additions that were originally considered (such as a 3-D volumetric approach) should be fairly easy to incorporate
 into the codebase if it is decided that these additions would be valuable.
+
+
+### Citation
+
+```bibtex
+@InProceedings{keaton2023celltranspose,
+    title     = {Celltranspose: Few-shot Domain Adaptation for Cellular Instance Segmentation},
+    author    = {Keaton, Matthew R and Zaveri, Ram J and Doretto, Gianfranco},
+    booktitle = {Proceedings of the IEEE/CVF winter conference on applications of computer vision (WACV)},
+    month     = {January},
+    pages     = {455--466},
+    year      = {2023},
+    url       = {https://openaccess.thecvf.com/content/WACV2023/html/Keaton_CellTranspose_Few-Shot_Domain_Adaptation_for_Cellular_Instance_Segmentation_WACV_2023_paper.html}
+}
+```
+
+### Additional Links
+* [Vision and Learning Group ](https://vision.csee.wvu.edu/)
+
